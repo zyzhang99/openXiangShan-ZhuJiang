@@ -1,4 +1,4 @@
-package zhujiang.device.cluster.tl2axi
+package zhujiang.device.cluster.tlu2chi
 
 import dongjiang.chi.{MemAttr, Order, RespErr}
 import chisel3._
@@ -10,6 +10,7 @@ import xijiang.router.base.DeviceIcnBundle
 import zhujiang.ZJModule
 import zhujiang.chi._
 import zhujiang.tilelink.{AOpcode, DFlit, DOpcode, TilelinkParams}
+import zhujiang.ZJParametersKey
 
 object MachineState {
   val width = 4
@@ -31,6 +32,7 @@ class TaskBundle(tlParams: TilelinkParams)(implicit p: Parameters) extends Bundl
   val source = UInt(tlParams.sourceBits.W)
   val data = UInt(tlParams.dataBits.W)
   val mask = UInt((tlParams.dataBits / 8).W)
+  val size = UInt(3.W)
 }
 
 class MachineStatus(tlParams: TilelinkParams)(implicit p: Parameters) extends Bundle {
@@ -59,7 +61,7 @@ class TransactionMachine(node: Node, tlParams: TilelinkParams, outstanding: Int)
   private val txdat = Wire(Decoupled(new DataFlit))
   io.icn.tx.data.get.valid := txdat.valid
   io.icn.tx.data.get.bits := txdat.bits.asTypeOf(io.icn.tx.data.get.bits)
-  txdat.ready := io.icn.tx.req.get.ready
+  txdat.ready := io.icn.tx.data.get.ready
   private val rxrsp = Wire(Decoupled(new RespFlit))
   rxrsp.valid := io.icn.rx.resp.get.valid
   rxrsp.bits := io.icn.rx.resp.get.bits.asTypeOf(rxrsp.bits)
@@ -75,12 +77,14 @@ class TransactionMachine(node: Node, tlParams: TilelinkParams, outstanding: Int)
   private val rspDBID = RegInit(0.U(rxrsp.bits.DBID.getWidth.W))
   private val rspSrcID = RegInit(0.U(niw.W))
   private val datHomeNID = RegInit(0.U(niw.W)) // TODO: used when CompAck is required
+  private val datIsSend = RegInit(false.B)
   private val rspGetComp = RegInit(false.B)
   private val rspGetDBID = RegInit(false.B)
 
   when(io.alloc.fire) {
     task := io.alloc.bits
 
+    datIsSend := false.B
     rspGetComp := false.B
     rspGetDBID := false.B
   }
@@ -132,7 +136,7 @@ class TransactionMachine(node: Node, tlParams: TilelinkParams, outstanding: Int)
       when(rxrsp.fire && (rspIsComp || rspIsDBID || rspIsCompDBID)) {
         assert(rxrsp.bits.RespErr === RespErr.NormalOkay, "TODO: handle error")
 
-        rspGetComp := rspGetComp || rspIsComp
+        rspGetComp := rspGetComp || rspIsComp || rspIsCompDBID
         rspGetDBID := rspGetDBID || rspIsDBID
 
         when(rspIsDBID || rspIsCompDBID) {
@@ -148,6 +152,18 @@ class TransactionMachine(node: Node, tlParams: TilelinkParams, outstanding: Int)
 
     is(MachineState.SEND_DAT) {
       when(txdat.fire) {
+        datIsSend := true.B
+        when(rspGetComp) {
+          nextState := MachineState.RETURN_ACK
+        }
+      }
+
+      when(rxrsp.fire) {
+        val rspIsComp = rxrsp.bits.Opcode === RspOpcode.Comp
+        rspGetComp := rspGetComp || rspIsComp
+        assert(!rspGetComp)
+        assert(rspIsComp)
+
         nextState := MachineState.RETURN_ACK
       }
     }
@@ -172,17 +188,23 @@ class TransactionMachine(node: Node, tlParams: TilelinkParams, outstanding: Int)
   txreq.bits.Opcode := Mux(task.opcode === AOpcode.Get, ReqOpcode.ReadNoSnp, ReqOpcode.WriteNoSnpPtl /* TODO: WriteNoSnpFull ? */)
   txreq.bits.TxnID := io.id
   txreq.bits.AllowRetry := false.B // TODO: Retry
-  txreq.bits.ExpCompAck := Mux(task.opcode === AOpcode.Get, false.B, true.B /* OWO ordering require CompAck */)
+  txreq.bits.ExpCompAck := false.B
   txreq.bits.MemAttr := MemAttr(allocate = false.B, cacheable = false.B, device = true.B, ewa = false.B /* EAW can take any value for ReadNoSnp/WriteNoSnp* */).asUInt
-  txreq.bits.Size := 3.U // 2^3 = 8 bytes
-  txreq.bits.Order := Mux(task.opcode === AOpcode.Get, Order.RequestOrder, Order.OWO)
+  txreq.bits.Size := task.size
+  txreq.bits.Order := Mux(task.opcode === AOpcode.Get, Order.RequestOrder, Order.EndpointOrder)
 
-  txdat.valid := state === MachineState.SEND_DAT
+  private val chiDataBytes = p(ZJParametersKey).dataBits / 8
+  private val tlDataBytes = tlParams.dataBits / 8
+  private val segNum = chiDataBytes / tlDataBytes
+  private val segIdx = if(segNum > 1) task.address(log2Ceil(chiDataBytes) - 1, log2Ceil(tlDataBytes)) else 0.U
+  private val maskVec = Wire(Vec(segNum, UInt(tlDataBytes.W)))
+  maskVec.zipWithIndex.foreach({ case (a, b) => a := Mux(b.U === segIdx, task.mask, 0.U) })
+  txdat.valid := state === MachineState.SEND_DAT && !datIsSend
   txdat.bits := DontCare
   txdat.bits.DBID := rspDBID
   txdat.bits.TgtID := rspSrcID
-  txdat.bits.BE := Mux(task.opcode === AOpcode.PutFullData, Fill(8, 1.U), task.mask)
-  txdat.bits.Data := task.data
+  txdat.bits.BE := maskVec.asUInt
+  txdat.bits.Data := Fill(segNum, task.data)
   txdat.bits.Opcode := DatOpcode.NCBWrDataCompAck
   txdat.bits.Resp := 0.U
   txdat.bits.TxnID := io.id

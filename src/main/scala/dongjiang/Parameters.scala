@@ -139,7 +139,7 @@ trait HasParseZJParam extends HasZJParams {
     val metaId = WireInit(0.U((rnfNodeIdBits + 1).W))
     rnNodeIdSeq.zipWithIndex.foreach {
       case (id, i) =>
-        when(x === id.U) {
+        when(x === (id.U + 1.U)) {
           metaId := i.U
         }
     }
@@ -153,7 +153,7 @@ trait HasParseZJParam extends HasZJParams {
     rnNodeIdSeq.zipWithIndex.foreach {
       case (id, i) =>
         when(x === i.U) {
-          nodeID := id.U
+          nodeID := id.U + 1.U
         }
     }
     assert(nodeID =/= 0xfff.U, "getNodeIDByMetaId ERROR MetaId[0x%x] Index[0x%x]", x, i.U)
@@ -244,13 +244,13 @@ trait HasDJParam extends HasParseZJParam {
   // TODO
 
   // TIMEOUT CHECK CNT VALUE
-  lazy val TIMEOUT_DB      = 10000 // DataBuffer
-  lazy val TIMEOUT_MSHR    = 8000 // BlockTable
-  lazy val TIMEOUT_RSINTF  = 5000 // Rn Slave Intf
-  lazy val TIMEOUT_SMINTF  = 5000 // Sn Master Intf
-  lazy val TIMEOUT_RMINTF  = 5000 // Rn Master Intf
-  lazy val TIMEOUT_MSLOCK  = 3000 // MSHR Lock
-  lazy val TIMEOUT_EXU     = 3000 // Pipe Execute
+  lazy val TIMEOUT_DB      = 10000 + 10000 // DataBuffer
+  lazy val TIMEOUT_MSHR    = 8000  + 10000 // BlockTable
+  lazy val TIMEOUT_RSINTF  = 5000  + 10000 // Rn Slave Intf
+  lazy val TIMEOUT_SMINTF  = 5000  + 10000 // Sn Master Intf
+  lazy val TIMEOUT_RMINTF  = 5000  + 10000 // Rn Master Intf
+  lazy val TIMEOUT_MSLOCK  = 3000  + 10000 // MSHR Lock
+  lazy val TIMEOUT_EXU     = 3000  + 10000 // Pipe Execute
 
   // some requirements for CHI width
   require(intfEntryIdBits <= djparam.chiTxnidBits)

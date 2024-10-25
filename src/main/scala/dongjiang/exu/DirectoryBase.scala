@@ -100,6 +100,7 @@ class DirectoryBase(
 
 
 //// ----------------------- Reg/Wire declaration --------------------------//
+  val resetDone       = RegInit(false.B)
   // Base
   val sramCtrlReg     = RegInit(0.U.asTypeOf(new DirCtrlBundle(setBits)))
   // s2
@@ -135,6 +136,20 @@ class DirectoryBase(
 // ---------------------------------------------------------------------------------------------------------------------- //
 // -------------------------------------------------- S1: Read / Write SRAM --------------------------------------------- //
 // ---------------------------------------------------------------------------------------------------------------------- //
+
+  /*
+   * Check Reset Done
+   */
+  when(metaArrays.map { case m => m.io.w.req.ready & m.io.r.req.ready }.reduce(_ & _)){
+    if(useRepl) {
+      when(replArrayOpt.get.io.w.req.ready & replArrayOpt.get.io.r.req.ready) {
+        resetDone := true.B
+      }
+    } else {
+      resetDone := true.B
+    }
+  }
+
   /*
    * Parse Req Addr
    */
@@ -160,8 +175,8 @@ class DirectoryBase(
   /*
    * Get Req Form MSHR or ProcessPipe_S3 EXU
    */
-  io.earlyRReq.ready        := sramCtrlReg.canRecReq & !io.earlyWReq.valid
-  io.earlyWReq.ready        := sramCtrlReg.canRecReq
+  io.earlyRReq.ready        := sramCtrlReg.canRecReq & !io.earlyWReq.valid & resetDone
+  io.earlyWReq.ready        := sramCtrlReg.canRecReq & resetDone
 
 
   /*
@@ -176,13 +191,16 @@ class DirectoryBase(
       m.io.r.req.valid        := sramCtrlReg.isReqFire & sramCtrlReg.ren
       m.io.r.req.bits.setIdx  := rSet
       // wen
-      m.io.w.req.valid        := sramCtrlReg.isReqFire & sramCtrlReg.wen
+      m.io.w.req.valid        := sramCtrlReg.isReqFire & sramCtrlReg.wen & (i * ways/nrWayBank).U <= OHToUInt(io.dirWrite.wayOH) & OHToUInt(io.dirWrite.wayOH) <= ((i+1) * ways/nrWayBank - 1).U
       m.io.w.req.bits.setIdx  := wSet
       m.io.w.req.bits.data.foreach(_.tag      := wTag)
       m.io.w.req.bits.data.foreach(_.bank     := wBank)
       m.io.w.req.bits.data.foreach(_.metaVec  := io.dirWrite.metaVec)
-      m.io.w.req.bits.waymask.get             := io.dirWrite.wayOH
+      m.io.w.req.bits.waymask.get             := io.dirWrite.wayOH >> (i * ways/nrWayBank).U
   }
+
+  when(sramCtrlReg.isReqFire & sramCtrlReg.ren) { assert(metaArrays.map(_.io.r.req.ready).reduce(_ & _)) }
+  when(sramCtrlReg.isReqFire & sramCtrlReg.wen) { assert(metaArrays.map(_.io.w.req.ready).reduce(_ & _)) }
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //
@@ -217,7 +235,7 @@ class DirectoryBase(
     case (m, i) =>
       m.io.r.resp.data.zipWithIndex.foreach {
         case(d, j) =>
-          metaResp_s2((i*(ways/nrWayBank))+j) := d
+          metaResp_s2((i*(ways/nrWayBank))+j) := Mux(valid_s2, d, 0.U.asTypeOf(d))
       }
   }
 
@@ -251,7 +269,7 @@ class DirectoryBase(
   metaResp_s3_g   := metaResp_s2
   addr_s3_g       := addr_s2
   mshrMes_s3_g.zip(mshrMes_s2).foreach { case(a, b) => a := b }
-  replResp_s3_g   := replResp_s3_g
+  replResp_s3_g   := replResp_s2
   pipeId_s3_g     := pipeId_s2
 
   tag_s3          := parseDirAddress(addr_s3_g)._1

@@ -1,4 +1,4 @@
-package zhujiang.device.cluster.tl2axi
+package zhujiang.device.cluster.tlu2chi
 
 import chisel3._
 import chisel3.util._
@@ -31,6 +31,7 @@ class RequestArbiter(tlParams: TilelinkParams, outstanding: Int)(implicit p: Par
   io.alloc_s1.bits.source := io.a.bits.source
   io.alloc_s1.bits.data := io.a.bits.data
   io.alloc_s1.bits.mask := io.a.bits.mask
+  io.alloc_s1.bits.size := io.a.bits.size
 }
 
 class TLUL2ChiBridge(node: Node, tlParams: TilelinkParams)(implicit p: Parameters) extends ZJModule {

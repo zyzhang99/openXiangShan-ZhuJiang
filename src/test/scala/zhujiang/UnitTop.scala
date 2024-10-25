@@ -4,7 +4,6 @@ import xijiang.{Node, NodeType}
 import chisel3.stage.ChiselGeneratorAnnotation
 import circt.stage.{ChiselStage, FirtoolOption}
 import zhujiang.UnitTop.firtoolOpts
-import zhujiang.axi.AxiParams
 import zhujiang.device.bridge.axi.AxiBridge
 import zhujiang.device.bridge.axilite.AxiLiteBridge
 import zhujiang.device.bridge.chi.ChiSnBridge
@@ -12,9 +11,8 @@ import zhujiang.device.bridge.tlul.TLULBridge
 import zhujiang.device.cluster.peripheral.{ClusterPLL, DistributedAclint}
 import zhujiang.device.dma.Axi2Chi
 import zhujiang.device.cluster.ClusterInterconnectComplex
-import zhujiang.device.ddr.MemoryComplex
-import zhujiang.device.uncore.UncoreComplex
 import zhujiang.tilelink.TilelinkParams
+import zhujiang.device.ddr.MemoryComplex
 
 object UnitTop {
   val firtoolOpts = Seq(
@@ -76,15 +74,6 @@ object ClusterPLLTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
   (new ChiselStage).execute(firrtlOpts, firtoolOpts ++ Seq(
     ChiselGeneratorAnnotation(() => new ClusterPLL(TilelinkParams(addrBits = 11, sourceBits = 5, dataBits = 64))(config))
-  ))
-}
-
-object UncoreTop extends App {
-  val (config, firrtlOpts) = ZhujiangTopParser(args)
-  val cfgNode = Node(nodeType = NodeType.HI, defaultHni = true)
-  val memNode = Node(nodeType = NodeType.RI)
-  (new ChiselStage).execute(firrtlOpts, firtoolOpts ++ Seq(
-    ChiselGeneratorAnnotation(() => new UncoreComplex(cfgNode, memNode)(config))
   ))
 }
 
