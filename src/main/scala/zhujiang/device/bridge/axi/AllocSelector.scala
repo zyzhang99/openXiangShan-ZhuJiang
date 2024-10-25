@@ -62,6 +62,5 @@ class DataBufferAllocReqSelector(outstanding: Int) extends Module {
   selPipe.io.enq.valid := selRes.valid
   selPipe.io.enq.bits.idxOH := selRes.bits.idxOH
   selPipe.io.enq.bits.size := selRes.bits.size
-
-  for(i <- io.in.indices) io.in(i).ready := selRes.bits.idxOH(i) && selPipe.io.enq.ready
+  selRes.ready := selPipe.io.enq.ready
 }
