@@ -27,9 +27,6 @@ class TLULBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Param
 
   private val wakeups = Wire(Vec(node.outstanding, Valid(UInt(raw.W))))
 
-  private val reqPipe = Module(new Queue(icn.rx.req.get.bits.cloneType, entries = 1, pipe = true))
-  reqPipe.io.enq <> icn.rx.req.get
-
   private val icnRspArb = Module(new ResetRRArbiter(icn.tx.resp.get.bits.cloneType, node.outstanding))
   icn.tx.resp.get <> icnRspArb.io.out
 
@@ -53,20 +50,19 @@ class TLULBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Param
   private val shouldBeWaited = cms.map(cm => cm.io.info.valid && !cm.io.wakeupOut.valid)
   private val cmAddrSeq = cms.map(cm => cm.io.info.bits.addr)
   private val req = icn.rx.req.get.bits.asTypeOf(new ReqFlit)
-  private val reqTagMatchVec = VecInit(shouldBeWaited.zip(cmAddrSeq).map(elm => elm._1 && compareTag(elm._2, req.Addr)))
-  private val reqTagMatchVecReg = RegEnable(reqTagMatchVec, reqPipe.io.enq.fire)
+  private val reqTagMatchVec = shouldBeWaited.zip(cmAddrSeq).map(elm => elm._1 && compareTag(elm._2, req.Addr))
+  private val waitNum = PopCount(reqTagMatchVec)
 
   private val busyEntries = cms.map(_.io.info.valid)
   private val enqCtrl = PickOneLow(busyEntries)
 
-  reqPipe.io.deq.ready := enqCtrl.valid
+  icn.rx.req.get.ready := enqCtrl.valid
   icn.rx.resp.get.ready := true.B
   icn.rx.data.get.ready := true.B
 
   for((cm, idx) <- cms.zipWithIndex) {
-    cm.icn.rx.req.valid := reqPipe.io.deq.valid && enqCtrl.bits(idx)
-    cm.icn.rx.req.bits := reqPipe.io.deq.bits.asTypeOf(new ReqFlit)
-    cm.io.waitNum := PopCount(reqTagMatchVecReg)
+    cm.icn.rx.req.valid := icn.rx.req.get.valid && enqCtrl.bits(idx)
+    cm.icn.rx.req.bits := icn.rx.req.get.bits.asTypeOf(new ReqFlit)
     cm.icn.rx.resp.get.valid := icn.rx.resp.get.valid && icn.rx.resp.get.bits.asTypeOf(new RespFlit).TxnID === idx.U
     cm.icn.rx.resp.get.bits := icn.rx.resp.get.bits.asTypeOf(new RespFlit)
     cm.icn.rx.data.valid := icn.rx.data.get.valid && icn.rx.data.get.bits.asTypeOf(new DataFlit).TxnID === idx.U
@@ -74,6 +70,7 @@ class TLULBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Param
 
     cm.io.readDataFire := tl.d.fire && tl.d.bits.source === idx.U
     cm.io.readDataLast := true.B
+    cm.io.waitNum := waitNum
   }
 
   private val readDataPipe = Module(new Queue(gen = new DataFlit, entries = 1, pipe = true))

@@ -10,7 +10,8 @@ import zhujiang.ZJModule
 import zhujiang.axi._
 import zhujiang.chi.{DatOpcode, DataFlit, ReqFlit, RespFlit}
 
-class AxiBridge(node: Node, compareTagBits:Int = 24)(implicit p: Parameters) extends ZJModule {
+class AxiBridge(node: Node)(implicit p: Parameters) extends ZJModule {
+  private val compareTagBits = 24
   private val tagOffset = 6
   require(node.nodeType == NodeType.S)
   private val axiParams = AxiParams(idBits = log2Ceil(node.outstanding), dataBits = dw, addrBits = raw)
@@ -23,9 +24,6 @@ class AxiBridge(node: Node, compareTagBits:Int = 24)(implicit p: Parameters) ext
   }
 
   private val wakeups = Wire(Vec(node.outstanding, Valid(UInt(raw.W))))
-
-  private val reqPipe = Module(new Queue(icn.rx.req.get.bits.cloneType, entries = 1, pipe = true))
-  reqPipe.io.enq <> icn.rx.req.get
 
   private val icnRspArb = Module(new ResetRRArbiter(icn.tx.resp.get.bits.cloneType, node.outstanding))
   icn.tx.resp.get <> icnRspArb.io.out
@@ -75,24 +73,23 @@ class AxiBridge(node: Node, compareTagBits:Int = 24)(implicit p: Parameters) ext
   dataBuffer.io.fromCmDat.bits.idxOH := awQueue.io.deq.bits
   wSeq.zipWithIndex.foreach({ case (w, i) => w.ready := dataBuffer.io.fromCmDat.ready && awQueue.io.deq.valid && awQueue.io.deq.bits(i) })
 
-  private val shouldBeWaited = cms.map(cm => cm.io.info.bits.isSnooped && cm.io.info.valid && !cm.io.wakeupOut.valid)
+  private val shouldBeWaited = cms.map(cm => cm.io.info.valid && !cm.io.wakeupOut.valid)
   private val cmAddrSeq = cms.map(cm => cm.io.info.bits.addr)
   private val req = icn.rx.req.get.bits.asTypeOf(new ReqFlit)
-  private val reqTagMatchVec = VecInit(shouldBeWaited.zip(cmAddrSeq).map(elm => elm._1 && compareTag(elm._2, req.Addr)))
-  private val reqTagMatchVecReg = RegEnable(reqTagMatchVec, reqPipe.io.enq.fire)
+  private val reqTagMatchVec = shouldBeWaited.zip(cmAddrSeq).map(elm => elm._1 && compareTag(elm._2, req.Addr))
+  private val waitNum = PopCount(reqTagMatchVec)
 
   private val busyEntries = cms.map(_.io.info.valid)
   private val enqCtrl = PickOneLow(busyEntries)
 
-  reqPipe.io.deq.ready := enqCtrl.valid
+  icn.rx.req.get.ready := enqCtrl.valid
   icn.rx.data.get.ready := true.B
   axi.r.ready := true.B
   axi.b.ready := true.B
 
   for((cm, idx) <- cms.zipWithIndex) {
-    cm.icn.rx.req.valid := reqPipe.io.deq.valid && enqCtrl.bits(idx)
-    cm.icn.rx.req.bits := reqPipe.io.deq.bits.asTypeOf(new ReqFlit)
-    cm.io.waitNum := PopCount(reqTagMatchVecReg)
+    cm.icn.rx.req.valid := icn.rx.req.get.valid && enqCtrl.bits(idx)
+    cm.icn.rx.req.bits := icn.rx.req.get.bits.asTypeOf(new ReqFlit)
     cm.icn.rx.data.valid := dataBuffer.io.toCmDat.valid && dataBuffer.io.toCmDat.bits.TxnID === idx.U
     cm.icn.rx.data.bits := dataBuffer.io.toCmDat.bits
 
@@ -100,6 +97,7 @@ class AxiBridge(node: Node, compareTagBits:Int = 24)(implicit p: Parameters) ext
     cm.axi.b.bits := axi.b.bits
     cm.io.readDataFire := axi.r.fire && axi.r.bits.id === idx.U
     cm.io.readDataLast := axi.r.bits.last
+    cm.io.waitNum := waitNum
   }
 
   private val readDataPipe = Module(new Queue(gen = new DataFlit, entries = 1, pipe = true))
