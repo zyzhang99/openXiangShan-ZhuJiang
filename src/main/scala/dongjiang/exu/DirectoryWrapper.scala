@@ -98,10 +98,10 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
    * Receive IO DirWrite Req
    */
   io.dirWrite(0).s.ready  := wSelfReadVec(wSBankVec(0))
-  io.dirWrite(0).sf.ready := wSelfReadVec(wSBankVec(0))
+  io.dirWrite(0).sf.ready := wSFReadVec(wSBankVec(0))
 
   io.dirWrite(1).s.ready  := wSelfReadVec(wSBankVec(1)) & !(io.dirWrite(0).s.valid  & wSBankVec(0)  === wSBankVec(1))
-  io.dirWrite(1).sf.ready := wSelfReadVec(wSBankVec(1)) & !(io.dirWrite(0).sf.valid & wSFBankVec(0) === wSFBankVec(1))
+  io.dirWrite(1).sf.ready := wSFReadVec(wSBankVec(1))   & !(io.dirWrite(0).sf.valid & wSFBankVec(0) === wSFBankVec(1))
 
   io.dirWrite.zipWithIndex.foreach {
     case (w, i) =>
