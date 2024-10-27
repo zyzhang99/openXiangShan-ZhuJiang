@@ -90,6 +90,15 @@ object ReqOpcode {
   val WriteNoSnpPtlCleanInvPoPA = 0x70.U(width.W)
   val WriteNoSnpFullCleanInvPoPA = 0x71.U(width.W)
   val WriteBackFullCleanInvPoPA = 0x79.U(width.W)
+
+  // Self Define
+  val Replace = 0x7A.U(width.W)
+
+  def isReadX   (x: UInt): Bool = (ReadShared <= x & x <= ReadNoSnp) | x === ReadUnique | x === ReadNoSnpSep |
+                                  (ReadOnceCleanInvalid <= x & x <= ReadNotSharedDirty) | x === ReadPreferUnique
+  def isWriteX  (x: UInt): Bool = (WriteEvictFull <= x & x <= WriteUniquePtlStash) | (WriteEvictOrEvict <= x & x <= WriteNoSnpZero) |
+                                  (WriteNoSnpDef <= x & x <= WriteBackFullCleanInvPoPA)
+  def isReplace (x: UInt): Bool = x === Replace
 }
 
 object RspOpcode {
@@ -112,6 +121,8 @@ object RspOpcode {
 
   val CompStashDone = 0x11.U(width.W)
   val CompCMO = 0x14.U(width.W)
+
+  def isSnpRespX(opcode: UInt): Bool = opcode === SnpResp || opcode === SnpRespFwded
 }
 
 object DatOpcode {
@@ -126,6 +137,8 @@ object DatOpcode {
   val WriteDataCancel = 0x07.U(width.W)
   val DataSepResp = 0x0B.U(width.W)
   val NCBWrDataCompAck = 0x0C.U(width.W)
+
+  def isSnpRespDataX(opcode: UInt): Bool = opcode === SnpRespData || opcode === SnpRespDataPtl || opcode === SnpRespDataFwded
 }
 
 object SnpOpcode {
@@ -153,4 +166,9 @@ object SnpOpcode {
   val SnpPreferUnique = 0x15.U(width.W)
   val SnpPreferUniqueFwd = 0x16.U(width.W)
   val SnpUniqueFwd = 0x17.U(width.W)
+
+  // Self define, only use in DongJiang internal
+  val SnpUniqueEvict = 0x18.U(width.W)
+
+  def isSnpXFwd(x: UInt): Bool = x >= SnpSharedFwd & x =/= SnpPreferUnique
 }

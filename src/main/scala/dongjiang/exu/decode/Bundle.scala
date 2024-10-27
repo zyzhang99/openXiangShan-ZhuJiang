@@ -8,10 +8,6 @@ import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xs.utils.ParallelLookUp
-import dongjiang.chi.CHIOp.REQ._
-import dongjiang.chi.CHIOp.RSP._
-import dongjiang.chi.CHIOp.DAT._
-import dongjiang.chi.CHIOp.SNP._
 import dongjiang.chi.ChiState._
 
 
@@ -27,15 +23,15 @@ object RespType {
 }
 
 class InstBundle extends Bundle {
-  def ChipTypeWidth = 1
+//  def ChipTypeWidth = 1
   def ChiChnlWidth  = CHIChannel.width
-  def ChiStateWidth = 3
+  def ChiStateWidth = ChiState.width
   def RespTypeWidth = RespType.width
-  def ChiRespWidth  = 3
+  def ChiRespWidth  = ChiResp.width
 
-  val chipType    = UInt(ChipTypeWidth.W)
+//  val chipType    = UInt(ChipTypeWidth.W)
   val channel     = UInt(ChiChnlWidth.W)
-  val opcode      = UInt(6.W)
+  val opcode      = UInt(7.W)
   val srcState    = UInt(ChiStateWidth.W)
   val othState    = UInt(ChiStateWidth.W)
   val hnState     = UInt(ChiStateWidth.W)
@@ -78,8 +74,8 @@ class OperationsBundle extends Bundle with HasOperationsBundle
 
 class DecodeBundle extends Bundle with HasOperationsBundle {
   def CHIChnlWidth  = CHIChannel.width
-  def ChiRespWidth  = 3
-  def ChiStateWidth = 3
+  def ChiRespWidth  = ChiResp.width
+  def ChiStateWidth = ChiState.width
 
   // Commit(Resp to Rn Node)
   val respChnl    = UInt(CHIChnlWidth.W)
@@ -93,8 +89,9 @@ class DecodeBundle extends Bundle with HasOperationsBundle {
 //  val doNotGoToSD = Bool() // The default is true
 
   // Send Read or Write to Master Node
-  val rdOp        = UInt(6.W)
-  val wdOp        = UInt(6.W)
+  val doDMT       = Bool()
+  val rdOp        = UInt(7.W)
+  val wdOp        = UInt(7.W)
 
   // Write New State to Directory
   val hnState     = UInt(ChiStateWidth.W)
@@ -118,8 +115,8 @@ class DecodeBundle extends Bundle with HasOperationsBundle {
 object Inst {
   val HasData = true.B
 
-  def FromLocal           : UInt = { val temp = WireInit(0.U.asTypeOf(new InstBundle())); temp.chipType := ChipType.Local;  temp.asUInt }
-  def FromCSN             : UInt = { val temp = WireInit(0.U.asTypeOf(new InstBundle())); temp.chipType := ChipType.CSN;    temp.asUInt }
+//  def FromLocal           : UInt = { val temp = WireInit(0.U.asTypeOf(new InstBundle())); temp.chipType := ChipType.Local;  temp.asUInt }
+//  def FromCSN             : UInt = { val temp = WireInit(0.U.asTypeOf(new InstBundle())); temp.chipType := ChipType.CSN;    temp.asUInt }
   def Chnl      (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new InstBundle())); temp.channel := x;                temp.asUInt }
   def Op        (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new InstBundle())); temp.opcode := x;                 temp.asUInt }
   def SrcIs     (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new InstBundle())); temp.srcState := x;               temp.asUInt }
@@ -131,8 +128,8 @@ object Inst {
   def FwdStateIs(x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new InstBundle())); temp.fwdState := x;               temp.asUInt }
   def RDRespIs  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new InstBundle())); temp.rdResp := x;                 temp.asUInt }
 
-  def LocalReqInst (op: UInt, src: UInt, oth: UInt, hn: UInt, data: Bool = false.B): UInt = FromLocal | Chnl(CHIChannel.REQ) | Op(op) | SrcIs(src) | OthIs(oth) | HnIs(hn) | RespData(data)
-  def LocalRespInst(chnl: UInt, op: UInt, src: UInt, oth: UInt, hn: UInt, respType: UInt, data: Bool = false.B, snp: UInt = ChiResp.I, fwd: UInt = ChiResp.I, rd: UInt = ChiResp.I): UInt = FromLocal | Chnl(chnl) | Op(op) | SrcIs(src) | OthIs(oth) | HnIs(hn) | RespIs(respType) | RespData(data) | SnpRespIs(snp) | FwdStateIs(fwd) | RDRespIs(rd)
+  def LocalReqInst (op: UInt, src: UInt, oth: UInt, hn: UInt, data: Bool = false.B): UInt = Chnl(CHIChannel.REQ) | Op(op) | SrcIs(src) | OthIs(oth) | HnIs(hn) | RespData(data)
+  def LocalRespInst(chnl: UInt, op: UInt, src: UInt, oth: UInt, hn: UInt, respType: UInt, data: Bool = false.B, snp: UInt = ChiResp.I, fwd: UInt = ChiResp.I, rd: UInt = ChiResp.I): UInt = Chnl(chnl) | Op(op) | SrcIs(src) | OthIs(oth) | HnIs(hn) | RespIs(respType) | RespData(data) | SnpRespIs(snp) | FwdStateIs(fwd) | RDRespIs(rd)
 }
 
 
@@ -157,6 +154,7 @@ object Code {
   def FwdState(x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.fwdState := x;          temp.asUInt }
   def SnpOp   (x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.snpOp := x;             temp.asUInt }
   def retToSrc         : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.retToSrc := true.B;     temp.asUInt }
+  def doDMT            : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.doDMT := true.B;        temp.asUInt }
   def ReadOp  (x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.rdOp := x;              temp.asUInt }
   def WriOp   (x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.wdOp := x;              temp.asUInt }
   def HnState (x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.hnState := x;           temp.asUInt }

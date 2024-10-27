@@ -54,7 +54,6 @@ class DirCtrlBundle(setBits: Int)(implicit p: Parameters) extends DJBundle with 
 
 class DirEntry(tagBits: Int, nrMetas: Int = 1)(implicit p: Parameters) extends DJBundle {
   val tag         = UInt(tagBits.W)
-  val bank        = UInt(bankBits.W)
   val metaVec     = Vec(nrMetas, new CHIStateBundle())
 }
 
@@ -73,17 +72,16 @@ class DirectoryBase(
   require(mcp == 2 & holdMcp)
   require(nrWayBank < ways)
 
+  val isSelf      = nrMetas == 1
   val repl        = ReplacementPolicy.fromString(replPolicy, ways)
   val useRepl     = replPolicy != "random"
   val replWayBits = if(useRepl) repl.nBits else 0
   val setBits     = log2Ceil(sets)
   val wayBits     = log2Ceil(ways)
 
-  def parseDirAddress(x: UInt): (UInt, UInt, UInt, UInt, UInt) = parseAddress(x, dirBankBits, setBits, tagBits)
-
 // --------------------- IO declaration ------------------------//
   val io = IO(new Bundle {
-    val id        = Input(UInt(dirBankBits.W))
+    val dirBank   = Input(UInt(dirBankBits.W))
     val earlyRReq = Flipped(Decoupled())
     val earlyWReq = Flipped(Decoupled())
     val dirRead   = Input(new DirReadBundle)
@@ -103,31 +101,31 @@ class DirectoryBase(
   val resetDone       = RegInit(false.B)
   // Base
   val sramCtrlReg     = RegInit(0.U.asTypeOf(new DirCtrlBundle(setBits)))
+  // s1
+  val rTag_s1         = Wire(UInt(tagBits.W))
+  val rSet_s1         = Wire(UInt(setBits.W))
+  val rDirBank_s1     = Wire(UInt(dirBankBits.W))
+  val wTag_s1         = Wire(UInt(tagBits.W))
+  val wSet_s1         = Wire(UInt(setBits.W))
+  val wDirBank_s1     = Wire(UInt(dirBankBits.W))
   // s2
   val valid_s2        = WireInit(false.B)
   val metaResp_s2     = Wire(Vec(ways, new DirEntry(tagBits, nrMetas)))
   val replResp_s2     = WireInit(0.U(repl.nBits.W))
-  val addr_s2         = WireInit(0.U(addressBits.W))
-  val mshrMes_s2      = Wire(Vec(djparam.nrMSHRWays, Valid(new Bundle {
-    val tag           = UInt(tagBits.W)
-    val bank          = UInt(bankBits.W)
-  })))
+  val addr_s2         = WireInit(0.U(useAddrBits.W))
+  val mshrMes_s2      = Wire(Vec(djparam.nrMSHRWays, Valid(UInt(tagBits.W))))
   val pipeId_s2       = Wire(UInt(PipeID.width.W))
   // s3
   val valid_s3_g      = RegInit(false.B)
   val metaResp_s3_g   = Reg(Vec(ways, new DirEntry(tagBits, nrMetas)))
-  val addr_s3_g       = RegInit(0.U(addressBits.W))
-  val mshrMes_s3_g    = Reg(Vec(djparam.nrMSHRWays, Valid(new Bundle{
-    val tag           = UInt(tagBits.W)
-    val bank          = UInt(bankBits.W)
-  })))
+  val addr_s3_g       = RegInit(0.U(useAddrBits.W))
+  val mshrMes_s3_g    = Reg(Vec(djparam.nrMSHRWays, Valid(UInt(tagBits.W))))
   val replResp_s3_g   = RegInit(0.U(repl.nBits.W))
   val selInvWayVec    = Wire(Vec(ways, Bool()))
   val hitWayVec       = Wire(Vec(ways, Bool()))
   val replWay         = WireInit(0.U(wayBits.W))
   val tag_s3          = WireInit(0.U(tagBits.W))
   val set_s3          = WireInit(0.U(setBits.W))
-  val bank_s3         = WireInit(0.U(bankBits.W))
   val useWayVec       = Wire(Vec(ways, Bool()))
   val pipeId_s3_g     = Reg(UInt(PipeID.width.W))
 
@@ -146,17 +144,22 @@ class DirectoryBase(
         resetDone := true.B
       }
     } else {
-      resetDone := true.B
+      resetDone   := true.B
     }
   }
 
   /*
    * Parse Req Addr
    */
-  val (rTag, rSet, rModBank, rBank, rOffset) = parseDirAddress(io.dirRead.addr)
-  val (wTag, wSet, wModBank, wBank, wOffset) = parseDirAddress(io.dirWrite.addr)
-  assert(Mux(RegNext(io.earlyRReq.fire), io.id === rModBank, true.B))
-  assert(Mux(RegNext(io.earlyWReq.fire), io.id === wModBank, true.B))
+  if(isSelf){
+    rTag_s1 := parseSelfAddr(io.dirRead.useAddr)._1;  rSet_s1 := parseSelfAddr(io.dirRead.useAddr)._2;  rDirBank_s1 := parseSelfAddr(io.dirRead.useAddr)._3
+    wTag_s1 := parseSelfAddr(io.dirWrite.useAddr)._1; wSet_s1 := parseSelfAddr(io.dirWrite.useAddr)._2; wDirBank_s1 := parseSelfAddr(io.dirWrite.useAddr)._3
+  } else {
+    rTag_s1 := parseSFAddr(io.dirRead.useAddr)._1;  rSet_s1 := parseSFAddr(io.dirRead.useAddr)._2;  rDirBank_s1 := parseSFAddr(io.dirRead.useAddr)._3
+    wTag_s1 := parseSFAddr(io.dirWrite.useAddr)._1; wSet_s1 := parseSFAddr(io.dirWrite.useAddr)._2; wDirBank_s1 := parseSFAddr(io.dirWrite.useAddr)._3
+  }
+  assert(Mux(RegNext(io.earlyRReq.fire), io.dirBank === rDirBank_s1, true.B))
+  assert(Mux(RegNext(io.earlyWReq.fire), io.dirBank === wDirBank_s1, true.B))
 
 
   /*
@@ -165,9 +168,9 @@ class DirectoryBase(
   sramCtrlReg.shift       := Cat(io.earlyRReq.fire | io.earlyWReq.fire, sramCtrlReg.shift(DirCtrlState.width-1, 1))
   sramCtrlReg.ren         := Mux(io.earlyRReq.fire, true.B, Mux(io.earlyWReq.fire, false.B, sramCtrlReg.ren))
   when(sramCtrlReg.isReqFire) {
-    sramCtrlReg.set       := rSet
+    sramCtrlReg.set       := rSet_s1
     sramCtrlReg.mshrWay   := io.dirRead.mshrWay
-    sramCtrlReg.pipeId    := io.dirRead.pipeId
+    sramCtrlReg.pipeID    := io.dirRead.pipeID
   }
   assert(!(io.earlyRReq.fire & io.earlyWReq.fire))
 
@@ -189,12 +192,11 @@ class DirectoryBase(
       m.io.earlyWen.get       := io.earlyWReq.fire
       // ren
       m.io.r.req.valid        := sramCtrlReg.isReqFire & sramCtrlReg.ren
-      m.io.r.req.bits.setIdx  := rSet
+      m.io.r.req.bits.setIdx  := rSet_s1
       // wen
-      m.io.w.req.valid        := sramCtrlReg.isReqFire & sramCtrlReg.wen & (i * ways/nrWayBank).U <= OHToUInt(io.dirWrite.wayOH) & OHToUInt(io.dirWrite.wayOH) <= ((i+1) * ways/nrWayBank - 1).U
-      m.io.w.req.bits.setIdx  := wSet
-      m.io.w.req.bits.data.foreach(_.tag      := wTag)
-      m.io.w.req.bits.data.foreach(_.bank     := wBank)
+      m.io.w.req.valid        := sramCtrlReg.isReqFire & sramCtrlReg.wen & (i * ways/nrWayBank).U < OHToUInt(io.dirWrite.wayOH) & OHToUInt(io.dirWrite.wayOH) < ((i+1) * ways/nrWayBank - 1).U
+      m.io.w.req.bits.setIdx  := wSet_s1
+      m.io.w.req.bits.data.foreach(_.tag      := wTag_s1)
       m.io.w.req.bits.data.foreach(_.metaVec  := io.dirWrite.metaVec)
       m.io.w.req.bits.waymask.get             := io.dirWrite.wayOH >> (i * ways/nrWayBank).U
   }
@@ -218,14 +220,14 @@ class DirectoryBase(
    * Read MSHR Set Mes
    */
   io.readMshr.valid           := sramCtrlReg.isWaitMcp & sramCtrlReg.ren
-  io.readMshr.bits.mshrSet    := sramCtrlReg.mSet(io.id)
-  io.readMshr.bits.pipeId     := sramCtrlReg.pipeId
-  io.readMshr.bits.dirBankId  := DontCare
+  io.readMshr.bits.mshrSet    := sramCtrlReg.mSet(io.dirBank)
+  io.readMshr.bits.pipeID     := sramCtrlReg.pipeID
+  io.readMshr.bits.dirBank    := io.dirBank
 
   /*
    * Receive Pipe Id
    */
-  pipeId_s2       := sramCtrlReg.pipeId
+  pipeId_s2       := sramCtrlReg.pipeID
 
   /*
    * Receive Meta SRAM resp
@@ -252,8 +254,8 @@ class DirectoryBase(
   mshrMes_s2.zip(io.mshrResp.addrs).foreach {
     case (a, b) =>
       a.valid     := b.valid
-      a.bits.tag  := parseDirAddress(b.bits)._1
-      a.bits.bank := parseDirAddress(b.bits)._4
+      if(isSelf)  a.bits := parseSelfAddr(b.bits)._1
+      else        a.bits := parseSFAddr(b.bits)._1
   }
   addr_s2         := io.mshrResp.addrs(sramCtrlReg.mshrWay).bits
   assert(Mux(sramCtrlReg.isGetResp & sramCtrlReg.ren, io.mshrResp.addrs(sramCtrlReg.mshrWay).valid, true.B))
@@ -269,23 +271,21 @@ class DirectoryBase(
   metaResp_s3_g   := metaResp_s2
   addr_s3_g       := addr_s2
   mshrMes_s3_g.zip(mshrMes_s2).foreach { case(a, b) => a := b }
-  replResp_s3_g   := replResp_s2
+  replResp_s3_g   := replResp_s3_g
   pipeId_s3_g     := pipeId_s2
 
-  tag_s3          := parseDirAddress(addr_s3_g)._1
-  set_s3          := parseDirAddress(addr_s3_g)._2
-  bank_s3         := parseDirAddress(addr_s3_g)._4
+  if(isSelf) { tag_s3 := parseSelfAddr(addr_s3_g)._1; set_s3 := parseSelfAddr(addr_s3_g)._2 }
+  else       { tag_s3 := parseSFAddr(addr_s3_g)._1;   set_s3 := parseSFAddr(addr_s3_g)._2 }
 
 
   /*
    * Get Hit Vec and Hit State
    */
   val tagHitVec   = metaResp_s3_g.map(_.tag === tag_s3)
-  val bankHitVec  = metaResp_s3_g.map(_.bank === bank_s3)
   val stateHitVec = metaResp_s3_g.map(_.metaVec.map(!_.isInvalid).reduce(_ | _))
   val hitMetaVec  = metaResp_s3_g(OHToUInt(hitWayVec)).metaVec
   val hit         = hitWayVec.asUInt.orR
-  hitWayVec       := tagHitVec.zip(bankHitVec.zip(stateHitVec)).map{ case(t, (b, s)) => t & b & s }
+  hitWayVec       := tagHitVec.zip(stateHitVec).map{ case(t, s) => t & s }
   assert(PopCount(hitWayVec) <= 1.U)
 
 
@@ -305,18 +305,20 @@ class DirectoryBase(
   } else {
    replWay := repl.get_replace_way(replResp_s3_g) // replace
   }
-  val replWayAddr     = Cat(metaResp_s3_g(replWay).tag, set_s3, io.id, metaResp_s3_g(replWay).bank, 0.U(offsetBits.W)); require(replWayAddr.getWidth == addressBits)
+  val replWayAddr   = Cat(metaResp_s3_g(replWay).tag, set_s3, io.dirBank)
+  // print(s"${replWayAddr.getWidth} = ${metaResp_s3_g(replWay).tag.getWidth} + ${set_s3.getWidth} + ${io.dirBank.getWidth} = ${useAddrBits}\n")
+  require(replWayAddr.getWidth == useAddrBits)
 
 
   /*
    * repl way is conflict with unuse way
    * When noUseWay is required, all ways are not Invalid by default
    */
-  useWayVec           := metaResp_s3_g.map { case meta => mshrMes_s3_g.map { case mshr => mshr.valid & mshr.bits.tag === meta.tag & mshr.bits.bank === meta.bank }.reduce(_ | _) }
+  useWayVec           := metaResp_s3_g.map { case meta => mshrMes_s3_g.map { case mshr => mshr.valid & mshr.bits === meta.tag }.reduce(_ | _) }
   val replWayIsUsing  = useWayVec(replWay)
   val selUnuseWay     = PriorityEncoder(useWayVec.map(!_))
   val replRetry       = useWayVec.asUInt.andR
-  val unUseWayAddr    = Cat(metaResp_s3_g(selUnuseWay).tag, set_s3, io.id,  metaResp_s3_g(selUnuseWay).bank, 0.U(offsetBits.W)); require(unUseWayAddr.getWidth == addressBits)
+  val unUseWayAddr    = Cat(metaResp_s3_g(selUnuseWay).tag, set_s3, io.dirBank); require(unUseWayAddr.getWidth == useAddrBits)
 
 
   /*
@@ -326,10 +328,10 @@ class DirectoryBase(
   io.dirResp.bits.hit       := hit
   // [Resp Mes]                         [Hit Way Mes]                      [Invalid Way Mes]                        [Unuse Way Mes]                     [Replace Way Mes]
   io.dirResp.bits.wayOH     := Mux(hit, hitWayVec.asUInt,   Mux(hasInvWay, selInvWayVec.asUInt, Mux(replWayIsUsing, UIntToOH(selUnuseWay),              UIntToOH(replWay))))
-  io.dirResp.bits.addr      := Mux(hit, addr_s3_g,          Mux(hasInvWay, 0.U,                 Mux(replWayIsUsing, unUseWayAddr,                       replWayAddr)))
+  io.dirResp.bits.useAddr   := Mux(hit, addr_s3_g,          Mux(hasInvWay, 0.U,                 Mux(replWayIsUsing, unUseWayAddr,                       replWayAddr)))
   io.dirResp.bits.metaVec   := Mux(hit, hitMetaVec,         Mux(hasInvWay, invMetasVec,         Mux(replWayIsUsing, metaResp_s3_g(selUnuseWay).metaVec, metaResp_s3_g(replWay).metaVec)))
   io.dirResp.bits.replRetry := Mux(hit, false.B,            Mux(hasInvWay, false.B,             Mux(replWayIsUsing, replRetry,                          false.B)))
-  io.dirResp.bits.pipeId    := pipeId_s3_g
+  io.dirResp.bits.pipeID    := pipeId_s3_g
   if(useRepl) { io.dirResp.bits.replMes := replResp_s3_g }
 
 
@@ -341,7 +343,7 @@ class DirectoryBase(
    */
   if (replPolicy == "plru") {
     replArrayOpt.get.io.w.req.valid               := metaArrays.map(_.io.w.req.fire).reduce(_ | _) | (io.dirResp.fire & hit)
-    replArrayOpt.get.io.w.req.bits.setIdx         := Mux(metaArrays.map(_.io.w.req.fire).reduce(_ | _), wSet, set_s3)
+    replArrayOpt.get.io.w.req.bits.setIdx         := Mux(metaArrays.map(_.io.w.req.fire).reduce(_ | _), wSet_s1, set_s3)
     replArrayOpt.get.io.w.req.bits.data.foreach(_ := Mux(metaArrays.map(_.io.w.req.fire).reduce(_ | _),
                                                        repl.get_next_state(io.dirWrite.replMes, OHToUInt(io.dirWrite.wayOH)),
                                                        repl.get_next_state(replResp_s3_g, OHToUInt(io.dirResp.bits.wayOH))))

@@ -1,7 +1,6 @@
-package dongjiang.chi
+package zhujiang.chi
 
 import chisel3._
-import chisel3.util._
 
 object RespErr {
     val width = 2
@@ -27,16 +26,16 @@ object Order {
 class MemAttr extends Bundle {
     // The Allocate attribute is a an allocation hint.
     // It indicates the recommended allocation policy for a transaction.
-    val allocate = Bool()
+    val allocate        = Bool()
     // The Cacheable attribute indicates if a transaction must perform a cache lookup.
-    val cacheable = Bool()
+    val cacheable       = Bool()
     // Device attribute indicates if the memory type is either Device or Normal.
-    val device = Bool()
+    val device          = Bool()
     // Early Write Acknowledge (EWA)
     // EWA indicates whether the write completion response for a transaction:
     // If true, comp is permitted to come from an intermediate point in the interconnect, such as a Home Node.
     // If false, comp must come from the final endpoint that a transaction is destined for.
-    val ewa = Bool()
+    val ewa             = Bool()
 }
 
 object MemAttr {

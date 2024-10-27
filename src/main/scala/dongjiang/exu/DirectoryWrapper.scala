@@ -25,31 +25,31 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
   })
 
 // -------------------------- Modules declaration ------------------------//
-  val selfs = Seq.fill(djparam.nrDirBank) { Module(new DirectoryBase( tagBits = sTagBits,
-                                                                      sets = djparam.selfSets / djparam.nrDirBank,
-                                                                      ways = djparam.selfWays,
-                                                                      nrMetas = 1,
-                                                                      replPolicy = djparam.selfReplacementPolicy,
-                                                                      mcp = djparam.dirMulticycle,
-                                                                      holdMcp = djparam.dirHoldMcp,
-                                                                      nrWayBank = 4)) }
+  val selfs = Seq.fill(djparam.nrDirBank) { Module(new DirectoryBase( tagBits     = sTagBits,
+                                                                      sets        = djparam.selfSets / djparam.nrDirBank,
+                                                                      ways        = djparam.selfWays,
+                                                                      nrMetas     = 1,
+                                                                      replPolicy  = djparam.selfReplacementPolicy,
+                                                                      mcp         = djparam.dirMulticycle,
+                                                                      holdMcp     = djparam.dirHoldMcp,
+                                                                      nrWayBank   = 4)) }
 
-  selfs.zipWithIndex.foreach { case(s, i) => s.io.id := i.U }
+  selfs.zipWithIndex.foreach { case(s, i) => s.io.dirBank := i.U }
 
-  val sfs   = Seq.fill(djparam.nrDirBank) { Module(new DirectoryBase( tagBits = sfTagBits,
-                                                                      sets = djparam.sfDirSets / djparam.nrDirBank,
-                                                                      ways = djparam.sfDirWays,
-                                                                      nrMetas = nrRnfNode,
-                                                                      replPolicy = djparam.sfReplacementPolicy,
-                                                                      mcp = djparam.dirMulticycle,
-                                                                      holdMcp = djparam.dirHoldMcp,
-                                                                      nrWayBank = 4)) }
+  val sfs   = Seq.fill(djparam.nrDirBank) { Module(new DirectoryBase( tagBits     = sfTagBits,
+                                                                      sets        = djparam.sfDirSets / djparam.nrDirBank,
+                                                                      ways        = djparam.sfDirWays,
+                                                                      nrMetas     = nrCcNode,
+                                                                      replPolicy  = djparam.sfReplacementPolicy,
+                                                                      mcp         = djparam.dirMulticycle,
+                                                                      holdMcp     = djparam.dirHoldMcp,
+                                                                      nrWayBank   = 4)) }
 
-  sfs.zipWithIndex.foreach { case(sf, i) => sf.io.id := i.U }
+  sfs.zipWithIndex.foreach { case(sf, i) => sf.io.dirBank := i.U }
 
 // -------------------------- Reg and Wire declaration ------------------------//
   val dirWSRegVec   = RegInit(VecInit(Seq.fill(2) { 0.U.asTypeOf(Valid(new DirWriteBaseBundle(djparam.selfWays, 1, sReplWayBits))) }))
-  val dirWSFRegVec  = RegInit(VecInit(Seq.fill(2) { 0.U.asTypeOf(Valid(new DirWriteBaseBundle(djparam.sfDirWays, nrRnfNode, sfReplWayBits))) }))
+  val dirWSFRegVec  = RegInit(VecInit(Seq.fill(2) { 0.U.asTypeOf(Valid(new DirWriteBaseBundle(djparam.sfDirWays, nrCcNode, sfReplWayBits))) }))
 
   val wSelfReadVec  = Wire(Vec(djparam.nrDirBank, Bool()))
   val wSFReadVec    = Wire(Vec(djparam.nrDirBank, Bool()))
@@ -75,8 +75,8 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
   /*
    * Set Early Write Req Value
    */
-  val wSBankVec   = io.dirWrite.map { case w => getDirBank(w.s.bits.addr) }
-  val wSFBankVec  = io.dirWrite.map { case w => getDirBank(w.sf.bits.addr) }
+  val wSBankVec   = io.dirWrite.map { case w => getDirBank(w.s.bits.useAddr) }
+  val wSFBankVec  = io.dirWrite.map { case w => getDirBank(w.sf.bits.useAddr) }
 
   selfs.map(_.io.earlyWReq).zipWithIndex.foreach {
     case(wReq, i) =>
@@ -117,9 +117,9 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
    */
   selfs.zip(sfs).zipWithIndex.foreach {
     case ((s, sf), i) =>
-      val rHitVec     = io.dirRead.map { case r => r.valid & getDirBank(r.bits.addr) === i.U }
-      val wSHitVec    = dirWSRegVec.map { case w => w.valid & getDirBank(w.bits.addr) === i.U }
-      val wSFHitVec   = dirWSFRegVec.map { case w => w.valid & getDirBank(w.bits.addr) === i.U }
+      val rHitVec     = io.dirRead.map { case r => r.valid & getDirBank(r.bits.useAddr) === i.U }
+      val wSHitVec    = dirWSRegVec.map { case w => w.valid & getDirBank(w.bits.useAddr) === i.U }
+      val wSFHitVec   = dirWSFRegVec.map { case w => w.valid & getDirBank(w.bits.useAddr) === i.U }
       // Read
       s.io.dirRead    := Mux(rHitVec(0), io.dirRead(0).bits, io.dirRead(1).bits)
       sf.io.dirRead   := Mux(rHitVec(0), io.dirRead(0).bits, io.dirRead(1).bits)
@@ -140,10 +140,10 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
    */
   readMSHRVec.zip(selfs.map(_.io.readMshr.bits)).foreach { case(a, b) => a := b }
 
-  val rMSHRVal0 = selfs.map(_.io.readMshr).map { case s => s.valid & s.bits.pipeId === 0.U }
+  val rMSHRVal0 = selfs.map(_.io.readMshr).map { case s => s.valid & s.bits.pipeID === 0.U }
   val rMSHRId0  = PriorityEncoder(rMSHRVal0)
 
-  val rMSHRVal1 = selfs.map(_.io.readMshr).map { case s => s.valid & s.bits.pipeId === 1.U }
+  val rMSHRVal1 = selfs.map(_.io.readMshr).map { case s => s.valid & s.bits.pipeID === 1.U }
   val rMSHRId1  = PriorityEncoder(rMSHRVal1)
 
   assert(PopCount(rMSHRVal0) <= 1.U)
@@ -151,18 +151,18 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
 
   io.readMshr(0).valid  := rMSHRVal0.reduce(_ | _)
   io.readMshr(0).bits   := readMSHRVec(rMSHRId0)
-  io.readMshr(0).bits.dirBankId := rMSHRId0
+  io.readMshr(0).bits.dirBank := rMSHRId0
 
   io.readMshr(1).valid := rMSHRVal1.reduce(_ | _)
   io.readMshr(1).bits  := readMSHRVec(rMSHRId1)
-  io.readMshr(1).bits.dirBankId := rMSHRId1
+  io.readMshr(1).bits.dirBank := rMSHRId1
 
   /*
    * Receive MSHR Mes
    */
   selfs.zip(sfs).zipWithIndex.foreach {
     case ((s, sf), i) =>
-      val hitVec = io.mshrResp.map { case r => r.valid & r.bits.dirBankId === i.U }
+      val hitVec = io.mshrResp.map { case r => r.valid & r.bits.dirBank === i.U }
       // MSHR Resp
       s.io.mshrResp := Mux(hitVec(0), io.mshrResp(0).bits, io.mshrResp(1).bits)
       sf.io.mshrResp := Mux(hitVec(0), io.mshrResp(0).bits, io.mshrResp(1).bits)
@@ -178,12 +178,12 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
    * Receive
    */
   dirRespVec.zip(selfs.map(_.io.dirResp.bits).zip(sfs.map(_.io.dirResp.bits))).foreach { case(r, (s, sf)) => r.s := s; r.sf := sf }
-  dirRespVec.zipWithIndex.foreach { case(r, i) => r.pipeId := i.U }
+  dirRespVec.zipWithIndex.foreach { case(r, i) => r.pipeID := i.U }
 
-  val respPipe0   = selfs.map(_.io.dirResp).map { case r => r.valid & r.bits.pipeId === 0.U }
+  val respPipe0   = selfs.map(_.io.dirResp).map { case r => r.valid & r.bits.pipeID === 0.U }
   val respId0     = PriorityEncoder(respPipe0)
 
-  val respPipe1   = selfs.map(_.io.dirResp).map { case r => r.valid & r.bits.pipeId === 1.U }
+  val respPipe1   = selfs.map(_.io.dirResp).map { case r => r.valid & r.bits.pipeID === 1.U }
   val respId1     = PriorityEncoder(respPipe1)
 
   io.dirResp(0).valid := respPipe0.reduce(_ | _)

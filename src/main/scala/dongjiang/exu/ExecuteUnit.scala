@@ -11,15 +11,15 @@ import dongjiang.utils.FastArb._
 class ExecuteUnit(implicit p: Parameters) extends DJModule {
 // --------------------- IO declaration ------------------------//
   val io = IO(new Bundle {
-    val hnfID           = Input(UInt(chiNodeIdBits.W))
     val valid           = Input(Bool())
-    val sliceId         = Input(UInt(bankBits.W))
-    // slice ctrl signals: RnNode <> Slice
-    val req2Slice       = Flipped(Decoupled(new Req2SliceBundle()))
-    val reqAck2Node     = Decoupled(new ReqAck2NodeBundle())
-    val resp2Node       = Decoupled(new Resp2NodeBundle())
-    val req2Node        = Decoupled(new Req2NodeBundle())
-    val resp2Slice      = Flipped(Decoupled(new Resp2SliceBundle()))
+    val bank            = Input(UInt(bankBits.W))
+    val incoID          = Input(UInt(bankPerPCUBits.W))
+    // Intf <> Exu
+    val req2Exu         = Flipped(Decoupled(new Req2ExuBundle()))
+    val reqAck2Intf     = Decoupled(new ReqAck2IntfBundle())
+    val resp2Intf       = Decoupled(new Resp2IntfBundle())
+    val req2Intf        = Decoupled(new Req2IntfBundle())
+    val resp2Exu        = Flipped(Decoupled(new Resp2ExuBundle()))
     // Req To DataBuffer
     val dbRCReq         = Decoupled(new DBRCReq())
   })
@@ -29,8 +29,8 @@ class ExecuteUnit(implicit p: Parameters) extends DJModule {
   val reqPipe       = Module(new ProcessPipe())
   val respPipe      = Module(new ProcessPipe())
   val mshrCtl       = Module(new MSHRCtl())
-  val mpReqQueue    = Module(new Queue(gen = new Req2NodeBundle(), entries = djparam.nrMpReqQueue, pipe = true, flow = true))
-  val mpRespQueue   = Module(new Queue(gen = new Resp2NodeBundle(),entries = djparam.nrMpRespQueue, pipe = true, flow = true))
+  val mpReqQueue    = Module(new Queue(gen = new Req2IntfBundle(), entries = djparam.nrExuReqQueue, pipe = true, flow = true))
+  val mpRespQueue   = Module(new Queue(gen = new Resp2IntfBundle(),entries = djparam.nrExuRespQueue, pipe = true, flow = true))
 
 // --------------------------- Connection ---------------------------//
   directory.io.earlyRReqVec <> mshrCtl.io.earlyRReqVec
@@ -43,38 +43,34 @@ class ExecuteUnit(implicit p: Parameters) extends DJModule {
   directory.io.mshrResp     <> mshrCtl.io.mshrResp2Dir
 
 
-  mshrCtl.io.sliceId        := io.sliceId
-  mshrCtl.io.req2Slice      <> io.req2Slice
-  mshrCtl.io.reqAck2node    <> io.reqAck2Node
-  mshrCtl.io.resp2Slice     <> io.resp2Slice
-  mshrCtl.io.pipeTask(0)    <> respPipe.io.task;  assert(!mshrCtl.io.pipeTask(PipeID.RESP).valid | mshrCtl.io.pipeTask(PipeID.RESP).bits.pipeId === PipeID.RESP)
-  mshrCtl.io.pipeTask(1)    <> reqPipe.io.task;   assert(!mshrCtl.io.pipeTask(PipeID.REQ).valid  | mshrCtl.io.pipeTask(PipeID.REQ).bits.pipeId === PipeID.REQ)
+  mshrCtl.io.bank           := io.bank
+  mshrCtl.io.req2Exu        <> io.req2Exu
+  mshrCtl.io.reqAck2Intf    <> io.reqAck2Intf
+  mshrCtl.io.resp2Exu       <> io.resp2Exu
+  mshrCtl.io.pipeTask(0)    <> respPipe.io.task;  assert(!mshrCtl.io.pipeTask(PipeID.RESP).valid | mshrCtl.io.pipeTask(PipeID.RESP).bits.taskMes.pipeID === PipeID.RESP)
+  mshrCtl.io.pipeTask(1)    <> reqPipe.io.task;   assert(!mshrCtl.io.pipeTask(PipeID.REQ).valid  | mshrCtl.io.pipeTask(PipeID.REQ).bits.taskMes.pipeID === PipeID.REQ)
   mshrCtl.io.updMSHR        <> fastPriorityArbDec(Seq(respPipe.io.updMSHR, reqPipe.io.updMSHR))
   mshrCtl.io.updLockMSHR(0) <> respPipe.io.updLockMSHR
   mshrCtl.io.updLockMSHR(1) <> reqPipe.io.updLockMSHR
 
-  reqPipe.io.hnfID          := io.hnfID
-  respPipe.io.hnfID         := io.hnfID
-  reqPipe.io.sliceId        := io.sliceId
-  respPipe.io.sliceId       := io.sliceId
+  respPipe.io.bank          := io.bank
+  respPipe.io.incoID        := io.incoID
+  reqPipe.io.bank           := io.bank
+  reqPipe.io.incoID         := io.incoID
 
-  mpReqQueue.io.enq         <> fastPriorityArbDec(Seq(respPipe.io.req2Node, reqPipe.io.req2Node))
-  mpRespQueue.io.enq        <> fastPriorityArbDec(Seq(respPipe.io.resp2Node, reqPipe.io.resp2Node))
-  io.req2Node               <> mpReqQueue.io.deq
-  io.resp2Node              <> mpRespQueue.io.deq
+
+  mpReqQueue.io.enq         <> fastPriorityArbDec(Seq(respPipe.io.req2Intf, reqPipe.io.req2Intf))
+  mpRespQueue.io.enq        <> fastPriorityArbDec(Seq(respPipe.io.resp2Intf, reqPipe.io.resp2Intf))
+  io.req2Intf               <> mpReqQueue.io.deq
+  io.resp2Intf              <> mpRespQueue.io.deq
   io.dbRCReq                <> fastPriorityArbDec(Seq(respPipe.io.dbRCReq, reqPipe.io.dbRCReq))
 
-  //  object connectPipe {
-  //    def apply[T <: Bundle with HasPipeID](in: DecoupledIO[T], out: Seq[DecoupledIO[T]]): Unit = {
-  //      out.head.valid          := in.valid & in.bits.toReqPipe
-  //      out.last.valid          := in.valid & in.bits.toRespPipe
-  //      out.foreach(_.bits      := in.bits)
-  //      in.ready                := out.head.ready & in.bits.toReqPipe | out.last.ready & in.bits.toRespPipe
-  //    }
-  //    def apply[T <: Bundle with HasPipeID](in: ValidIO[T], out: Seq[ValidIO[T]]): Unit = {
-  //      out.head.valid          := in.valid & in.bits.toReqPipe
-  //      out.last.valid          := in.valid & in.bits.toRespPipe
-  //      out.foreach(_.bits      := in.bits)
-  //    }
-  //  }
+// --------------------------- Assertion ---------------------------//
+  assert(io.req2Exu.bits.pcuIndex.bankID      === io.bank   | !io.req2Exu.valid)
+  assert(io.resp2Intf.bits.pcuIndex.bankID    === io.bank   | !io.resp2Intf.valid)
+  assert(io.req2Intf.bits.pcuIndex.bankID     === io.bank   | !io.req2Intf.valid)
+
+  assert(io.req2Exu.bits.pcuIndex.to.incoID   === io.incoID | !io.req2Exu.valid)
+  assert(io.resp2Intf.bits.pcuIndex.to.incoID === io.incoID | !io.resp2Intf.valid)
+  assert(io.req2Intf.bits.pcuIndex.to.incoID  === io.incoID | !io.req2Intf.valid)
 }

@@ -10,8 +10,15 @@ import scala.collection.immutable.ListMap
 import scala.math.{max, min}
 
 
-// ---------------------------------------------------------------- Slice Base Bundle ----------------------------------------------------------------------------- //
-class RespMesBundle(implicit p: Parameters) extends DJBundle {
+// ---------------------------------------------------------------- EXU Base Bundle ----------------------------------------------------------------------------- //
+class ExuChiMesBundle(implicit p: Parameters) extends DJBundle with HasCHIChannel {
+    // REQ Mes(Use In Req)
+    val expCompAck      = Bool()
+    // Common
+    val opcode          = UInt(7.W)
+}
+
+class ExuRespMesBundle(implicit p: Parameters) extends DJBundle {
     val slvResp         = Valid(UInt(ChiResp.width.W))
     val masResp         = Valid(UInt(ChiResp.width.W))
     val fwdState        = Valid(UInt(ChiResp.width.W))
@@ -21,19 +28,25 @@ class RespMesBundle(implicit p: Parameters) extends DJBundle {
     def noRespValid     = !slvResp.valid & !masResp.valid
 }
 
-class PipeTaskBundle(implicit p: Parameters) extends DJBundle with HasAddr with HasPipeID with HasMSHRWay {
-    val readDir         = Bool()
-    val reqMes          = new MSHRCHIMesBundle()
-    val respMes         = new RespMesBundle()
+class PipeTaskBundle(implicit p: Parameters) extends DJBundle  {
+    val chiMes          = new ExuChiMesBundle()
+    val chiIndex        = new ChiIndexBundle()
+    val respMes         = new ExuRespMesBundle()
+    // other
+    val taskMes         = new DJBundle with HasUseAddr with HasPipeID with HasMSHRWay {
+        val readDir     = Bool()
+    }
+    def mshrMatch(set: Int, way: Int): Bool = taskMes.mSet === set.U & taskMes.mshrWay === way.U
 }
 
 object UpdMSHRType { val width = 2; val RETRY = "b0".U ; val UPD = "b1".U }
 
-class UpdateMSHRReqBundle(implicit p: Parameters) extends DJBundle with HasAddr with HasMSHRWay with HasCHIChannel {
+class UpdateMSHRReqBundle(implicit p: Parameters) extends DJBundle with HasMHSRIndex with HasCHIChannel {
     val updType     = UInt(UpdMSHRType.width.W)
     val waitIntfVec = Vec(nrIntf, Bool())
-    val opcode      = UInt(6.W)
     val hasNewReq   = Bool()
+    val mTag        = UInt(mshrTagBits.W)
+    val opcode      = UInt(7.W)
     val lockDirSet  = Bool()
 
     def isRetry     = updType === UpdMSHRType.RETRY
@@ -41,9 +54,9 @@ class UpdateMSHRReqBundle(implicit p: Parameters) extends DJBundle with HasAddr 
     def isClean     = updType === UpdMSHRType.UPD & !waitIntfVec.reduce(_ | _)
 }
 
-class DirReadBundle(implicit p: Parameters) extends DJBundle with HasAddr with HasMSHRWay with HasPipeID
+class DirReadBundle(implicit p: Parameters) extends DJBundle with HasUseAddr with HasMSHRWay with HasPipeID
 
-class DirRespBaseBundle(nrWays: Int, nrMetas: Int, replWayBits: Int)(implicit p: Parameters) extends DJBundle with HasAddr with HasPipeID {
+class DirRespBaseBundle(nrWays: Int, nrMetas: Int, replWayBits: Int)(implicit p: Parameters) extends DJBundle with HasUseAddr with HasPipeID {
     val hit         = Bool()
     val wayOH       = UInt(nrWays.W)
     val metaVec     = Vec(nrMetas, new CHIStateBundle())
@@ -53,10 +66,10 @@ class DirRespBaseBundle(nrWays: Int, nrMetas: Int, replWayBits: Int)(implicit p:
 
 class DirRespBundle(implicit p: Parameters) extends DJBundle with HasPipeID {
     val s           = new DirRespBaseBundle(djparam.selfWays, 1, sReplWayBits) // self
-    val sf          = new DirRespBaseBundle(djparam.sfDirWays, nrRnfNode, sfReplWayBits) // snoop filter
+    val sf          = new DirRespBaseBundle(djparam.sfDirWays, nrCcNode, sfReplWayBits) // snoop filter
 }
 
-class DirWriteBaseBundle(nrWays: Int, nrMetas: Int, replWayBits: Int)(implicit p: Parameters) extends DJBundle with HasAddr {
+class DirWriteBaseBundle(nrWays: Int, nrMetas: Int, replWayBits: Int)(implicit p: Parameters) extends DJBundle with HasUseAddr {
     val wayOH       = UInt(nrWays.W)
     val metaVec     = Vec(nrMetas, new CHIStateBundle())
     val replMes     = UInt(replWayBits.W)
@@ -64,15 +77,15 @@ class DirWriteBaseBundle(nrWays: Int, nrMetas: Int, replWayBits: Int)(implicit p
 
 class DirWriteBundle(implicit p: Parameters) extends DJBundle {
     val s           = Decoupled(new DirWriteBaseBundle(djparam.selfWays, 1, sReplWayBits)) // self
-    val sf          = Decoupled(new DirWriteBaseBundle(djparam.sfDirWays, nrRnfNode, sfReplWayBits)) // snoop filter
+    val sf          = Decoupled(new DirWriteBaseBundle(djparam.sfDirWays, nrCcNode, sfReplWayBits)) // snoop filter
 }
 
-trait HasDirBankID extends DJBundle { val dirBankId = UInt(dirBankBits.W) }
+trait HasDirBank extends DJBundle { val dirBank = UInt(dirBankBits.W) }
 
-class DirReadMSHRBundle(implicit p: Parameters) extends DJBundle with HasPipeID with HasDirBankID with HasMSHRSet
+class DirReadMSHRBundle(implicit p: Parameters) extends DJBundle with HasPipeID with HasDirBank with HasMSHRSet
 
-class MSHRRespDirBundle(implicit p: Parameters) extends DJBundle with HasPipeID with HasDirBankID {
-    val addrs       = Vec(djparam.nrMSHRWays, Valid(UInt(addressBits.W)))
+class MSHRRespDirBundle(implicit p: Parameters) extends DJBundle with HasPipeID with HasDirBank {
+    val addrs       = Vec(djparam.nrMSHRWays, Valid(UInt(useAddrBits.W)))
 }
 
 

@@ -1,5 +1,10 @@
 package dongjiang.pcu.exu
 
+import zhujiang.chi.ReqOpcode._
+import zhujiang.chi.RspOpcode._
+import zhujiang.chi.DatOpcode._
+import zhujiang.chi.SnpOpcode._
+import zhujiang.chi._
 import dongjiang._
 import dongjiang.pcu._
 import dongjiang.chi._
@@ -22,48 +27,51 @@ object MSHRState {
 
 
 class MSHREntry(implicit p: Parameters) extends DJBundle {
-  // state
-  val state           = UInt(MSHRState.width.W)
-  // addr
-  val tag             = UInt(mshrTagBits.W)
-  val bank            = UInt(bankBits.W)
-  val lockDirSet      = Bool()
+  // mshrMes
+  val mshrMes         = new Bundle {
+    val state         = UInt(MSHRState.width.W)
+    val mTag          = UInt(mshrTagBits.W)
+    val lockDirSet    = Bool()
+    val waitIntfVec   = Vec(nrIntf, Bool()) // Wait Snoop Resp or Req Resp
+  }
   // req mes
-  val chiMes          = new MSHRCHIMesBundle()
+  val chiMes          = new ExuChiMesBundle()
+  val chiIndex        = new ChiIndexBundle()
   // resp mes
-  val waitIntfVec     = Vec(nrIntf, Bool()) // Wait Snoop Resp or Req Resp
-  val respMes         = new RespMesBundle()
+  val respMes         = new ExuRespMesBundle()
 
-  def isValid         = state =/= MSHRState.Free
-  def isFree          = state === MSHRState.Free
-  def isBeSend        = state === MSHRState.BeSend
-  def isAlreadySend   = state === MSHRState.AlreadySend
-  def isWaitResp      = state === MSHRState.WaitResp
+  def isValid         = mshrMes.state =/= MSHRState.Free
+  def isFree          = mshrMes.state === MSHRState.Free
+  def isBeSend        = mshrMes.state === MSHRState.BeSend
+  def isAlreadySend   = mshrMes.state === MSHRState.AlreadySend
+  def isWaitResp      = mshrMes.state === MSHRState.WaitResp
   def isResp          = respMes.slvResp.valid | respMes.masResp.valid | respMes.fwdState.valid
   def isReq           = !isResp
   def respBeSend      = isBeSend & isResp
   def reqBeSend       = isBeSend & isReq
+  def noWaitIntf      = !mshrMes.waitIntfVec.reduce(_ | _)
 
-  def addr(x: UInt): UInt = { require(x.getWidth <= mshrSetBits); Cat(tag, x.asTypeOf(UInt(mshrSetBits.W)), bank, 0.U(offsetBits.W)) }
-  def dirBank(x: UInt): UInt = { require(x.getWidth <= mshrSetBits); getDirBank(addr(x)) }
+  def useAddr(x: UInt): UInt = { Cat(mshrMes.mTag, x.asTypeOf(UInt(mshrSetBits.W))) }
+  def dirBank(x: UInt): UInt = { getDirBank(useAddr(x)) }
+  def fullAddr(x: UInt, bank: UInt): UInt = getFullAddr(useAddr(x), bank)
 }
 
 
 class MSHRCtl()(implicit p: Parameters) extends DJModule {
   // --------------------- IO declaration ------------------------//
   val io = IO(new Bundle {
-    val sliceId       = Input(UInt(bankBits.W))
-    // Req To Slice
-    val req2Slice     = Flipped(Decoupled(new Req2SliceBundle()))
+    val bank          = Input(UInt(bankBits.W))
+    // Req To EXU
+    val req2Exu       = Flipped(Decoupled(new Req2ExuBundle()))
     // Ack To Node
-    val reqAck2node   = Decoupled(new ReqAck2NodeBundle())
-    // Resp To Slice
-    val resp2Slice    = Flipped(Decoupled(new Resp2SliceBundle()))
+    val reqAck2Intf   = Decoupled(new ReqAck2IntfBundle())
+    // Resp To EXU
+    val resp2Exu      = Flipped(Decoupled(new Resp2ExuBundle()))
     // Task To MainPipe
     val pipeTask      = Vec(2, Decoupled(new PipeTaskBundle()))
     // Update Task From MainPipe
     val updMSHR       = Flipped(Decoupled(new UpdateMSHRReqBundle()))
-    val updLockMSHR   = Vec(2, Flipped(Valid(new MSHRSetBundle))) // TODO: It should be locked according to dir set but not mshr set
+    val updLockMSHR   = Vec(2, Flipped(Valid(UInt(minDirSetBits.W))))
     // Directory Read Req
     val earlyRReqVec  = Vec(djparam.nrDirBank, Decoupled())
     val dirRead       = Vec(2, Valid(new DirReadBundle()))
@@ -76,12 +84,12 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
   dontTouch(io)
 
   // ------------------------ Module declaration ------------------------- //
-  val reqAck_s0_q           = Module(new Queue(new ReqAck2NodeBundle(), entries = 4, flow = false, pipe = true))
+  val reqAck_s0_q           = Module(new Queue(new ReqAck2IntfBundle(), entries = nrBankPerPCU, flow = false, pipe = true))
 
   // --------------------- Reg / Wire declaration ------------------------ //
   // mshrTable
   val mshrTableReg          = RegInit(VecInit(Seq.fill(djparam.nrMSHRSets) { VecInit(Seq.fill(djparam.nrMSHRWays) { 0.U.asTypeOf(new MSHREntry()) }) }))
-  val mshrLockVecReg        = RegInit(VecInit(Seq.fill(djparam.nrMSHRSets) { false.B })) // TODO: nrMSHRSets -> nrDirSet
+  val mshrLockVecReg        = RegInit(VecInit(Seq.fill(nrMinDirSet) { false.B }))
   // Transfer Req From Node To MSHREntry
   val mshrAlloc_s0          = WireInit(0.U.asTypeOf(new MSHREntry()))
   // task s0
@@ -110,23 +118,23 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
    * Get MSHR Mes
    */
   // mshrTableReg
-  val nodeReqMatchVec = mshrTableReg(io.req2Slice.bits.mSet).map { case m =>
+  val req2ExuMSet = io.req2Exu.bits.pcuMes.mSet
+  val nodeReqMatchVec = mshrTableReg(req2ExuMSet).map { case m =>
     val hit = Wire(Bool())
-    when(m.lockDirSet) {
-      if(maxDirSetBits > mshrSetBits) {
-        hit := m.tag(maxDirSetBits - mshrSetBits - 1, 0) === io.req2Slice.bits.mTag(maxDirSetBits - mshrSetBits - 1, 0)
-      } else {
-        hit := true.B
-      }
+    when(m.mshrMes.lockDirSet) {
+      // [useAddr] = [mTag] + [mSet]
+      // [useAddr] = [minDirTag] + [minDirSet] + [dirBank]
+      hit := m.useAddr(req2ExuMSet)(minDirSetBits + dirBankBits) === io.req2Exu.bits.pcuMes.useAddr(minDirSetBits + dirBankBits)
+      require(minDirSetBits > mshrSetBits)
     }.otherwise {
-      hit := m.tag === io.req2Slice.bits.mTag & m.bank === io.req2Slice.bits.mBank
+      hit := m.mshrMes.mTag === io.req2Exu.bits.pcuMes.mTag
     }
     hit & m.isValid
   }
-  val nodeReqInvVec   = mshrTableReg(io.req2Slice.bits.mSet).map(_.isFree)
+  val nodeReqInvVec   = mshrTableReg(req2ExuMSet).map(_.isFree)
   val nodeReqInvWay   = PriorityEncoder(nodeReqInvVec)
   // mshrLockVecReg
-  val lockMatch       = mshrLockVecReg(io.req2Slice.bits.mSet)
+  val lockMatch       = mshrLockVecReg(io.req2Exu.bits.pcuMes.minDirSet)
 
 
   /*
@@ -139,12 +147,13 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
   /*
    * Transfer Req From Node To MSHREntry
    */
-  mshrAlloc_s0.tag      := io.req2Slice.bits.mTag
-  mshrAlloc_s0.bank     := io.req2Slice.bits.mBank
-  mshrAlloc_s0.chiMes   := io.req2Slice.bits
-  when(io.req2Slice.bits.isReq & CHIOp.REQ.isWriteX(io.req2Slice.bits.opcode)) {
+  mshrAlloc_s0.mshrMes.mTag             := io.req2Exu.bits.pcuMes.mTag
+  mshrAlloc_s0.chiMes.expCompAck        := io.req2Exu.bits.chiMes.expCompAck
+  mshrAlloc_s0.chiMes.opcode            := io.req2Exu.bits.chiMes.opcode
+  mshrAlloc_s0.chiIndex                 := io.req2Exu.bits.chiIndex
+  when(io.req2Exu.bits.chiMes.isReq & isWriteX(io.req2Exu.bits.chiMes.opcode)) {
     mshrAlloc_s0.respMes.slvDBID.valid := true.B
-    mshrAlloc_s0.respMes.slvDBID.bits  := io.req2Slice.bits.dbid
+    mshrAlloc_s0.respMes.slvDBID.bits  := io.req2Exu.bits.pcuIndex.dbID
   }
 
 
@@ -153,12 +162,12 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
    * Receive Req From Node and Determine if it needs retry
    * TODO: Setting blocking timer
    */
-  io.req2Slice.ready            := reqAck_s0_q.io.enq.ready
-  reqAck_s0_q.io.enq.valid      := io.req2Slice.valid
-  reqAck_s0_q.io.enq.bits.retry := !canReceiveNode
-  reqAck_s0_q.io.enq.bits.to    := io.req2Slice.bits.from
-  reqAck_s0_q.io.enq.bits.pcuId := io.req2Slice.bits.pcuId
-  io.reqAck2node                <> reqAck_s0_q.io.deq
+  io.req2Exu.ready                := reqAck_s0_q.io.enq.ready
+  reqAck_s0_q.io.enq.valid        := io.req2Exu.valid
+  reqAck_s0_q.io.enq.bits.retry   := !canReceiveNode
+  reqAck_s0_q.io.enq.bits.to      := io.req2Exu.bits.pcuIndex.from
+  reqAck_s0_q.io.enq.bits.entryID := io.req2Exu.bits.pcuIndex.entryID
+  io.reqAck2Intf                  <> reqAck_s0_q.io.deq
 
 
   // ---------------------------------------------------------------------------------------------------------------------- //
@@ -174,55 +183,54 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
           /*
            * Pipe Update mshrTable value
            */
-          when(io.updMSHR.valid & !io.updMSHR.bits.isRetry & io.updMSHR.bits.mSet === i.U & io.updMSHR.bits.mshrWay === j.U) {
+          when(io.updMSHR.valid & !io.updMSHR.bits.isRetry & io.updMSHR.bits.mshrMatch(i, j)) {
             // req
             when(io.updMSHR.bits.hasNewReq) {
-              m                 := 0.U.asTypeOf(m)
-              m.chiMes.opcode   := io.updMSHR.bits.opcode
-              m.chiMes.channel  := io.updMSHR.bits.channel
-              m.tag             := io.updMSHR.bits.mTag
-              m.bank            := io.updMSHR.bits.mBank
-              m.lockDirSet      := io.updMSHR.bits.lockDirSet
+              m                     := 0.U.asTypeOf(m)
+              m.chiMes.opcode       := io.updMSHR.bits.opcode
+              m.chiMes.channel      := io.updMSHR.bits.channel
+              m.mshrMes.mTag        := io.updMSHR.bits.mTag
+              m.mshrMes.lockDirSet  := io.updMSHR.bits.lockDirSet
             }
             // req or update
-            m.respMes           := 0.U.asTypeOf(m.respMes)
-            m.waitIntfVec       := io.updMSHR.bits.waitIntfVec
-            assert(PopCount(m.waitIntfVec) === 0.U, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.addr(i.U), m.chiMes.channel, m.chiMes.opcode, m.state)
-            assert(m.isAlreadySend, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.addr(i.U), m.chiMes.channel, m.chiMes.opcode, m.state)
+            m.respMes               := 0.U.asTypeOf(m.respMes)
+            m.mshrMes.waitIntfVec   := io.updMSHR.bits.waitIntfVec
+            assert(PopCount(m.mshrMes.waitIntfVec) === 0.U, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.bank), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
+            assert(m.isAlreadySend, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.bank), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
             /*
              * Resp Update mshrTable value
              */
-          }.elsewhen(io.resp2Slice.valid & io.resp2Slice.bits.mshrMatch(i.U, j.U)) {
-            assert(!io.resp2Slice.bits.isUpdate, "TODO")
+          }.elsewhen(io.resp2Exu.valid & io.resp2Exu.bits.pcuIndex.mshrMatch(i, j)) {
+            assert(!io.resp2Exu.bits.pcuMes.isUpdate, "TODO")
             // Recovery of pending intf identifiers
-            m.waitIntfVec(io.resp2Slice.bits.from.intfId) := false.B
+            m.mshrMes.waitIntfVec(io.resp2Exu.bits.pcuIndex.from.incoID) := false.B
             // Record Resp Mes
-            when(io.resp2Slice.bits.isSnpResp) {
+            when(io.resp2Exu.bits.pcuMes.isSnpResp) {
               m.respMes.slvResp.valid   := true.B
-              m.respMes.slvResp.bits    := io.resp2Slice.bits.resp
-              m.respMes.slvDBID.valid   := io.resp2Slice.bits.hasData
-              m.respMes.slvDBID.bits    := io.resp2Slice.bits.dbid
-              m.respMes.fwdState.valid  := io.resp2Slice.bits.fwdState.valid | m.respMes.fwdState.valid
-              m.respMes.fwdState.bits   := Mux(io.resp2Slice.bits.fwdState.valid, io.resp2Slice.bits.fwdState.bits, m.respMes.fwdState.bits)
-            }.elsewhen(io.resp2Slice.bits.isReqResp) {
+              m.respMes.slvResp.bits    := io.resp2Exu.bits.chiMes.resp
+              m.respMes.slvDBID.valid   := io.resp2Exu.bits.pcuMes.hasData
+              m.respMes.slvDBID.bits    := io.resp2Exu.bits.pcuIndex.dbID
+              m.respMes.fwdState.valid  := io.resp2Exu.bits.chiMes.fwdState | m.respMes.fwdState.valid
+              m.respMes.fwdState.bits   := Mux(io.resp2Exu.bits.pcuMes.fwdSVald, io.resp2Exu.bits.chiMes.fwdState, m.respMes.fwdState.bits)
+            }.elsewhen(io.resp2Exu.bits.pcuMes.isReqResp) {
               m.respMes.masResp.valid   := true.B
-              m.respMes.masResp.bits    := io.resp2Slice.bits.resp
-              m.respMes.masDBID.valid   := io.resp2Slice.bits.hasData
-              m.respMes.masDBID.bits    := io.resp2Slice.bits.dbid
-            }.elsewhen(io.resp2Slice.bits.isWriResp) {
-              assert(PopCount(m.waitIntfVec) === 1.U, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.addr(i.U), m.chiMes.channel, m.chiMes.opcode, m.state)
-              assert(m.respMes.noRespValid, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.addr(i.U), m.chiMes.channel, m.chiMes.opcode, m.state)
+              m.respMes.masResp.bits    := io.resp2Exu.bits.chiMes.resp
+              m.respMes.masDBID.valid   := io.resp2Exu.bits.pcuMes.hasData
+              m.respMes.masDBID.bits    := io.resp2Exu.bits.pcuIndex.dbID
+            }.elsewhen(io.resp2Exu.bits.pcuMes.isWriResp) {
+              assert(PopCount(m.mshrMes.waitIntfVec) === 1.U, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.bank), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
+              assert(m.respMes.noRespValid, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.bank), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
               // Nothing to do and State Will be Free
             }
-            assert(m.waitIntfVec(io.resp2Slice.bits.from.intfId), s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.addr(i.U), m.chiMes.channel, m.chiMes.opcode, m.state)
-            assert(m.isWaitResp, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.addr(i.U), m.chiMes.channel, m.chiMes.opcode, m.state)
+            assert(m.mshrMes.waitIntfVec(io.resp2Exu.bits.pcuIndex.from.incoID), s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.bank), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
+            assert(m.isWaitResp, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.bank), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
             /*
              * Receive Node Req
              */
-          }.elsewhen(io.req2Slice.fire & canReceiveNode & i.U === io.req2Slice.bits.mSet & j.U === nodeReqInvWay) {
+          }.elsewhen(io.req2Exu.fire & canReceiveNode & i.U === req2ExuMSet & j.U === nodeReqInvWay) {
             m := 0.U.asTypeOf(m)
             m := mshrAlloc_s0
-            assert(m.isFree, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.addr(i.U), m.chiMes.channel, m.chiMes.opcode, m.state)
+            assert(m.isFree, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.bank), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
             /*
              * Clean MSHR Entry When Its Free
              */
@@ -237,7 +245,7 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
    * Set ready value
    */
   io.updMSHR.ready := true.B
-  io.resp2Slice.ready := true.B
+  io.resp2Exu.ready := true.B
 
 
   /*
@@ -245,15 +253,15 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
    */
   mshrLockVecReg.zipWithIndex.foreach {
     case(lock, i) =>
-      when((io.updLockMSHR(0).valid & io.updLockMSHR(0).bits.mshrSet === i.U) | (io.updLockMSHR(1).valid & io.updLockMSHR(1).bits.mshrSet === i.U)) {
+      when((io.updLockMSHR(0).valid & io.updLockMSHR(0).bits === i.U) | (io.updLockMSHR(1).valid & io.updLockMSHR(1).bits === i.U)) {
         lock := false.B
         assert(lock)
-      }.elsewhen((taskReq_s0.valid & canGoReq_s0 & taskReq_s0.bits.readDir & taskReq_s0.bits.mSet === i.U) | // Req Fire
-        (taskResp_s0.valid & canGoResp_s0 & taskResp_s0.bits.readDir & taskResp_s0.bits.mSet === i.U)) { // Resp Fire
+      }.elsewhen((taskReq_s0.valid  & canGoReq_s0  & taskReq_s0.bits.taskMes.readDir  & taskReq_s0.bits.taskMes.minDirSet === i.U) |   // Req Fire
+                 (taskResp_s0.valid & canGoResp_s0 & taskResp_s0.bits.taskMes.readDir & taskResp_s0.bits.taskMes.minDirSet === i.U)) { // Resp Fire
         lock := true.B
       }
   }
-  assert(Mux(io.updLockMSHR(0).valid & io.updLockMSHR(1).valid, !(io.updLockMSHR(0).bits.mshrSet === io.updLockMSHR(1).bits.mshrSet), true.B))
+  assert(Mux(io.updLockMSHR(0).valid & io.updLockMSHR(1).valid, !(io.updLockMSHR(0).bits === io.updLockMSHR(1).bits), true.B))
 
 
 
@@ -267,33 +275,33 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
     case (m, i) =>
       m.zipWithIndex.foreach {
         case (m, j) =>
-          switch(m.state) {
+          switch(m.mshrMes.state) {
             // Free
             is(MSHRState.Free) {
-              val nodeHit = io.req2Slice.valid & canReceiveNode & i.U === io.req2Slice.bits.mSet & j.U === nodeReqInvWay
-              m.state     := Mux(nodeHit, MSHRState.BeSend, MSHRState.Free)
+              val nodeHit     = io.req2Exu.valid & canReceiveNode & i.U === req2ExuMSet & j.U === nodeReqInvWay
+              m.mshrMes.state := Mux(nodeHit, MSHRState.BeSend, MSHRState.Free)
             }
             // BeSend
             is(MSHRState.BeSend) {
-              val reqhit  = taskReq_s0.valid & canGoReq_s0 & taskReq_s0.bits.mSet === i.U & taskReq_s0.bits.mshrWay === j.U
-              val resphit = taskResp_s0.valid & canGoResp_s0 & taskResp_s0.bits.mSet === i.U & taskResp_s0.bits.mshrWay === j.U
-              m.state     := Mux(reqhit | resphit, MSHRState.AlreadySend, MSHRState.BeSend)
+              val reqhit      = taskReq_s0.valid & canGoReq_s0 & taskReq_s0.bits.mshrMatch(i, j)
+              val resphit     = taskResp_s0.valid & canGoResp_s0 & taskResp_s0.bits.mshrMatch(i, j)
+              m.mshrMes.state := Mux(reqhit | resphit, MSHRState.AlreadySend, MSHRState.BeSend)
             }
             // AlreadySend
             is(MSHRState.AlreadySend) {
-              val hit     = io.updMSHR.valid & io.updMSHR.bits.mSet === i.U & io.updMSHR.bits.mshrWay === j.U
-              val retry   = hit & io.updMSHR.bits.isRetry
-              val update  = hit & io.updMSHR.bits.isUpdate
-              val clean   = hit & io.updMSHR.bits.isClean
-              m.state     := Mux(retry, MSHRState.BeSend,
+              val hit         = io.updMSHR.valid & io.updMSHR.bits.mshrMatch(i, j)
+              val retry       = hit & io.updMSHR.bits.isRetry
+              val update      = hit & io.updMSHR.bits.isUpdate
+              val clean       = hit & io.updMSHR.bits.isClean
+              m.mshrMes.state := Mux(retry, MSHRState.BeSend,
                 Mux(update, MSHRState.WaitResp,
                   Mux(clean, MSHRState.Free, MSHRState.AlreadySend)))
             }
             // WaitResp
             is(MSHRState.WaitResp) {
-              val hit     = !m.waitIntfVec.reduce(_ | _)
-              val noResp  = m.respMes.noRespValid
-              m.state     := Mux(hit, Mux(noResp, MSHRState.Free, MSHRState.BeSend), MSHRState.WaitResp)
+              val hit         = m.noWaitIntf
+              val noResp      = m.respMes.noRespValid
+              m.mshrMes.state := Mux(hit, Mux(noResp, MSHRState.Free, MSHRState.BeSend), MSHRState.WaitResp)
               assert(Mux(m.respMes.fwdState.valid, m.respMes.slvResp.valid, true.B))
             }
           }
@@ -318,7 +326,7 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
    */
   val respSendSet         = RREncoder(respWillSendVecVec.map(_.reduce(_ | _))); dontTouch(respSendSet)
   val respSendWay         = RREncoder(respWillSendVecVec(respSendSet)); dontTouch(respSendWay)
-  val taskResp            = mshrTableReg(respSendSet)(respSendWay)
+  val mshrResp            = mshrTableReg(respSendSet)(respSendWay)
   val taskRespValid       = respWillSendVecVec.map(_.reduce(_ | _)).reduce(_ | _)
 
 
@@ -327,41 +335,44 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
    */
   val reqSendSet          = RREncoder(reqWillSendVecVec.map(_.reduce(_ | _))); dontTouch(reqSendSet)
   val reqSendWay          = RREncoder(reqWillSendVecVec(reqSendSet)); dontTouch(reqSendWay)
-  val taskReq             = mshrTableReg(reqSendSet)(reqSendWay)
+  val mshrReq             = mshrTableReg(reqSendSet)(reqSendWay)
   val taskReqValid        = reqWillSendVecVec.map(_.reduce(_ | _)).reduce(_ | _)
 
 
   /*
    * Select resp task_s0
    */
-  taskResp_s0.valid         := taskRespValid
-  taskResp_s0.bits.readDir  := true.B // TODO
-  taskResp_s0.bits.addr     := taskResp.addr(respSendSet)
-  taskResp_s0.bits.pipeId   := PipeID.RESP
-  taskResp_s0.bits.mshrWay  := respSendWay
-  taskResp_s0.bits.reqMes   := taskResp.chiMes
-  taskResp_s0.bits.respMes  := taskResp.respMes
-  canGoResp_s0              := canGoResp_s1 | !taskResp_s1_g.valid
+  taskResp_s0.valid                 := taskRespValid
+  taskResp_s0.bits.chiMes           := mshrResp.chiMes
+  taskResp_s0.bits.chiIndex         := mshrResp.chiIndex
+  taskResp_s0.bits.respMes          := mshrResp.respMes
+  taskResp_s0.bits.taskMes.useAddr  := mshrResp.useAddr(respSendSet)
+  taskResp_s0.bits.taskMes.pipeID   := PipeID.RESP
+  taskResp_s0.bits.taskMes.mshrWay  := respSendWay
+  taskResp_s0.bits.taskMes.readDir  := true.B // TODO
+  canGoResp_s0                      := canGoResp_s1 | !taskResp_s1_g.valid
 
 
   /*
    * Select req task_s0
    */
-  taskReq_s0.valid          := taskReqValid & !(taskResp_s0.valid & taskResp_s0.bits.dirBank === taskReq_s0.bits.dirBank)
-  taskReq_s0.bits.readDir   := true.B // TODO
-  taskReq_s0.bits.addr      := taskReq.addr(reqSendSet)
-  taskReq_s0.bits.pipeId    := PipeID.REQ
-  taskReq_s0.bits.mshrWay   := reqSendWay
-  taskReq_s0.bits.reqMes    := taskReq.chiMes
-  taskReq_s0.bits.respMes   := taskReq.respMes
-  canGoReq_s0               := canGoReq_s1 | !taskReq_s1_g.valid
+  taskReq_s0.valid                  := taskReqValid & !(taskResp_s0.valid & taskResp_s0.bits.taskMes.dirBank === taskReq_s0.bits.taskMes.dirBank)
+  taskReq_s0.bits.chiMes            := mshrReq.chiMes
+  taskReq_s0.bits.chiIndex          := mshrReq.chiIndex
+  taskReq_s0.bits.respMes           := mshrReq.respMes
+  taskReq_s0.bits.taskMes.useAddr   := mshrReq.useAddr(reqSendSet)
+  taskReq_s0.bits.taskMes.pipeID    := PipeID.REQ
+  taskReq_s0.bits.taskMes.mshrWay   := reqSendWay
+  taskReq_s0.bits.taskMes.readDir   := true.B // TODO
+  canGoReq_s0                       := canGoReq_s1 | !taskReq_s1_g.valid
+
 
   /*
    * Read Directory Early Req
    */
   io.earlyRReqVec.map(_.valid).zipWithIndex.foreach {
     case(v, i) =>
-      v := (taskResp_s0.valid & canGoResp_s0 & taskResp_s0.bits.dirBank === i.U) | (taskReq_s0.valid & canGoReq_s0 & taskReq_s0.bits.dirBank === i.U)
+      v := (taskResp_s0.valid & canGoResp_s0 & taskResp_s0.bits.taskMes.dirBank === i.U) | (taskReq_s0.valid & canGoReq_s0 & taskReq_s0.bits.taskMes.dirBank === i.U)
   }
   assert(PopCount(io.earlyRReqVec.map(_.fire)) === PopCount(Seq(taskResp_s0.valid & canGoResp_s0, taskReq_s0.valid & canGoReq_s0)))
 
@@ -398,14 +409,14 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
    */
   // resp
   io.dirRead(PipeID.RESP).valid         := taskResp_s1_g.valid & !respAlreadyReadDirReg
-  io.dirRead(PipeID.RESP).bits.addr     := taskResp_s1_g.bits.addr
-  io.dirRead(PipeID.RESP).bits.mshrWay  := taskResp_s1_g.bits.mshrWay
-  io.dirRead(PipeID.RESP).bits.pipeId   := taskResp_s1_g.bits.pipeId
+  io.dirRead(PipeID.RESP).bits.useAddr  := taskResp_s1_g.bits.taskMes.useAddr
+  io.dirRead(PipeID.RESP).bits.mshrWay  := taskResp_s1_g.bits.taskMes.mshrWay
+  io.dirRead(PipeID.RESP).bits.pipeID   := taskResp_s1_g.bits.taskMes.pipeID
   // req
   io.dirRead(PipeID.REQ).valid          := taskReq_s1_g.valid & !reqAlreadyReadDirReg
-  io.dirRead(PipeID.REQ).bits.addr      := taskReq_s1_g.bits.addr
-  io.dirRead(PipeID.REQ).bits.mshrWay   := taskReq_s1_g.bits.mshrWay
-  io.dirRead(PipeID.REQ).bits.pipeId    := taskReq_s1_g.bits.pipeId
+  io.dirRead(PipeID.REQ).bits.useAddr   := taskReq_s1_g.bits.taskMes.useAddr
+  io.dirRead(PipeID.REQ).bits.mshrWay   := taskReq_s1_g.bits.taskMes.mshrWay
+  io.dirRead(PipeID.REQ).bits.pipeID    := taskReq_s1_g.bits.taskMes.pipeID
 
 
 
@@ -414,12 +425,12 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
     case (read, resp) =>
       when(read.valid) {
         resp.valid          := true.B
-        resp.bits.pipeId    := read.bits.pipeId
-        resp.bits.dirBankId := read.bits.dirBankId
+        resp.bits.pipeID    := read.bits.pipeID
+        resp.bits.dirBank   := read.bits.dirBank
         resp.bits.addrs.zipWithIndex.foreach {
           case (r, i) =>
             r.valid := mshrTableReg(read.bits.mshrSet)(i).isValid
-            r.bits  := mshrTableReg(read.bits.mshrSet)(i).addr(read.bits.mshrSet)
+            r.bits  := mshrTableReg(read.bits.mshrSet)(i).useAddr(read.bits.mshrSet)
         }
       }.otherwise {
         resp.valid    := false.B
@@ -433,7 +444,7 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
   // MSHR Timeout Check
   val cntMSHRReg = RegInit(VecInit(Seq.fill(djparam.nrMSHRSets) { VecInit(Seq.fill(djparam.nrMSHRWays) { 0.U(64.W) }) }))
   cntMSHRReg.zipWithIndex.foreach { case (c0, i) => c0.zipWithIndex.foreach { case(c1, j) => c1 := Mux(mshrTableReg(i)(j).isFree, 0.U, c1 + 1.U)  } }
-  cntMSHRReg.zipWithIndex.foreach { case (c0, i) => c0.zipWithIndex.foreach { case(c1, j) => assert(c1 < TIMEOUT_MSHR.U, "MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x] TIMEOUT", i.U, j.U, mshrTableReg(i)(j).addr(i.U), mshrTableReg(i)(j).chiMes.channel, mshrTableReg(i)(j).chiMes.opcode, mshrTableReg(i)(j).state) } }
+  cntMSHRReg.zipWithIndex.foreach { case (c0, i) => c0.zipWithIndex.foreach { case(c1, j) => assert(c1 < TIMEOUT_MSHR.U, "MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x] TIMEOUT", i.U, j.U, mshrTableReg(i)(j).fullAddr(i.U, io.bank), mshrTableReg(i)(j).chiMes.channel, mshrTableReg(i)(j).chiMes.opcode, mshrTableReg(i)(j).mshrMes.state) } }
 
   // MSHRLock Timeout Check
   val cntLockReg = RegInit(VecInit(Seq.fill(djparam.nrMSHRSets) { 0.U(64.W) }))

@@ -8,17 +8,6 @@ import zhujiang._
 import zhujiang.chi._
 
 
-class CHIBundleDecoupled(implicit p: Parameters) extends ZJBundle {
-    val txreq = Decoupled(new ReqFlit)
-    val txdat = Decoupled(new DataFlit)
-    val txrsp = Decoupled(new RespFlit)
-
-    val rxrsp = Flipped(Decoupled(new RespFlit))
-    val rxdat = Flipped(Decoupled(new DataFlit))
-    val rxsnp = Flipped(Decoupled(new SnoopFlit))
-}
-
-
 object ChiResp {
     val width = 3
 
@@ -58,6 +47,7 @@ trait HasChiResp { this: Bundle =>
 class CHIRespBundle extends Bundle with HasChiResp
 
 object ChiState {
+    // TODO: Delete [U/S]
     val width = 3
 
     // [U/S] + [D/C] + [V/I]

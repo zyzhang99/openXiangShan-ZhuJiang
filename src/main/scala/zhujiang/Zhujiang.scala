@@ -99,9 +99,12 @@ class Zhujiang(implicit p: Parameters) extends ZJModule {
   private val pcuIcnSeq = localRing.icnHfs.get
   private val pcuDef = Definition(new ProtocolCtrlUnit(pcuIcnSeq.head.node))
   private val pcuDevSeq = pcuIcnSeq.map(icn => Instance(pcuDef))
+  private val nrPCU = localRing.icnHfs.get.length
+  private val nrDCU = localRing.icnSns.get.filterNot(_.node.mainMemory).length
   for(i <- pcuIcnSeq.indices) {
     val bankId = pcuIcnSeq(i).node.bankId
     pcuDevSeq(i).io.hnfID := pcuIcnSeq(i).node.nodeId.U
+    pcuDevSeq(i).io.bankIDVec.zipWithIndex.foreach { case(bank, j) => bank := (j + i * (nrDCU / nrPCU)).U }
     pcuDevSeq(i).io.toLocal <> pcuIcnSeq(i)
     pcuDevSeq(i).reset := placeResetGen(s"pcu_$bankId", pcuIcnSeq(i))
     pcuDevSeq(i).clock := clock
