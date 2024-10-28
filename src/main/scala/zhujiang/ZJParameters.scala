@@ -141,7 +141,7 @@ object ZhujiangGlobal {
       for((_, dcus) <- dcuGroupsMaps) {
         require(dcus.length <= 2)
         if(dcus.length == 1) {
-          dcus.head.friends = nodes
+          dcus.head.friends = nodes.filterNot(n => n.nodeType == NodeType.S && !n.mainMemory)
         } else {
           val dcusPos = dcus.map(d => nodes.indexOf(d))
           val idxMin = dcusPos.min
