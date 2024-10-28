@@ -14,12 +14,17 @@ import xijiang.c2c.C2cLinkPort
 import zhujiang.chi.{DataFlit, ReqFlit, RespFlit}
 import sifive.enterprise.firrtl.NestedPrefixModulesAnnotation
 import xijiang.router.base.IcnBundle
+import xs.utils.sram.SramBroadcastBundle
 import xs.utils.{DFTResetSignals, ResetGen}
 import zhujiang.axi.AxiBundle
 import zhujiang.device.async.{IcnAsyncBundle, IcnSideAsyncModule}
-import zhujiang.device.cluster.interconnect.DftWires
 import zhujiang.device.ddr.MemoryComplex
 import zhujiang.device.reset.ResetDevice
+
+class DftWires extends Bundle {
+  val reset = new DFTResetSignals
+  val func = new SramBroadcastBundle
+}
 
 class Zhujiang(implicit p: Parameters) extends ZJModule {
   require(p(ZJParametersKey).tfsParams.isEmpty)
