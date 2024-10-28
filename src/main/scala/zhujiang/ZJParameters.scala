@@ -178,7 +178,7 @@ object ZhujiangGlobal {
           val disSeq = n.map(d => abs(nodes.indexOf(d) - pcuPos))
           val pos = disSeq.indexOf(disSeq.min)
           n(pos)
-        }).toSeq.filter(n => n.nodeType == NodeType.S && !n.mainMemory)
+        }).toSeq.filter(n => n.nodeType == NodeType.S && !n.mainMemory).sortBy(_.bankId)
       }
     }
     nodes
