@@ -115,7 +115,7 @@ object ZhujiangGlobal {
         clusterId = if(np.nodeType == NodeType.CC) ccId.toInt else 0,
         addressRange = if(np.nodeType == NodeType.CC) {
           ccAddr
-        } else if(np.nodeType == NodeType.CC) {
+        } else if(np.nodeType == NodeType.HI) {
           hiAddr
         } else {
           (0L, 0L)
