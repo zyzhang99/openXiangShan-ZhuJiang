@@ -67,8 +67,11 @@ abstract class BaseCtrlMachine[
   private val wakeupValid = wakeupVec.orR
   private val wakeupValidReg = RegNext(wakeupValid, false.B)
   private val wakeupNumReg = RegEnable(PopCount(wakeupVec), wakeupValid)
+  private val waitNumSetEn = RegNext(icn.rx.req.fire, false.B)
   when(icn.rx.req.fire) {
-    waiting := io.waitNum
+    waiting := Fill(waiting.getWidth, true.B) // to optimize waiting num calculation timing
+  }.elsewhen(waitNumSetEn){
+    waiting := io.waitNum // set waiting num at next cycle of enqueue
   }.elsewhen(wakeupValidReg) {
     assert(wakeupNumReg === 1.U)
     waiting := waiting - 1.U
