@@ -1,4 +1,4 @@
-package zhujiang.device.cluster.tlu2chi
+package zhujiang.device.tlu2chi
 
 import dongjiang.chi.{MemAttr, Order, RespErr}
 import chisel3._
