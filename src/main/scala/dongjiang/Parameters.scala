@@ -104,15 +104,20 @@ trait HasParseZJParam extends HasZJParams {
   lazy val opcodeBits       = 7
 
   // Local Base Node Mes
+  // [bank] = [dcuBank] + [pcuBank]
   lazy val nrBank           = localDcuNodes.map(_.bankId).max + 1
-  lazy val bankBits         = log2Ceil(nrBank)
-  lazy val nrBankPerPCU     = nrBank / localHnfNodes.length
-  lazy val bankPerPCUBits   = log2Ceil(nrBankPerPCU)
+  lazy val nrHnf            = localHnfNodes.length
+  lazy val nrBankPerPCU     = nrBank / nrHnf
+  lazy val pcuBankBits      = log2Ceil(nrHnf)
+  lazy val dcuBankBits      = log2Ceil(nrBankPerPCU)
+  lazy val fullBankBits     = pcuBankBits + dcuBankBits
   lazy val nrCcNode         = localCcNodes.length
   lazy val ccNodeIdBits     = log2Ceil(nrCcNode)
   lazy val metaIdBits       = ccNodeIdBits
   require(nrBank >= localHnfNodes.length)
   require(useNodeIdBits > metaIdBits)
+  require(log2Ceil(nrBank) == fullBankBits)
+  require(localHnfNodes.map(_.bankId).max + 1 == nrHnf)
 
   lazy val ccNodeIdSeq      = localCcNodes.map(_.nodeId)
   lazy val rniNodeIdSeq     = localRniNodes.map(_.nodeId)
@@ -154,10 +159,10 @@ trait HasParseZJParam extends HasZJParams {
     Cat(0.U(nodeNetBits.W), x, aID)
   }
 
-  def getDcuNodeIDByBankID(x: UInt): UInt = {
-    // Check bankID when use it: assert(x < nrBank.U)
+  def getDcuFriendIDByDcuBankID(x: UInt, friendIdSeq: Seq[UInt]): UInt = {
+    // Check dcuBankID when use it: assert(x < nrBankPerPCU.U)
     val nodeID = WireInit(0.U(fullNodeIdBits.W))
-    dcuNodeIdSeq.zipWithIndex.foreach { case(id, i) => when(x === i.U) { nodeID := id.U } }
+    friendIdSeq.zipWithIndex.foreach { case(id, i) => when(x === i.U) { nodeID := id } }
     nodeID
   }
 
@@ -170,10 +175,10 @@ trait HasParseZJParam extends HasZJParams {
     metaId
   }
 
-  def getUseNodeIDByMetaID(x: UInt) = {
+  def getNodeIDByMetaID(x: UInt) = {
     // Check metaID when use it: assert(x < nrCcNode.U)
-    val nodeID = WireInit(0.U(useNodeIdBits.W))
-    ccNodeIdSeq.zipWithIndex.foreach { case (id, i) => when(x === i.U) { nodeID := getUseNodeID(id.U.asTypeOf(UInt(fullNodeIdBits.W))) } }
+    val nodeID = WireInit(0.U(fullNodeIdBits.W))
+    ccNodeIdSeq.zipWithIndex.foreach { case (id, i) => when(x === i.U) { nodeID := id.U } }
     nodeID
   }
 }
@@ -191,12 +196,12 @@ trait HasDJParam extends HasParseZJParam {
   lazy val offsetBits       = log2Ceil(djparam.blockBytes)
   lazy val chiTxnIdBits     = 12
   lazy val fullAddrBits     = djparam.addressBits
-  lazy val useAddrBits      = fullAddrBits - cacheableBits - ccxChipBits - bankBits  - offsetBits// need to check input pcu addr unuse bits is 0 expect bankBits
+  lazy val useAddrBits      = fullAddrBits - cacheableBits - ccxChipBits - fullBankBits  - offsetBits// need to check input pcu addr unuse bits is 0 expect bankBits
   lazy val dataBits         = djparam.blockBytes * 8
   lazy val beatBits         = djparam.beatBytes * 8
   lazy val dirBankBits      = log2Ceil(djparam.nrDirBank)
   require(isPow2(nrBeat))
-  require(bankOff + bankBits - 1 < fullAddrBits - (cacheableBits + ccxChipBits))
+  require(bankOff + fullBankBits - 1 < fullAddrBits - (cacheableBits + ccxChipBits))
   require(bankOff > offsetBits + dirBankBits)
 
 
@@ -264,30 +269,32 @@ trait HasDJParam extends HasParseZJParam {
   lazy val TIMEOUT_MSLOCK   = 3000 // MSHR Lock
   lazy val TIMEOUT_PIPEEXU  = 3000 // Pipe Execute
 
-  def parseFullAddr(x: UInt): (UInt, UInt, UInt, UInt, UInt) = {
+  def parseFullAddr(x: UInt): (UInt, UInt, UInt, UInt, UInt, UInt) = {
     require(x.getWidth == fullAddrBits)
     val offset    = x
-    val bank      = x >> bankOff
+    val pcuBank   = x >> bankOff
+    val dcuBank   = x >> pcuBankBits
     val ccxChipID = x >> fullAddrBits - (ccxChipBits + cacheableBits)
     val cacheable = x >> fullAddrBits - cacheableBits
-    val useAddr   = Cat(x(fullAddrBits - (ccxChipBits + cacheableBits) - 1, bankOff + bankBits), x(bankOff - 1, offsetBits)); require(useAddr.getWidth == useAddrBits)
+    val useAddr   = Cat(x(fullAddrBits - (ccxChipBits + cacheableBits) - 1, bankOff + fullBankBits), x(bankOff - 1, offsetBits)); require(useAddr.getWidth == useAddrBits)
     // Additional check:
     // assert(cacheable === 0.U)
     // assert(ccxChipID === 0.U) // TODO: CSN
     // assert(offset === 0.U)
-    // return: [1:cacheable] [2:ccxChipID] [3:bank] [4:offset] [5:useAddr]
-    (cacheable(cacheableBits - 1, 0), ccxChipID(ccxChipBits - 1, 0), bank(bankBits - 1, 0), offset(offsetBits - 1, 0), useAddr)
+    // return: [1:cacheable] [2:ccxChipID] [3:dcuBank] [4:pcuBank] [5:offset] [6:useAddr]
+    (cacheable(cacheableBits - 1, 0), ccxChipID(ccxChipBits - 1, 0), dcuBank(dcuBankBits - 1, 0), pcuBank(pcuBankBits - 1, 0), offset(offsetBits - 1, 0), useAddr)
   }
 
-  def getFullAddr(x: UInt, bankID: UInt): UInt = {
+  def getFullAddr(x: UInt, dcuBankID: UInt, pcuBankID: UInt): UInt = {
     require(x.getWidth == useAddrBits)
-    require(bankID.getWidth == bankBits)
+    require(pcuBankID.getWidth == pcuBankBits)
+    require(pcuBankID.getWidth == dcuBankBits)
     val offset    = 0.U(offsetBits.W)
     val addr0     = x(bankOff - offsetBits - 1, 0)
     val addr1     = x(useAddrBits - 1, bankOff - offsetBits)
     val ccxChipID = 0.U(cacheableBits.W)
     val cacheable = 0.U(ccxChipBits.W)
-    val fullAddr  = Cat(cacheable, ccxChipID, addr1, bankID, addr0, offset)
+    val fullAddr  = Cat(cacheable, ccxChipID, addr1, dcuBankID, pcuBankID, addr0, offset)
     require(fullAddr.getWidth == fullAddrBits)
     fullAddr
   }

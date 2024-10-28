@@ -15,6 +15,8 @@ abstract class IntfBaseIO(param: InterfaceParam, node: Node)(implicit p: Paramet
 // --------------------- IO declaration ------------------------//
   val io = IO(new Bundle {
     val hnfID           = Input(UInt(useNodeIdBits.W))
+    val pcuID           = Input(UInt(pcuBankBits.W))
+    val fIDVec          = Input(Vec(nrBankPerPCU, UInt(fullNodeIdBits.W))) // DCU Friends Node ID Vec
     // To CHI Signals
     val chi             = new DeviceIcnBundle(node)
     // To EXU Signals

@@ -104,7 +104,8 @@ class Zhujiang(implicit p: Parameters) extends ZJModule {
   for(i <- pcuIcnSeq.indices) {
     val bankId = pcuIcnSeq(i).node.bankId
     pcuDevSeq(i).io.hnfID := pcuIcnSeq(i).node.nodeId.U
-    pcuDevSeq(i).io.bankIDVec.zipWithIndex.foreach { case(bank, j) => bank := (j + i * (nrDCU / nrPCU)).U }
+    pcuDevSeq(i).io.pcuID := bankId.U
+    pcuDevSeq(i).io.dcuNodeIDVec.zipWithIndex.foreach { case(n, i) => n := pcuIcnSeq(i).node.friends(i).nodeId.U }
     pcuDevSeq(i).io.toLocal <> pcuIcnSeq(i)
     pcuDevSeq(i).reset := placeResetGen(s"pcu_$bankId", pcuIcnSeq(i))
     pcuDevSeq(i).clock := clock

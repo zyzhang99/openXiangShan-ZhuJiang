@@ -46,18 +46,19 @@ class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[
   with ImplicitClock with ImplicitReset {
   // ------------------------------------------ IO declaration ----------------------------------------------//
   @public val io  = IO(new Bundle {
-    val hnfID     = Input(UInt(fullNodeIdBits.W))
-    val bankIDVec = Input(Vec(nrBankPerPCU, UInt(bankBits.W)))
-    val toLocal   = new DeviceIcnBundle(localHf)
-    val toCSNOpt  = if(hasCSN) Some(new Bundle {
-      val hn      = new DeviceIcnBundle(csnHf.get)
-      val rn      = new DeviceIcnBundle(csnRf.get)
+    val hnfID         = Input(UInt(fullNodeIdBits.W))
+    val pcuID         = Input(UInt(pcuBankBits.W)) // PCU Bank ID
+    val dcuNodeIDVec  = Input(Vec(nrBankPerPCU, UInt(fullNodeIdBits.W))) // DCU Friend Node ID Vec
+    val toLocal       = new DeviceIcnBundle(localHf)
+    val toCSNOpt      = if(hasCSN) Some(new Bundle {
+      val hn          = new DeviceIcnBundle(csnHf.get)
+      val rn          = new DeviceIcnBundle(csnRf.get)
     }) else None
   })
-  @public val reset = IO(Input(AsyncReset()))
-  @public val clock = IO(Input(Clock()))
-  val implicitClock = clock
-  val implicitReset = reset
+  @public val reset   = IO(Input(AsyncReset()))
+  @public val clock   = IO(Input(Clock()))
+  val implicitClock   = clock
+  val implicitReset   = reset
 
 // ------------------------------------------ Modules declaration ----------------------------------------------//
   // interfaces
@@ -134,6 +135,8 @@ class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[
   intfs.zipWithIndex.foreach {
     case(intf, i) =>
       intf.io.hnfID                           := io.hnfID
+      intf.io.pcuID                           := io.pcuID
+      intf.io.fIDVec                          := io.dcuNodeIDVec
       // EXU ctrl signals
       if (intf.io.req2ExuOpt.nonEmpty) {
           xbar.io.req2Exu.in(i)               <> intf.io.req2ExuOpt.get
@@ -169,8 +172,8 @@ class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[
    */
   exus.zipWithIndex.foreach {
     case (exu, i) =>
-      exu.io.bank                     := io.bankIDVec(i)
-      exu.io.incoID                   := i.U
+      exu.io.dcuID                    := i.U
+      exu.io.pcuID                    := io.pcuID
       // TODO: Lower Power Ctrl
       exu.io.valid                    := true.B
       // slice ctrl signals
@@ -188,8 +191,4 @@ class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[
    */
   databuffer.io <> xbar.io.dbSigs.out(0)
 
-  /*
-   * Connect IO <-> Xbar
-   */
-  xbar.io.bankIDVec := io.bankIDVec
 }

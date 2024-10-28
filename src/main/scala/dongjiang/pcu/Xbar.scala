@@ -8,24 +8,10 @@ import org.chipsalliance.cde.config._
 import dongjiang.utils.FastArb._
 import xs.utils.FastArbiter
 
-class IdMap(implicit p: Parameters) extends DJModule {
-  val io = IO(new Bundle {
-    val bankIDVec = Input(Vec(nrBankPerPCU, UInt(bankBits.W)))
-    val inBank    = Input(UInt(bankBits.W))
-    val to        = Output(UInt(IncoID.width.W))
-  })
-  val to = WireInit(0.U(IncoID.width.W))
-  io.bankIDVec.zipWithIndex.foreach { case (id, i) =>  when(id === io.inBank) { to := i.U } }
-  io.to := to
-}
-
-
-
 
 class Xbar()(implicit p: Parameters) extends DJModule {
 // ------------------------------------------ IO declaration ----------------------------------------------//
   val io = IO(new Bundle {
-    val bankIDVec   = Input(Vec(nrBankPerPCU, UInt(bankBits.W)))
     // Intf ctrl signals
     val req2Exu     = new Bundle {
       val in        = Vec(nrIntf, Flipped(Decoupled(new Req2ExuBundle()))) // expect SNMaster
@@ -57,23 +43,6 @@ class Xbar()(implicit p: Parameters) extends DJModule {
 
 
 // ------------------------------------------ Modules declaration And Connection ----------------------------------------------//
-  val req2ExuIdMaps = Seq.fill(nrIntf) { Module(new IdMap()) }
-
-  // --------------------- Wire declaration ------------------------//
-  val req2ExuReMap  = Wire(Vec(nrIntf, Decoupled(new Req2ExuBundle())))
-
-  // --------------------- Connection ------------------------//
-  // req2Exu bank ReMap
-  req2ExuReMap.zip(io.req2Exu.in).foreach{ case(reMap, in) => reMap <> in }
-  req2ExuIdMaps.zipWithIndex.foreach {
-    case(m, i) =>
-      m.io.bankIDVec := io.bankIDVec
-      m.io.inBank := io.req2Exu.in(i).bits.pcuIndex.bankID
-      req2ExuReMap(i).bits.pcuIndex.to.incoID := m.io.to
-      // assert
-      assert(io.bankIDVec.map(_ === io.req2Exu.in(i).bits.pcuIndex.bankID).reduce(_ | _) | !io.req2Exu.in(i).valid)
-  }
-
   def idSelDec2DecVec[T <: Bundle](in: DecoupledIO[T], incoID: UInt, out: Seq[DecoupledIO[T]]): Unit = {
     in.ready := false.B
     out.foreach(_.bits := in.bits)
@@ -100,7 +69,7 @@ class Xbar()(implicit p: Parameters) extends DJModule {
   }
 
   // There is a lot of room for optimization of the connection
-  interConnect(in = req2ExuReMap,       incoID = req2ExuReMap.map(_.bits.pcuIndex.to.incoID),     q1 = 0, q2 = 0, out = io.req2Exu.out)
+  interConnect(in = io.req2Exu.in,      incoID = io.req2Exu.in.map(_.bits.pcuIndex.to.incoID),   q1 = 0, q2 = 0, out = io.req2Exu.out)
 
   interConnect(in = io.reqAck2Intf.in,  incoID = io.reqAck2Intf.in.map(_.bits.to.incoID),         q1 = 0, q2 = 0, out = io.reqAck2Intf.out)
 

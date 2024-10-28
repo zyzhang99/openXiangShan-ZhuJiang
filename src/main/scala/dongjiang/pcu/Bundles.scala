@@ -15,20 +15,17 @@ import scala.math.{max, min}
 // ---------------------------------------------------------------- Xbar Id Bundle ----------------------------------------------------------------------------- //
 // Interconnect ID
 object IncoID {
-  val width       = 2
+  val width       = 1
   val LOCALSLV    = 0
   val LOCALMST    = 1
-  val CSNSLV      = 2
-  val CSNMST      = 3
 }
 
+
 class IDBundle(implicit p: Parameters) extends DJBundle {
-  val incoID      = UInt(max(bankPerPCUBits, nrIntfBits).W)
+  val incoID      = UInt(IncoID.width.W)
 
   def LOCALSLV    = incoID === IncoID.LOCALSLV.U
   def LOCALMAS    = incoID === IncoID.LOCALMST.U
-  def CSNSLV      = incoID === IncoID.CSNSLV.U
-  def CSNMAS      = incoID === IncoID.CSNMST.U
 }
 
 trait HasFromIncoID extends DJBundle { this: Bundle => val from = new IDBundle() }
@@ -49,8 +46,8 @@ trait HasUseAddr extends DJBundle {this: Bundle =>
   def sfSet       = parseSFAddr(useAddr)._2
   def dirBank     = parseSFAddr(useAddr)._3
   def minDirSet   = useAddr(minDirSetBits + dirBankBits - 1, dirBankBits)
-  def fullAddr(bank: UInt) = getFullAddr(useAddr, bank)
-  def snpAddr (bank: UInt) = fullAddr(bank)(fullAddrBits - 1, 3)
+  def fullAddr(d: UInt, p:UInt) = getFullAddr(useAddr, d, p)
+  def snpAddr (d: UInt, p:UInt) = fullAddr(d, p)(fullAddrBits - 1, 3)
 }
 
 trait HasMSHRSet extends DJBundle { this: Bundle => val mshrSet = UInt(mshrSetBits.W) }
@@ -67,7 +64,7 @@ trait HasPipeID extends Bundle { this: Bundle => val pipeID = UInt(PipeID.width.
 
 trait HasIntfEntryID extends DJBundle { this: Bundle => val entryID = UInt(intfEntryIdBits.W) }
 
-trait HasBankID extends DJBundle { this: Bundle => val bankID = UInt(bankBits.W) }
+trait HasDcuID extends DJBundle { this: Bundle => val dcuID = UInt(dcuBankBits.W) } // DCU Bank ID
 
 // ---------------------------------------------------------------- CHI Base Bundle ----------------------------------------------------------------------------- //
 class ChiIndexBundle(implicit p: Parameters) extends DJBundle {
@@ -90,7 +87,7 @@ class ChiMesBundle(implicit p: Parameters) extends DJBundle with HasCHIChannel {
 
 // ---------------------------------------------------------------- PCU Base Bundle ----------------------------------------------------------------------------- //
 // Dont use mshrSet when Bundle HasUseAddr
-class PcuIndexBundle(implicit p: Parameters) extends DJBundle with HasIncoID with HasMHSRIndex with HasDBID with HasIntfEntryID with HasBankID
+class PcuIndexBundle(implicit p: Parameters) extends DJBundle with HasIncoID with HasMHSRIndex with HasDBID with HasIntfEntryID with HasDcuID
 
 // ---------------------------------------------------------------- Req To EXU Bundle ----------------------------------------------------------------------------- //
 class Req2ExuBundle(implicit p: Parameters) extends DJBundle {

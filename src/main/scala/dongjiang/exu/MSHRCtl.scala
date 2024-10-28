@@ -54,14 +54,15 @@ class MSHREntry(implicit p: Parameters) extends DJBundle {
 
   def useAddr(x: UInt): UInt = { Cat(mshrMes.mTag, x.asTypeOf(UInt(mshrSetBits.W))) }
   def dirBank(x: UInt): UInt = { getDirBank(useAddr(x)) }
-  def fullAddr(x: UInt, bank: UInt): UInt = getFullAddr(useAddr(x), bank)
+  def fullAddr(x: UInt, d: UInt, p: UInt): UInt = getFullAddr(useAddr(x), d, p)
 }
 
 
 class MSHRCtl()(implicit p: Parameters) extends DJModule {
   // --------------------- IO declaration ------------------------//
   val io = IO(new Bundle {
-    val bank          = Input(UInt(bankBits.W))
+    val dcuID         = Input(UInt(dcuBankBits.W))
+    val pcuID         = Input(UInt(pcuBankBits.W))
     // Req To EXU
     val req2Exu       = Flipped(Decoupled(new Req2ExuBundle()))
     // Ack To Node
@@ -115,7 +116,7 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
    * for Debug
    */
   val mshr_dbg_addr = Wire(Vec(djparam.nrMSHRSets, Vec(djparam.nrMSHRWays, UInt(fullAddrBits.W))))
-  mshr_dbg_addr.zipWithIndex.foreach { case(set, i) => set.zipWithIndex.foreach { case(way, j) => way := mshrTableReg(i)(j).fullAddr(i.U, io.bank) } }
+  mshr_dbg_addr.zipWithIndex.foreach { case(set, i) => set.zipWithIndex.foreach { case(way, j) => way := mshrTableReg(i)(j).fullAddr(i.U, io.dcuID, io.pcuID) } }
   if (p(DebugOptionsKey).EnableDebug) {
     dontTouch(mshr_dbg_addr)
   }
@@ -205,8 +206,8 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
             // req or update
             m.respMes               := 0.U.asTypeOf(m.respMes)
             m.mshrMes.waitIntfVec   := io.updMSHR.bits.waitIntfVec
-            assert(PopCount(m.mshrMes.waitIntfVec) === 0.U, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.bank), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
-            assert(m.isAlreadySend, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.bank), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
+            assert(PopCount(m.mshrMes.waitIntfVec) === 0.U, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
+            assert(m.isAlreadySend, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
             /*
              * Resp Update mshrTable value
              */
@@ -228,19 +229,19 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
               m.respMes.masDBID.valid   := io.resp2Exu.bits.pcuMes.hasData
               m.respMes.masDBID.bits    := io.resp2Exu.bits.pcuIndex.dbID
             }.elsewhen(io.resp2Exu.bits.pcuMes.isWriResp) {
-              assert(PopCount(m.mshrMes.waitIntfVec) === 1.U, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.bank), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
-              assert(m.respMes.noRespValid, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.bank), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
+              assert(PopCount(m.mshrMes.waitIntfVec) === 1.U, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
+              assert(m.respMes.noRespValid, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
               // Nothing to do and State Will be Free
             }
-            assert(m.mshrMes.waitIntfVec(io.resp2Exu.bits.pcuIndex.from.incoID), s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.bank), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
-            assert(m.isWaitResp, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.bank), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
+            assert(m.mshrMes.waitIntfVec(io.resp2Exu.bits.pcuIndex.from.incoID), s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
+            assert(m.isWaitResp, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
             /*
              * Receive Node Req
              */
           }.elsewhen(io.req2Exu.fire & canReceiveNode & i.U === req2ExuMSet & j.U === nodeReqInvWay) {
             m := 0.U.asTypeOf(m)
             m := mshrAlloc_s0
-            assert(m.isFree, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.bank), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
+            assert(m.isFree, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
             /*
              * Clean MSHR Entry When Its Free
              */
@@ -454,7 +455,7 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
   // MSHR Timeout Check
   val cntMSHRReg = RegInit(VecInit(Seq.fill(djparam.nrMSHRSets) { VecInit(Seq.fill(djparam.nrMSHRWays) { 0.U(64.W) }) }))
   cntMSHRReg.zipWithIndex.foreach { case (c0, i) => c0.zipWithIndex.foreach { case(c1, j) => c1 := Mux(mshrTableReg(i)(j).isFree, 0.U, c1 + 1.U)  } }
-  cntMSHRReg.zipWithIndex.foreach { case (c0, i) => c0.zipWithIndex.foreach { case(c1, j) => assert(c1 < TIMEOUT_MSHR.U, "MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x] TIMEOUT", i.U, j.U, mshrTableReg(i)(j).fullAddr(i.U, io.bank), mshrTableReg(i)(j).chiMes.channel, mshrTableReg(i)(j).chiMes.opcode, mshrTableReg(i)(j).mshrMes.state) } }
+  cntMSHRReg.zipWithIndex.foreach { case (c0, i) => c0.zipWithIndex.foreach { case(c1, j) => assert(c1 < TIMEOUT_MSHR.U, "MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x] TIMEOUT", i.U, j.U, mshrTableReg(i)(j).fullAddr(i.U, io.dcuID, io.pcuID), mshrTableReg(i)(j).chiMes.channel, mshrTableReg(i)(j).chiMes.opcode, mshrTableReg(i)(j).mshrMes.state) } }
 
   // MSHRLock Timeout Check
   val cntLockReg = RegInit(VecInit(Seq.fill(djparam.nrMSHRSets) { 0.U(64.W) }))

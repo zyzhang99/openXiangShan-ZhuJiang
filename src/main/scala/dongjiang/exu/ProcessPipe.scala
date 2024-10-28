@@ -19,8 +19,8 @@ import xs.utils.perf.{DebugOptions, DebugOptionsKey}
 class ProcessPipe(implicit p: Parameters) extends DJModule {
 // --------------------- IO declaration ------------------------//
   val io = IO(new Bundle {
-    val bank        = Input(UInt(bankBits.W))
-    val incoID      = Input(UInt(bankPerPCUBits.W))
+    val dcuID       = Input(UInt(dcuBankBits.W))
+    val pcuID       = Input(UInt(pcuBankBits.W))
     // Req To DataBuffer
     val dbRCReq     = Decoupled(new DBRCReq())
     // Resp From Directory
@@ -92,7 +92,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
    * for Debug
    */
   val task_s3_dbg_addr = Wire(UInt(fullAddrBits.W))
-  task_s3_dbg_addr := task_s3_g.bits.taskMes.fullAddr(io.bank)
+  task_s3_dbg_addr := task_s3_g.bits.taskMes.fullAddr(io.dcuID, io.pcuID)
   if (p(DebugOptionsKey).EnableDebug) {
     dontTouch(task_s3_dbg_addr)
   }
@@ -211,7 +211,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   decode_s3.decode(inst_s3, table)
   when(valid_s3) { assert(decode_s3.asUInt =/= 0.U,
     "\n\nADDR[0x%x] DECODE ERROR: No inst match in decode table\n" +
-      "INST: CHNL[0x%x] OP[0x%x] SRC[0x%x] OTH[0x%x] HN[0x%x] RESP[0x%x] DATA[0x%x] SNP[0x%x] FWD[0x%x] RD[0x%x]\n", task_s3_g.bits.taskMes.fullAddr(io.bank),
+      "INST: CHNL[0x%x] OP[0x%x] SRC[0x%x] OTH[0x%x] HN[0x%x] RESP[0x%x] DATA[0x%x] SNP[0x%x] FWD[0x%x] RD[0x%x]\n", task_s3_g.bits.taskMes.fullAddr(io.dcuID, io.dcuID),
     inst_s3.channel, inst_s3.opcode, inst_s3.srcState, inst_s3.othState, inst_s3.hnState, inst_s3.respType, inst_s3.respHasData, inst_s3.snpResp, inst_s3.fwdState, inst_s3.rdResp) }
   when(valid_s3) { when(decode_s3.wSDir)  { assert(decode_s3.commit | (inst_s3.opcode === SnpUniqueEvict & inst_s3.channel === CHIChannel.SNP) | (isWriteX(inst_s3.opcode) & inst_s3.channel === CHIChannel.REQ)) } }
   when(valid_s3) { when(decode_s3.wSFDir) { assert(decode_s3.commit | (isWriteX(inst_s3.opcode) & inst_s3.channel === CHIChannel.REQ)) } }
@@ -237,13 +237,13 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   taskSnp_s3.chiMes.expCompAck    := false.B
   taskSnp_s3.chiMes.opcode        := decode_s3.snpOp
   taskSnp_s3.chiMes.resp          := DontCare
-  taskSnp_s3.pcuIndex.from.incoID := io.incoID
+  taskSnp_s3.pcuIndex.from.incoID := io.dcuID
   taskSnp_s3.pcuIndex.to.incoID   := IncoID.LOCALSLV.U
   taskSnp_s3.pcuIndex.mshrSet     := DontCare
   taskSnp_s3.pcuIndex.mshrWay     := task_s3_g.bits.taskMes.mshrWay
   taskSnp_s3.pcuIndex.dbID        := DontCare
   taskSnp_s3.pcuIndex.entryID     := DontCare
-  taskSnp_s3.pcuIndex.bankID      := io.bank
+  taskSnp_s3.pcuIndex.dcuID       := io.dcuID
   taskSnp_s3.pcuMes.useAddr       := task_s3_g.bits.taskMes.useAddr
   taskSnp_s3.pcuMes.doDMT         := DontCare
   taskSnp_s3.pcuMes.selfWay       := DontCare
@@ -259,10 +259,10 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   taskRD_s3.chiMes.expCompAck     := false.B
   taskRD_s3.chiMes.opcode         := decode_s3.rdOp
   taskRD_s3.chiMes.resp           := ChiResp.UC
-  taskRD_s3.pcuIndex.from.incoID  := io.incoID
+  taskRD_s3.pcuIndex.from.incoID  := io.dcuID
   taskRD_s3.pcuIndex.to.incoID    := IncoID.LOCALMST.U
   taskRD_s3.pcuIndex.mshrWay      := task_s3_g.bits.taskMes.mshrWay
-  taskRD_s3.pcuIndex.bankID       := io.bank
+  taskRD_s3.pcuIndex.dcuID        := io.dcuID
   taskRD_s3.pcuMes.useAddr        := task_s3_g.bits.taskMes.useAddr
   taskRD_s3.pcuMes.doDMT          := decode_s3.doDMT
   taskRD_s3.pcuMes.toDCU          := false.B
@@ -294,10 +294,10 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   readDCU_s3.chiMes.expCompAck      := false.B
   readDCU_s3.chiMes.opcode          := decode_s3.rdOp
   readDCU_s3.chiMes.resp            := decode_s3.resp
-  readDCU_s3.pcuIndex.from.incoID   := io.incoID
+  readDCU_s3.pcuIndex.from.incoID   := io.dcuID
   readDCU_s3.pcuIndex.to.incoID     := IncoID.LOCALMST.U
   readDCU_s3.pcuIndex.mshrWay       := task_s3_g.bits.taskMes.mshrWay
-  readDCU_s3.pcuIndex.bankID        := io.bank
+  readDCU_s3.pcuIndex.dcuID         := io.dcuID
   readDCU_s3.pcuMes.useAddr         := task_s3_g.bits.taskMes.useAddr
   readDCU_s3.pcuMes.doDMT           := decode_s3.doDMT
   readDCU_s3.pcuMes.selfWay         := OHToUInt(dirRes_s3.bits.s.wayOH)
@@ -312,11 +312,11 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   writeDCU_s3.chiMes.channel        := CHIChannel.REQ
   writeDCU_s3.chiMes.expCompAck     := false.B
   writeDCU_s3.chiMes.opcode         := decode_s3.wdOp
-  writeDCU_s3.pcuIndex.from.incoID  := io.incoID
+  writeDCU_s3.pcuIndex.from.incoID  := io.dcuID
   writeDCU_s3.pcuIndex.to.incoID    := IncoID.LOCALMST.U
   writeDCU_s3.pcuIndex.mshrWay      := task_s3_g.bits.taskMes.mshrWay
   writeDCU_s3.pcuIndex.dbID         := rcDBID
-  writeDCU_s3.pcuIndex.bankID       := io.bank
+  writeDCU_s3.pcuIndex.dcuID        := io.dcuID
   writeDCU_s3.pcuMes.useAddr        := task_s3_g.bits.taskMes.useAddr
   writeDCU_s3.pcuMes.selfWay        := OHToUInt(dirRes_s3.bits.s.wayOH)
   writeDCU_s3.pcuMes.toDCU          := true.B
@@ -330,11 +330,11 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   taskRepl_s3.chiMes.channel        := CHIChannel.REQ
   taskRepl_s3.chiMes.expCompAck     := false.B
   taskRepl_s3.chiMes.opcode         := Replace
-  taskRepl_s3.pcuIndex.from.incoID  := io.incoID
+  taskRepl_s3.pcuIndex.from.incoID  := io.dcuID
   taskRepl_s3.pcuIndex.to.incoID    := IncoID.LOCALMST.U
   taskRepl_s3.pcuIndex.mshrWay      := task_s3_g.bits.taskMes.mshrWay
   taskRepl_s3.pcuIndex.dbID         := rcDBID
-  taskRepl_s3.pcuIndex.bankID       := io.bank
+  taskRepl_s3.pcuIndex.dcuID        := io.dcuID
   taskRepl_s3.pcuMes.useAddr        := task_s3_g.bits.taskMes.useAddr
   taskRepl_s3.pcuMes.selfWay        := OHToUInt(dirRes_s3.bits.s.wayOH)
   taskRepl_s3.pcuMes.toDCU          := false.B
@@ -370,7 +370,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   commit_s3.chiMes.expCompAck     := task_s3_g.bits.chiMes.expCompAck
   commit_s3.chiMes.opcode         := decode_s3.respOp
   commit_s3.chiMes.resp           := decode_s3.resp
-  commit_s3.pcuIndex.from.incoID  := io.incoID
+  commit_s3.pcuIndex.from.incoID  := io.dcuID
   commit_s3.pcuIndex.to.incoID    := IncoID.LOCALSLV.U
   commit_s3.pcuIndex.mshrSet      := task_s3_g.bits.taskMes.mSet
   commit_s3.pcuIndex.mshrWay      := task_s3_g.bits.taskMes.mshrWay
@@ -386,10 +386,10 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   taskSnpEvict_s3.chiMes.doNotGoToSD    := true.B
   taskSnpEvict_s3.chiMes.retToSrc       := true.B
   taskSnpEvict_s3.chiMes.opcode         := SnpUnique
-  taskSnpEvict_s3.pcuIndex.from.incoID  := io.incoID
+  taskSnpEvict_s3.pcuIndex.from.incoID  := io.dcuID
   taskSnpEvict_s3.pcuIndex.to.incoID    := IncoID.LOCALSLV.U
   taskSnpEvict_s3.pcuIndex.mshrWay      := task_s3_g.bits.taskMes.mshrWay
-  taskSnpEvict_s3.pcuIndex.bankID       := io.bank
+  taskSnpEvict_s3.pcuIndex.dcuID        := io.dcuID
   taskSnpEvict_s3.pcuMes.useAddr        := dirRes_s3.bits.sf.useAddr
 
 
@@ -522,7 +522,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   // S3
   val cnt_s3_g  = RegInit(0.U(64.W))
   cnt_s3_g      := Mux(!valid_s3 | canGo_s3, 0.U, cnt_s3_g + 1.U)
-  assert(cnt_s3_g < TIMEOUT_PIPEEXU.U, "ProcessPipe[0x%x] EXECUTE ADDR[0x%x] OP[0x%x] TIMEOUT", task_s3_g.bits.taskMes.pipeID, task_s3_g.bits.taskMes.fullAddr(io.bank), task_s3_g.bits.chiMes.opcode)
+  assert(cnt_s3_g < TIMEOUT_PIPEEXU.U, "ProcessPipe[0x%x] EXECUTE ADDR[0x%x] OP[0x%x] TIMEOUT", task_s3_g.bits.taskMes.pipeID, task_s3_g.bits.taskMes.fullAddr(io.dcuID, io.pcuID), task_s3_g.bits.chiMes.opcode)
 
   // Other
   assert(!valid_s3 | !todo_s3.asUInt.asBools.zip(done_s3_g.asUInt.asBools).map { case(todo, done) => !todo & done }.reduce(_ | _))

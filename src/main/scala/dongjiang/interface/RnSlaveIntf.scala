@@ -87,53 +87,53 @@ import xs.utils.perf.{DebugOptions, DebugOptionsKey}
  * { nodeID | txnID }
  *
  * pcuIdx: PCU Index
- * { from(incoID) | to(incoID) | entryID | mshrIdx(mshrWay | mshrSet) | dbID | bankID }
+ * { from(incoID) | to(incoID) | entryID | mshrIdx(mshrWay | mshrSet) | dbID | dcuID }
  *
  *
  * Read / Dataless:
  * { Read / Dataless } TxReq  From CHI And Store In Intf          { chiIdx.nodeID = SrcID } { chiIdx.txnID = TxnID }                                        |
- * { Req2Exu         } Req    From Intf And Send To EXU         { chiIdx.nodeID = SrcID } { chiIdx.txnID = TxnID }                                        | { pcuIdx.to = chiMes.bankID } { pcuIdx.from = LOCALSLV } { pcuIdx.entryID = entryID }
- * { ReqAck          } ReqAck From EXU and Match With Entry ID                                                                                            | { pcuIdx.entryID == entryID }
- * { Resp2Intf       } Resp   From EXU And Store In Intf        { chiIdx.nodeID = tgtID } { chiIdx.txnID = txnID }                                        | { pcuIdx.dbID = pcuIdx.dbID }
+ * { Req2Exu         } Req    From Intf And Send To EXU           { chiIdx.nodeID = SrcID } { chiIdx.txnID = TxnID }                                        | { pcuIdx.to = chiMes.dcuID } { pcuIdx.from = LOCALSLV } { pcuIdx.entryID = entryID }
+ * { ReqAck          } ReqAck From EXU and Match With Entry ID                                                                                              | { pcuIdx.entryID == entryID }
+ * { Resp2Intf       } Resp   From EXU And Store In Intf          { chiIdx.nodeID = tgtID } { chiIdx.txnID = txnID }                                        | { pcuIdx.dbID = pcuIdx.dbID }
  * { Comp(Data)      } RxRsp  Send To CHI                         { TgtID = chiIdx.nodeID } { TxnID = chiIdx.txnID } { HomeNID = hnfID } { DBID = entryID } |
  * { CompAck         } TxRsp  From CHI And Match With Entry ID    { TxnID == entryID }                                                                      |
  *
  *
  * Read with DMT: TODO
  * { Read            } TxReq  From CHI And Store In Intf          { chiIdx.nodeID = SrcID } { chiIdx.txnID = TxnID }                                        |
- * { Req2Exu         } Req    From Intf And Send To EXU         { chiIdx.nodeID = SrcID } { chiIdx.txnID = TxnID }                                        | { pcuIdx.to = chiMes.bankID } { pcuIdx.from = LOCALSLV } { pcuIdx.entryID = entryID }
- * { ReqAck          } ReqAck From EXU and Match With Entry ID                                                                                            | { pcuIdx.entryID == entryID }
- * { CompAck         } TxRsp  From CHI And Send Resp To EXU                                                                                               | { pcuIdx.to = TxnID.head } { pcuIdx.mshrIdx = TxnID.tail }
+ * { Req2Exu         } Req    From Intf And Send To EXU           { chiIdx.nodeID = SrcID } { chiIdx.txnID = TxnID }                                        | { pcuIdx.to = chiMes.dcuID } { pcuIdx.from = LOCALSLV } { pcuIdx.entryID = entryID }
+ * { ReqAck          } ReqAck From EXU and Match With Entry ID                                                                                              | { pcuIdx.entryID == entryID }
+ * { CompAck         } TxRsp  From CHI And Send Resp To EXU                                                                                                 | { pcuIdx.to = TxnID.head } { pcuIdx.mshrIdx = TxnID.tail }
  *
  *
  * Write:
  * { Write           } TxReq  From CHI And Store In Intf          { chiIdx.nodeID = SrcID } { chiIdx.txnID = TxnID }                                        |
  * { CompDBIDResp    } RxRsp  Send To CHI                         { TgtID = chiIdx.nodeID } { TxnID = chiIdx.txnID } { DBID = entryID }                     |
  * { WriteData       } TxRsp  From CHI And Match With Entry ID    { TxnID == entryID }                                                                      |
- * { Req2Exu         } Req    From Intf And Send To EXU                                                                                                   | { pcuIdx.to = chiMes.bankID } { pcuIdx.incfrom = LOCALSLV } { pcuIdx.entryID = entryID } { pcuIdx.dbID = pcuIdx.dbID }
- * { ReqAck          } ReqAck From EXU and Match With Entry ID                                                                                            | { pcuIdx.entryID == entryID }
+ * { Req2Exu         } Req    From Intf And Send To EXU                                                                                                     | { pcuIdx.to = chiMes.dcuID } { pcuIdx.incfrom = LOCALSLV } { pcuIdx.entryID = entryID } { pcuIdx.dbID = pcuIdx.dbID }
+ * { ReqAck          } ReqAck From EXU and Match With Entry ID                                                                                              | { pcuIdx.entryID == entryID }
  *
  *
  * Write with DWT: Not implemented in the system
  * { Write           } TxReq  From CHI And Store In Intf          { chiIdx.nodeID = SrcID } { chiIdx.txnID = TxnID }                                        |
- * { Req2Exu         } Req    From Intf And Send To EXU         { chiIdx.nodeID = SrcID } { chiIdx.txnID = TxnID }                                        | { pcuIdx.to = chiMes.bankID } { pcuIdx.from = LOCALSLV } { pcuIdx.entryID = entryID }
- * { ReqAck          } ReqAck From EXU and Match With Entry ID                                                                                            | { pcuIdx.entryID == entryID }
+ * { Req2Exu         } Req    From Intf And Send To EXU           { chiIdx.nodeID = SrcID } { chiIdx.txnID = TxnID }                                        | { pcuIdx.to = chiMes.dcuID } { pcuIdx.from = LOCALSLV } { pcuIdx.entryID = entryID }
+ * { ReqAck          } ReqAck From EXU and Match With Entry ID                                                                                              | { pcuIdx.entryID == entryID }
  *
  *
  * Snoop:
- * { Req2Node        } Req    From EXU And Store In Intf                                                                                                  | { pcuIdx.snpVec = idx.snpVec } { pcuIdx.mshrIdx = pcuIdx.mshrIdx }
+ * { Req2Node        } Req    From EXU And Store In Intf                                                                                                    | { pcuIdx.snpVec = idx.snpVec } { pcuIdx.mshrIdx = pcuIdx.mshrIdx }
  * { Snoop           } Req    Send To CHI                         { TgtID = snpID } { TxnID = entryID }                                                     |
  * { SnResp(Data)    } Resp   From CHI And Match With Entry ID    { TxnID == entryID }                                                                      |
- * { Resp2Exu        } Resp   Send To EXU                                                                                                                 | { pcuIdx.to = chiMes.bankID } { pcuIdx.from = LOCALSLV } { pcuIdx.mshrIdx = mshrIdx }
+ * { Resp2Exu        } Resp   Send To EXU                                                                                                                   | { pcuIdx.to = chiMes.dcuID } { pcuIdx.from = LOCALSLV } { pcuIdx.mshrIdx = mshrIdx }
  *
  *
  * Snoop with DCT: TODO
- * { Req2Node        } Req    From EXU And Store In Intf        { chiIdx.nodeID =  chiIdx.nodeID } { chiIdx.txnID =  chiIdx.txnID }                       | { pcuIdx.snpVec = idx.snpVec } { pcuIdx.mshrIdx = pcuIdx.mshrIdx }
+ * { Req2Node        } Req    From EXU And Store In Intf        { chiIdx.nodeID =  chiIdx.nodeID } { chiIdx.txnID =  chiIdx.txnID }                         | { pcuIdx.snpVec = idx.snpVec } { pcuIdx.mshrIdx = pcuIdx.mshrIdx }
  * { Snoop           } Req    Send To CHI                         { TgtID = snpID } { TxnID = entryID }                                                     |
  * { SnResp          } Resp   From CHI And Match With Entry ID    { TxnID == entryID }                                                                      |
  * { SnoopFwd        } Req    Send To CHI                         { TgtID = snpID } { TxnID = entryID } { FwdNID = chiIdx.nodeID } { FwdTxnID = chiIdx.txnID }
  * { SnpResp(Data)Fwded } Resp From CHI And Match With Entry ID   { TxnID == entryID }                                                                      |
- * { Resp2Exu        } Resp   Send To EXU                                                                                                                 | { pcuIdx.to = chiMes.bankID } { pcuIdx.from = LOCALSLV } { pcuIdx.mshrIdx = mshrIdx } { pcuIdx.dbID = pcuIdx.dbID }
+ * { Resp2Exu        } Resp   Send To EXU                                                                                                                   | { pcuIdx.to = chiMes.dcuID } { pcuIdx.from = LOCALSLV } { pcuIdx.mshrIdx = mshrIdx } { pcuIdx.dbID = pcuIdx.dbID }
  *
  *
  */
@@ -181,8 +181,8 @@ class RSEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle  {
   def isSendSnp     = entryMes.state === RSState.Snp2Node
   def isSendSnpIng  = entryMes.state === RSState.Snp2NodeIng
   def isLastBeat    = entryMes.getDataNum === (nrBeat - 1).U
-  def fullAddr      = entryMes.fullAddr(pcuIndex.bankID)
-  def snpAddr       = entryMes.snpAddr(pcuIndex.bankID)
+  def fullAddr(p: UInt) = entryMes.fullAddr(pcuIndex.dcuID, p)
+  def snpAddr (p: UInt) = entryMes.snpAddr(pcuIndex.dcuID, p)
 }
 
 
@@ -236,7 +236,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
    * for Debug
    */
   val entrys_dbg_addr = Wire(Vec(param.nrEntry, UInt(fullAddrBits.W)))
-  entrys_dbg_addr.zipWithIndex.foreach { case (addr, i) => addr := entrys(i).fullAddr }
+  entrys_dbg_addr.zipWithIndex.foreach { case (addr, i) => addr := entrys(i).fullAddr(io.pcuID) }
   if (p(DebugOptionsKey).EnableDebug) {
     dontTouch(entrys_dbg_addr)
   }
@@ -253,7 +253,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
       // Receive New Req
       when((rxReq.fire | io.req2Intf.fire | io.resp2Intf.fire) & entryFreeID === i.U) {
         chiIdx          := entrySave.chiIndex
-        assert(entrys(i).state === RSState.Free, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr, entrys(i).state)
+        assert(entrys(i).state === RSState.Free, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID)(io.pcuID), entrys(i).state)
       }
   }
 
@@ -271,10 +271,10 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
         val hitRespRsp  = rxRsp.fire & entryRecChiRspID === i.U
         chiMes.resp     := Mux(hitRespDat, rxDat.bits.Resp, Mux(hitRespRsp & !chiMes.retToSrc, rxRsp.bits.Resp, chiMes.resp))
         when(hitRespDat) {
-          assert(Mux(chiMes.isSnp & chiMes.retToSrc, entrys(i).state === RSState.Snp2NodeIng | entrys(i).state === RSState.WaitSnpResp, entrys(i).state === RSState.WaitData), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr, entrys(i).state)
+          assert(Mux(chiMes.isSnp & chiMes.retToSrc, entrys(i).state === RSState.Snp2NodeIng | entrys(i).state === RSState.WaitSnpResp, entrys(i).state === RSState.WaitData), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
         }.elsewhen(hitRespRsp) {
-          when(rxRsp.bits.Opcode === CompAck) { assert(entrys(i).state === RSState.WaitCompAck, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr, entrys(i).state) }
-          .otherwise { assert(entrys(i).state === RSState.Snp2NodeIng | entrys(i).state === RSState.WaitSnpResp, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr, entrys(i).state) }
+          when(rxRsp.bits.Opcode === CompAck) { assert(entrys(i).state === RSState.WaitCompAck, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state) }
+          .otherwise { assert(entrys(i).state === RSState.Snp2NodeIng | entrys(i).state === RSState.WaitSnpResp, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state) }
         }
       }
   }
@@ -290,7 +290,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
       // Receive DBID From DataBuffer
       }.elsewhen(io.dbSigs.dbidResp.fire & entryRecDBID === i.U) {
         pcuIdx.dbID     := io.dbSigs.dbidResp.bits.dbID
-        assert(entrys(i).state === RSState.WaitDBID, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr, entrys(i).state)
+        assert(entrys(i).state === RSState.WaitDBID, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
       }
   }
 
@@ -318,15 +318,15 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
        */
       when((rxReq.fire | io.req2Intf.fire | io.resp2Intf.fire) & entryFreeID === i.U) {
         val snp2IntfHit     = io.req2Intf.fire    & io.req2Intf.bits.pcuMes.useAddr                       === entrySave.entryMes.useAddr & io.req2Intf.bits.chiMes.isSnp  // SNP add NID
-        val resp2ExuHit     = io.resp2Exu.fire    & entrys(entryResp2ExuID).entryMes.useAddr            === entrySave.entryMes.useAddr                                  // SNP reduce NID
+        val resp2ExuHit     = io.resp2Exu.fire    & entrys(entryResp2ExuID).entryMes.useAddr              === entrySave.entryMes.useAddr                                  // SNP reduce NID
         val reqAckHit       = io.reqAck2Intf.fire & entrys(io.reqAck2Intf.bits.entryID).entryMes.useAddr  === entrySave.entryMes.useAddr & !io.reqAck2Intf.bits.retry     // REQ reduce NID
         val saveNID         = entrySave.entryMes.nID
         // req
         when(rxReq.fire) {
           entryMes.nID      := saveNID - resp2ExuHit.asUInt - reqAckHit.asUInt
           // assert
-          assert(saveNID >= (resp2ExuHit.asTypeOf(saveNID) + reqAckHit.asTypeOf(saveNID)), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr, entrys(i).state)
-          assert(!(snp2IntfHit & resp2ExuHit), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr, entrys(i).state)
+          assert(saveNID >= (resp2ExuHit.asTypeOf(saveNID) + reqAckHit.asTypeOf(saveNID)), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          assert(!(snp2IntfHit & resp2ExuHit), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
           assert(Mux(entrySave.chiMes.isReq & isWriteX(entrySave.chiMes.opcode), !snp2IntfHit & !resp2ExuHit, true.B), "TODO")
         // snp or resp
         }.otherwise {
@@ -338,12 +338,12 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
        */
       }.elsewhen(!entrys(i).isFree & entrys(i).chiMes.isReq) {
         val snp2IntfHit     = io.req2Intf.fire    & io.req2Intf.bits.pcuMes.useAddr                       === entrySave.entryMes.useAddr & io.req2Intf.bits.chiMes.isSnp  // SNP add NID
-        val resp2ExuHit     = io.resp2Exu.fire    & entrys(entryResp2ExuID).entryMes.useAddr            === entrySave.entryMes.useAddr                                  // SNP reduce NID
+        val resp2ExuHit     = io.resp2Exu.fire    & entrys(entryResp2ExuID).entryMes.useAddr              === entrySave.entryMes.useAddr                                  // SNP reduce NID
         val reqAckHit       = io.reqAck2Intf.fire & entrys(io.reqAck2Intf.bits.entryID).entryMes.useAddr  === entrySave.entryMes.useAddr & !io.reqAck2Intf.bits.retry & io.reqAck2Intf.bits.entryID =/= i.U // REQ reduce NID
         entryMes.nID        := entryMes.nID + snp2IntfHit.asUInt - resp2ExuHit.asUInt - reqAckHit.asUInt
         // assert
-        assert((entryMes.nID + snp2IntfHit.asUInt) >= (resp2ExuHit.asTypeOf(UInt(intfEntryIdBits.W)) + reqAckHit.asTypeOf(UInt(intfEntryIdBits.W))), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr, entrys(i).state)
-        assert(!(snp2IntfHit & resp2ExuHit), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr, entrys(i).state)
+        assert((entryMes.nID + snp2IntfHit.asUInt) >= (resp2ExuHit.asTypeOf(UInt(intfEntryIdBits.W)) + reqAckHit.asTypeOf(UInt(intfEntryIdBits.W))), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+        assert(!(snp2IntfHit & resp2ExuHit), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
         assert(Mux(entrys(i).chiMes.isReq & isWriteX(entrys(i).chiMes.opcode), !snp2IntfHit & !resp2ExuHit, true.B), "TODO")
       }
 
@@ -363,10 +363,10 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
           val tgtSnpVec     = Wire(Vec(nrCcNode, Bool()))
           getSnpRespVec     := entryMes.getSnpRespOH.asBools
           tgtSnpVec         := entrys(i).chiIndex.snpCcMetaVec(nrCcNode - 1, 0).asBools
-          assert(Mux(rspHit, !getSnpRespVec(rspId), true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr, entrys(i).state)
-          assert(Mux(datHit, !getSnpRespVec(datId), true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr, entrys(i).state)
-          assert(Mux(rspHit, tgtSnpVec(rspId),      true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr, entrys(i).state)
-          assert(Mux(datHit, tgtSnpVec(datId),      true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr, entrys(i).state)
+          assert(Mux(rspHit, !getSnpRespVec(rspId), true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          assert(Mux(datHit, !getSnpRespVec(datId), true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          assert(Mux(rspHit, tgtSnpVec(rspId),      true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          assert(Mux(datHit, tgtSnpVec(datId),      true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
         }
       }
   }
@@ -392,7 +392,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
                               Mux(snpHit & !ret2Src, RSState.Snp2Node,
                                 Mux(writeHit, RSState.GetDBID,
                                     Mux(respHit, RSState.Resp2Node, state)))))
-          assert(PopCount(Seq(reqHit, writeHit, snpHit, respHit)) <= 1.U, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr, entrys(i).state)
+          assert(PopCount(Seq(reqHit, writeHit, snpHit, respHit)) <= 1.U, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
         }
         // State: Req2Exu
         is(RSState.Req2Exu) {
@@ -414,12 +414,12 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
         // State: WaitCompAck
         is(RSState.WaitCompAck) {
           val hit       = rxRsp.fire & rxRsp.bits.TxnID === i.U
-          assert(Mux(hit, rxRsp.bits.Opcode === CompAck, true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr, entrys(i).state)
+          assert(Mux(hit, rxRsp.bits.Opcode === CompAck, true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
           state         := Mux(hit, RSState.Free, state)
         }
         // State: GetDBID
         is(RSState.GetDBID) {
-          val hit       = io.dbSigs.getDBID.fire & entryGetDBID === i.U; assert(Mux(hit, entrys(i).entryMes.nID === 0.U, true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr, entrys(i).state) // TODO: Consider Write can go no sorting required
+          val hit       = io.dbSigs.getDBID.fire & entryGetDBID === i.U; assert(Mux(hit, entrys(i).entryMes.nID === 0.U, true.B), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state) // TODO: Consider Write can go no sorting required
           state         := Mux(hit, RSState.WaitDBID, state)
         }
         // State: WaitDBID
@@ -487,7 +487,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   //                                              | RESP(resp2Intf)                                 | SNP(req2Intf)                       | REQ(rxReq)
   entrySave.entryMes.nID          := Mux(respVal, 0.U,                                  Mux(snpVal, 0.U,                                  PopCount(taskMatchVec)))
   entrySave.entryMes.useAddr      := Mux(respVal, 0.U,                                  Mux(snpVal, io.req2Intf.bits.pcuMes.useAddr,      parseFullAddr(rxReq.bits.Addr)._5))
-  entrySave.pcuIndex.bankID       := Mux(respVal, io.resp2Intf.bits.pcuIndex.bankID,    Mux(snpVal, io.req2Intf.bits.pcuIndex.bankID,     parseFullAddr(rxReq.bits.Addr)._3))
+  entrySave.pcuIndex.dcuID        := Mux(respVal, io.resp2Intf.bits.pcuIndex.dcuID,     Mux(snpVal, io.req2Intf.bits.pcuIndex.dcuID,      parseFullAddr(rxReq.bits.Addr)._3))
   entrySave.pcuIndex.from         := Mux(respVal, io.resp2Intf.bits.pcuIndex.from,      Mux(snpVal, io.req2Intf.bits.pcuIndex.from,       DontCare))
   entrySave.pcuIndex.mshrWay      := Mux(respVal, DontCare,                             Mux(snpVal, io.req2Intf.bits.pcuIndex.mshrWay,    DontCare))
   entrySave.pcuIndex.dbID         := Mux(respVal, io.resp2Intf.bits.pcuIndex.dbID,      Mux(snpVal, 0.U,                                  0.U))
@@ -529,11 +529,11 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   io.req2Exu.bits.chiIndex.txnID        := entrys(entrySendReqID).chiIndex.txnID
   io.req2Exu.bits.pcuMes.useAddr        := entrys(entrySendReqID).entryMes.useAddr
   // pcuIndex
-  io.req2Exu.bits.pcuIndex.to.incoID    := entrys(entrySendReqID).pcuIndex.bankID
+  io.req2Exu.bits.pcuIndex.to.incoID    := entrys(entrySendReqID).pcuIndex.dcuID
   io.req2Exu.bits.pcuIndex.from.incoID  := param.intfID.U
   io.req2Exu.bits.pcuIndex.entryID      := entrySendReqID
   io.req2Exu.bits.pcuIndex.dbID         := entrys(entrySendReqID).pcuIndex.dbID
-  io.req2Exu.bits.pcuIndex.bankID       := entrys(entrySendReqID).pcuIndex.bankID
+  io.req2Exu.bits.pcuIndex.dcuID        := entrys(entrySendReqID).pcuIndex.dcuID
 
 
 
@@ -643,7 +643,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
    */
   val snpShouldSendVec  = entrys(entrySendSnpID).chiIndex.snpCcMetaVec
   val snpBeSendVec      = snpShouldSendVec ^ snpAlreadySendVecReg
-  val snpTgtID          = getFullNodeID(getUseNodeIDByMetaID(PriorityEncoder(snpBeSendVec))); assert(PriorityEncoder(snpBeSendVec) < nrCcNode.U | !txSnp.valid)
+  val snpTgtID          = getNodeIDByMetaID(PriorityEncoder(snpBeSendVec)); assert(PriorityEncoder(snpBeSendVec) < nrCcNode.U | !txSnp.valid)
   snpIsLast             := PopCount(snpBeSendVec.asBools) === 1.U; dontTouch(snpIsLast)
   snpAlreadySendVecReg  := Mux(txSnp.fire, Mux(snpIsLast, 0.U, snpAlreadySendVecReg | UIntToOH(getMetaIDByNodeID(snpTgtID))), snpAlreadySendVecReg); assert(fromCcNode(snpTgtID) | !txSnp.valid)
 
@@ -652,7 +652,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
    */
   txSnp.valid          := entrySendSnpVec.reduce(_ | _) | entrySendSnpIngVec.reduce(_ | _)
   txSnp.bits           := DontCare
-  txSnp.bits.Addr      := entrys(entrySendSnpID).snpAddr
+  txSnp.bits.Addr      := entrys(entrySendSnpID).snpAddr(io.pcuID)
   txSnp.bits.Opcode    := entrys(entrySendSnpID).chiMes.opcode
   txSnp.bits.TgtID     := snpTgtID
   txSnp.bits.SrcID     := io.hnfID
@@ -688,13 +688,14 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
 // ---------------------------  Assertion  -------------------------------- //
   val cntReg = RegInit(VecInit(Seq.fill(param.nrEntry) { 0.U(64.W) }))
   cntReg.zip(entrys).foreach { case(c, p) => c := Mux(p.isFree, 0.U, c + 1.U) }
-  cntReg.zipWithIndex.foreach { case(c, i) => assert(c < TIMEOUT_RSINTF.U, "RNSLV ENTRY[0x%x] ADDR[0x%x] CHANNEL[%x] OP[0x%x] TIMEOUT", i.U, entrys(i).fullAddr, entrys(i).chiMes.channel, entrys(i).chiMes.opcode) }
+  cntReg.zipWithIndex.foreach { case(c, i) => assert(c < TIMEOUT_RSINTF.U, "RNSLV ENTRY[0x%x] ADDR[0x%x] CHANNEL[%x] OP[0x%x] TIMEOUT", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).chiMes.channel, entrys(i).chiMes.opcode) }
 
   when(rxReq.valid) {
-    // [1:cacheable] [2:ccxChipID] [3:bank] [4:offset] [5:useAddr]
+    // [1:cacheable] [2:ccxChipID] [3:dcuBank] [4:pcuBank] [5:offset] [6:useAddr]
     assert(parseFullAddr(rxReq.bits.Addr)._1 === 0.U)
     assert(parseFullAddr(rxReq.bits.Addr)._2 === 0.U)
-    assert(parseFullAddr(rxReq.bits.Addr)._4 === 0.U)
+    assert(parseFullAddr(rxReq.bits.Addr)._4 === io.pcuID)
+    assert(parseFullAddr(rxReq.bits.Addr)._5 === 0.U)
     assert(rxReq.bits.TgtID === io.hnfID)
   }
 }

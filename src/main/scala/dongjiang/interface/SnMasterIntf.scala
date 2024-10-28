@@ -34,19 +34,19 @@ import xs.utils.perf.{DebugOptions, DebugOptionsKey}
  * { nodeID | txnID }
  *
  * pcuIdx: PCU Index
- * { from(incoID) | to(incoID) | entryID | mshrIdx(mshrWay | mshrSet) | dbID | bankID }
+ * { from(incoID) | to(incoID) | entryID | mshrIdx(mshrWay | mshrSet) | dbID | dcuID }
  *
  *
  * Read: TODO: When using Read without DMT need to make sure that the RnSlave does not fill up the DataBuffer.
  * { Req2Intf        } Req    From Exu And Store In Intf                                                                                                    | { pcuIdx.mshrIdx = pcuIdx.mshrIdx } { pcuIdx.dcuIdx = pcuIdx.dcuIdx }
  * { Read            } Req    Send To CHI                         { TgtID = tgtID } { ReturnNID = hnfID } { ReturnTxnID = entryID }                         |
  * { CompData        } Resp   From CHI And Match With Entry ID    { TxnID == entryID }                                                                      |
- * { Resp2Exu        } Resp   Send To Exu                                                                                                                   | { pcuIdx.to = chiMes.bankID } { pcuIdx.from = LOCALMAS } { pcuIdx.mshrIdx = mshrIdx }
+ * { Resp2Exu        } Resp   Send To Exu                                                                                                                   | { pcuIdx.to = chiMes.dcuID } { pcuIdx.from = LOCALMAS } { pcuIdx.mshrIdx = mshrIdx }
  *
  *
  * Read With DMT: Not implemented in the system
  * { Req2Intf        } Req    From Exu And Store In Intf          { chiIdx.nodeID = chiIdx.nodeID } { chiIdx.txnID =  chiIdx.txnID }                        | { pcuIdx.mshrIdx = pcuIdx.mshrIdx }
- * { Read            } Req    Send To CHI                         { TgtID = chiMes.tgtID } { TxnID = Cat(chiMes.bankID, pcuIdx.mshrIdx) } { ReturnNID = chiIdx.nodeID } { ReturnTxnID = chiIdx.txnID }
+ * { Read            } Req    Send To CHI                         { TgtID = chiMes.tgtID } { TxnID = Cat(chiMes.dcuID, pcuIdx.mshrIdx) } { ReturnNID = chiIdx.nodeID } { ReturnTxnID = chiIdx.txnID }
  *
  *
  * Write:
@@ -55,14 +55,14 @@ import xs.utils.perf.{DebugOptions, DebugOptionsKey}
  * { DBIDResp        } Resp   From CHI And Match With Entry ID    { TxnID == entryID } { chiIdx.txnID = DBID } (Store DBID In chiIdx.txnID)                 |
  * { NCBWrData       } Data   Send To CHI                         { TgtID = tgtID } { TxnID = chiIdx.txnID }                                                |
  * { Comp            } Resp   From CHI And Match With Entry ID    { TxnID == entryID }                                                                      |
- * { Resp2Exu        } Resp   Send To Exu                                                                                                                   | { pcuIdx.to = chiMes.bankID } { pcuIdx.from = LOCALMAS } { pcuIdx.mshrIdx = mshrIdx }
+ * { Resp2Exu        } Resp   Send To Exu                                                                                                                   | { pcuIdx.to = chiMes.dcuID } { pcuIdx.from = LOCALMAS } { pcuIdx.mshrIdx = mshrIdx }
  *
  *
  * Write With DWT: TODO
  * { Req2Intf        } Req    From Exu And Store In Intf          { chiIdx.nodeID = chiIdx.nodeID } { chiIdx.txnID =  chiIdx.txnID }                        | { pcuIdx.mshrIdx = pcuIdx.mshrIdx } { pcuIdx.dcuIdx = pcuIdx.dcuIdx }
  * { Write           } Req    Send To CHI                         { TgtID = tgtID } { TxnID = entryID } { ReturnNID = chiIdx.nodeID } { ReturnTxnID = chiIdx.txnID } |
  * { Comp            } Resp   From CHI And Match With Entry ID    { TxnID == entryID }                                                                      |
- * { Resp2Exu        } Resp   Send To Exu                                                                                                                   | { pcuIdx.to = chiMes.bankID } { pcuIdx.from = LOCALMAS } { pcuIdx.mshrIdx = mshrIdx }
+ * { Resp2Exu        } Resp   Send To Exu                                                                                                                   | { pcuIdx.to = chiMes.dcuID } { pcuIdx.from = LOCALMAS } { pcuIdx.mshrIdx = mshrIdx }
  *
  * Replace:
  * { Req2Intf        } Req    From Exu And Store In Intf                                                                                                    | { pcuIdx.mshrIdx = pcuIdx.mshrIdx } { pcuIdx.dbID = pcuIdx.dbID } { pcuIdx.dcuIdx = pcuIdx.dcuIdx }
@@ -71,7 +71,7 @@ import xs.utils.perf.{DebugOptions, DebugOptionsKey}
  * { Replace         } Req    Send To CHI                         { TgtID = tgtID } { TxnID = entryID } { ReturnTxnID = chiIdx.txnID }                      |
  * { NCBWrData       } Data   Send To CHI                         { TgtID = tgtID } { TxnID = chiIdx.txnID }                                                |
  * { Comp            } Resp   From CHI And Match With Entry ID    { TxnID == entryID }                                                                      |
- * { Resp2Exu        } Resp   Send To Exu                                                                                                                   | { pcuIdx.to = chiMes.bankID } { pcuIdx.from = LOCALMAS } { pcuIdx.mshrIdx = mshrIdx }
+ * { Resp2Exu        } Resp   Send To Exu                                                                                                                   | { pcuIdx.to = chiMes.dcuID } { pcuIdx.from = LOCALMAS } { pcuIdx.mshrIdx = mshrIdx }
  *
  *
  */
@@ -127,22 +127,23 @@ class SMEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle {
   def isRead        = isReadX(chiMes.opcode)
   def isWrite       = isWriteX(chiMes.opcode)
   def isRepl        = isReplace(chiMes.opcode)
-  def fullAddr      = entryMes.fullAddr(pcuIndex.bankID)
-  def mshrIndex     = Cat(pcuIndex.bankID, entryMes.mSet, pcuIndex.mshrWay)
+  def mshrIndex     = Cat(pcuIndex.dcuID, entryMes.mSet, pcuIndex.mshrWay)
+  def fullAddr (p: UInt) = entryMes.fullAddr(pcuIndex.dcuID, p)
 
-  def fullTgtID     : UInt = {
+
+  def fullTgtID(fIDSeq: Seq[UInt]): UInt = { // friendIdSeq
     val nodeID      = WireInit(0.U(fullNodeIdBits.W))
-    when(entryMes.toDCU) { nodeID := getDcuNodeIDByBankID(pcuIndex.bankID) }
+    when(entryMes.toDCU) { nodeID := getDcuFriendIDByDcuBankID(pcuIndex.dcuID, fIDSeq) }
     .otherwise           { nodeID := ddrcNodeId.U }
     nodeID
   }
-  def reqAddr       : UInt = {
+  def reqAddr(p: UInt) : UInt = {
     val addr        = WireInit(0.U(fullAddrBits.W))
     when(entryMes.toDCU) { addr := getDCUAddress(entryMes.sSet, entryMes.dirBank, entryMes.selfWay) }
-    .otherwise           { addr := fullAddr }
+    .otherwise           { addr := fullAddr(p) }
     addr
   }
-  def reqOp         : UInt = {
+  def reqOp: UInt = {
     val op          = WireInit(0.U(7.W))
     when(!isRepl)   { op := chiMes.opcode }
     .elsewhen(entryMes.toDCU) { op := chiMes.opcode }
@@ -188,7 +189,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
    * for Debug
    */
   val entrys_dbg_addr = Wire(Vec(param.nrEntry, UInt(fullAddrBits.W)))
-  entrys_dbg_addr.zipWithIndex.foreach { case(addr, i) => addr := entrys(i).fullAddr }
+  entrys_dbg_addr.zipWithIndex.foreach { case(addr, i) => addr := entrys(i).fullAddr(io.pcuID) }
   if (p(DebugOptionsKey).EnableDebug) {
     dontTouch(entrys_dbg_addr)
   }
@@ -204,23 +205,23 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
        */
       when(io.req2Intf.fire & entryGetReqID === i.U) {
         entry                       := entrySave
-        assert(entry.state === SMState.Free, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr)
+        assert(entry.state === SMState.Free, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
       /*
        * Receive DBID From DataBuffer
        */
       }.elsewhen(io.dbSigs.dbidResp.fire & entryRecDBID === i.U) {
         entry.entryMes.hasData      := true.B
         entry.pcuIndex.dbID         := io.dbSigs.dbidResp.bits.dbID
-        assert(entry.state === SMState.WaitDBID, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr)
+        assert(entry.state === SMState.WaitDBID, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
       /*
        * Receive Data And Resp From CHI RxDat
        */
       }.elsewhen(rxDat.fire & rxDat.bits.TxnID === i.U) {
         entry.entryMes.getDataNum   := entry.entryMes.getDataNum + 1.U
         entry.chiMes.resp           := rxDat.bits.Resp
-        assert(rxDat.bits.Opcode === CompData, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr)
-        assert(entry.isRead, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr)
-        assert(entry.state === SMState.WaitNodeData, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr)
+        assert(rxDat.bits.Opcode === CompData, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
+        assert(entry.isRead, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
+        assert(entry.state === SMState.WaitNodeData, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
       /*
        * Receive DBID or Comp From CHI RxRsp
        */
@@ -228,21 +229,21 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
         when(rxRsp.bits.Opcode === DBIDResp) {
           entry.chiIndex.txnID      := rxRsp.bits.DBID
           entry.entryMes.toDCU      := true.B
-          assert(entry.state === SMState.WaitReplDBID | entry.state === SMState.WaitNodeDBID, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr)
-          assert(Mux(entry.isRepl, Mux(entry.state === SMState.WaitReplDBID, entry.entryMes.toDCU, !entry.entryMes.toDCU), entry.entryMes.toDCU), "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr)
+          assert(entry.state === SMState.WaitReplDBID | entry.state === SMState.WaitNodeDBID, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
+          assert(Mux(entry.isRepl, Mux(entry.state === SMState.WaitReplDBID, entry.entryMes.toDCU, !entry.entryMes.toDCU), entry.entryMes.toDCU), "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
         }
         when(rxRsp.bits.Opcode === Comp) {
           entry.entryMes.alrGetComp := true.B
           assert(Mux(!entry.isRepl | entry.entryMes.alrGetComp, entry.state === SMState.WaitNodeComp,
             entry.state === SMState.WaitReplDBID | entry.state === SMState.RCDB | entry.state === SMState.WriteData2Node |  entry.state === SMState.WaitNodeComp),
-            "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr)
+            "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
         }
       /*
        * Receive Data From DataBuffer
        */
       }.elsewhen(io.dbSigs.dataFDB.fire & entry.isWaitDBData & io.dbSigs.dataFDB.bits.dbID === entry.pcuIndex.dbID) {
         entry.entryMes.getDataNum   := entry.entryMes.getDataNum + 1.U
-        assert(entry.state === SMState.WriteData2Node, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr)
+        assert(entry.state === SMState.WriteData2Node, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
       /*
        * Clean Intf Entry When Its Free
        */
@@ -316,7 +317,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
         }
         // State: Replace2Node
         is(SMState.Replace2Node) {
-          val hit       = txReq.fire & entryReq2NodeID === i.U; assert(!hit | entry.isRepl, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr)
+          val hit       = txReq.fire & entryReq2NodeID === i.U; assert(!hit | entry.isRepl, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
           entry.state     := Mux(hit, SMState.WaitReplDBID, entry.state)
         }
         // State: WaitReplDBID
@@ -392,9 +393,9 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   entryReq2NodeID         := PriorityEncoder(entryReq2NodeVec)
 
   txReq.valid             := entryReq2NodeVec.reduce(_ | _)
-  txReq.bits.Addr         := entrys(entryReq2NodeID).reqAddr
+  txReq.bits.Addr         := entrys(entryReq2NodeID).reqAddr(io.pcuID)
   txReq.bits.Opcode       := entrys(entryReq2NodeID).reqOp
-  txReq.bits.TgtID        := entrys(entryReq2NodeID).fullTgtID
+  txReq.bits.TgtID        := entrys(entryReq2NodeID).fullTgtID(io.fIDVec)
   txReq.bits.TxnID        := Mux(entrys(entryReq2NodeID).entryMes.doDMT, entrys(entryReq2NodeID).mshrIndex, entryReq2NodeID)
   txReq.bits.SrcID        := io.hnfID
   txReq.bits.Size         := log2Ceil(djparam.blockBytes).U
@@ -432,7 +433,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   txDat.valid            := io.dbSigs.dataFDB.valid
   txDat.bits             := DontCare
   txDat.bits.Opcode      := NonCopyBackWriteData
-  txDat.bits.TgtID       := entrys(entrySendDatID).fullTgtID
+  txDat.bits.TgtID       := entrys(entrySendDatID).fullTgtID(io.fIDVec)
   txDat.bits.SrcID       := io.hnfID
   txDat.bits.TxnID       := entrys(entrySendDatID).chiIndex.txnID
   txDat.bits.DataID      := io.dbSigs.dataFDB.bits.dataID
@@ -478,5 +479,5 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
 // ---------------------------  Assertion  --------------------------------//
   val cntReg = RegInit(VecInit(Seq.fill(param.nrEntry) { 0.U(64.W) }))
   cntReg.zip(entrys).foreach { case (c, p) => c := Mux(p.isFree, 0.U, c + 1.U) }
-  cntReg.zipWithIndex.foreach { case (c, i) => assert(c < TIMEOUT_SMINTF.U, "SNMAS Intf[0x%x] STATE[0x%x] ADDR[0x%x] OP[0x%x] TIMEOUT", i.U, entrys(i).state, entrys(i).fullAddr, entrys(i).chiMes.opcode) }
+  cntReg.zipWithIndex.foreach { case (c, i) => assert(c < TIMEOUT_SMINTF.U, "SNMAS Intf[0x%x] STATE[0x%x] ADDR[0x%x] OP[0x%x] TIMEOUT", i.U, entrys(i).state, entrys(i).fullAddr(io.pcuID), entrys(i).chiMes.opcode) }
 }
