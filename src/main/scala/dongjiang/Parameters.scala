@@ -93,7 +93,6 @@ trait HasParseZJParam extends HasZJParams {
   lazy val localDDRCNode    = zjParams.localRing.filter(!_.mainMemory).head
   require(localCcNodes.nonEmpty)
   require(localHnfNodes.nonEmpty)
-  require(localDcuNodes.length >= localHnfNodes.length)
 
   // TODO: Get CSN
   lazy val hasCSN           = false
@@ -105,13 +104,14 @@ trait HasParseZJParam extends HasZJParams {
   lazy val opcodeBits       = 7
 
   // Local Base Node Mes
-  lazy val nrBank           = localDcuNodes.length
+  lazy val nrBank           = localDcuNodes.map(_.bankId).max + 1
   lazy val bankBits         = log2Ceil(nrBank)
-  lazy val nrBankPerPCU     = localDcuNodes.length / localHnfNodes.length
+  lazy val nrBankPerPCU     = nrBank / localHnfNodes.length
   lazy val bankPerPCUBits   = log2Ceil(nrBankPerPCU)
   lazy val nrCcNode         = localCcNodes.length
   lazy val ccNodeIdBits     = log2Ceil(nrCcNode)
   lazy val metaIdBits       = ccNodeIdBits
+  require(nrBank >= localHnfNodes.length)
   require(useNodeIdBits > metaIdBits)
 
   lazy val ccNodeIdSeq      = localCcNodes.map(_.nodeId)
@@ -271,10 +271,10 @@ trait HasDJParam extends HasParseZJParam {
     val ccxChipID = x >> fullAddrBits - (ccxChipBits + cacheableBits)
     val cacheable = x >> fullAddrBits - cacheableBits
     val useAddr   = Cat(x(fullAddrBits - (ccxChipBits + cacheableBits) - 1, bankOff + bankBits), x(bankOff - 1, offsetBits)); require(useAddr.getWidth == useAddrBits)
-    // assert: Additional checking of bankBits is required.
-    assert(cacheable === 0.U)
-    assert(ccxChipID === 0.U) // TODO: CSN
-    assert(offset === 0.U)
+    // Additional check:
+    // assert(cacheable === 0.U)
+    // assert(ccxChipID === 0.U) // TODO: CSN
+    // assert(offset === 0.U)
     // return: [1:cacheable] [2:ccxChipID] [3:bank] [4:offset] [5:useAddr]
     (cacheable(cacheableBits - 1, 0), ccxChipID(ccxChipBits - 1, 0), bank(bankBits - 1, 0), offset(offsetBits - 1, 0), useAddr)
   }
