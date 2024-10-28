@@ -153,11 +153,11 @@ object ZhujiangGlobal {
           val friendsOfIdxMin = segment0.slice(0, half0) ++ segment1.slice(half1, segment1.length)
           val friendsOfIdxMax = segment1.slice(0, half1) ++ segment0.slice(half0, segment0.length)
           if(idxMin == dcusPos.head) {
-            dcus.head.friends = friendsOfIdxMin
-            dcus.last.friends = friendsOfIdxMax
+            dcus.head.friends = friendsOfIdxMin.filterNot(n => n.nodeType == NodeType.S && !n.mainMemory)
+            dcus.last.friends = friendsOfIdxMax.filterNot(n => n.nodeType == NodeType.S && !n.mainMemory)
           } else {
-            dcus.head.friends = friendsOfIdxMax
-            dcus.last.friends = friendsOfIdxMin
+            dcus.head.friends = friendsOfIdxMax.filterNot(n => n.nodeType == NodeType.S && !n.mainMemory)
+            dcus.last.friends = friendsOfIdxMin.filterNot(n => n.nodeType == NodeType.S && !n.mainMemory)
           }
         }
       }
@@ -179,7 +179,7 @@ object ZhujiangGlobal {
           val disSeq = n.map(d => abs(nodes.indexOf(d) - pcuPos))
           val pos = disSeq.indexOf(disSeq.min)
           n(pos)
-        }).toSeq ++ memNode
+        }).toSeq.filter(n => n.nodeType == NodeType.S && !n.mainMemory) ++ memNode
       }
     }
     nodes
