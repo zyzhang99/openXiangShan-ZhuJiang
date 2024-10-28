@@ -13,6 +13,7 @@ import dongjiang.utils.Encoder._
 import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config._
+import xs.utils.perf.{DebugOptions, DebugOptionsKey}
 
 
 object MSHRState {
@@ -109,6 +110,15 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
   val respAlreadyReadDirReg = RegInit(false.B)
   // dir read mshr
   val resp2dirRegVec        = RegInit(0.U.asTypeOf(io.mshrResp2Dir))
+
+  /*
+   * for Debug
+   */
+  val mshr_dbg_addr = Wire(Vec(djparam.nrMSHRSets, Vec(djparam.nrMSHRWays, UInt(fullAddrBits.W))))
+  mshr_dbg_addr.zipWithIndex.foreach { case(set, i) => set.zipWithIndex.foreach { case(way, j) => way := mshrTableReg(i)(j).fullAddr(i.U, io.bank) } }
+  if (p(DebugOptionsKey).EnableDebug) {
+    dontTouch(mshr_dbg_addr)
+  }
 
 
   // ---------------------------------------------------------------------------------------------------------------------- //

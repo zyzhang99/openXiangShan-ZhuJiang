@@ -12,6 +12,8 @@ import chisel3.util._
 import org.chipsalliance.cde.config._
 import dongjiang.utils.FastArb._
 import xijiang.Node
+import xs.utils.perf.{DebugOptions, DebugOptionsKey}
+
 
 /*
  * ************************************************************** State transfer ***********************************************************************************
@@ -154,7 +156,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   io <> DontCare
   dontTouch(io)
 // --------------------- Reg and Wire declaration ------------------------//
-  val entrys          = RegInit(VecInit(Seq.fill(param.nrEntry) { 0.U.asTypeOf(new SMEntry(param)) })); dontTouch(entrys)
+  val entrys          = RegInit(VecInit(Seq.fill(param.nrEntry) { 0.U.asTypeOf(new SMEntry(param)) }))
   // Intf Receive Req ID
   val entryGetReqID   = Wire(UInt(param.entryIdBits.W))
   // Intf Get DBID ID
@@ -181,6 +183,15 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   io.chi.rx.resp.get  <> rxRsp
   io.chi.tx.data.get  <> txDat
   io.chi.tx.req.get   <> txReq
+
+  /*
+   * for Debug
+   */
+  val entrys_dbg_addr = Wire(Vec(param.nrEntry, UInt(fullAddrBits.W)))
+  entrys_dbg_addr.zipWithIndex.foreach { case(addr, i) => addr := entrys(i).fullAddr }
+  if (p(DebugOptionsKey).EnableDebug) {
+    dontTouch(entrys_dbg_addr)
+  }
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //

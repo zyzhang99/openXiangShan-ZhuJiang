@@ -14,6 +14,7 @@ import org.chipsalliance.cde.config._
 import dongjiang.utils.Encoder._
 import xijiang.Node
 import xs.utils._
+import xs.utils.perf.{DebugOptions, DebugOptionsKey}
 
 /*
  * ************************************************************** State transfer ***********************************************************************************
@@ -229,6 +230,16 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   io.chi.tx.snoop.get   <> txSnp
   io.chi.tx.data.get    <> txDat
   io.chi.tx.resp.get    <> txRsp
+
+
+  /*
+   * for Debug
+   */
+  val entrys_dbg_addr = Wire(Vec(param.nrEntry, UInt(fullAddrBits.W)))
+  entrys_dbg_addr.zipWithIndex.foreach { case (addr, i) => addr := entrys(i).fullAddr }
+  if (p(DebugOptionsKey).EnableDebug) {
+    dontTouch(entrys_dbg_addr)
+  }
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //

@@ -13,6 +13,8 @@ import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config._
 import xs.utils.ParallelLookUp
+import xs.utils.perf.{DebugOptions, DebugOptionsKey}
+
 
 class ProcessPipe(implicit p: Parameters) extends DJModule {
 // --------------------- IO declaration ------------------------//
@@ -86,8 +88,14 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   val reqBeSend_s3        = Wire(Vec(6, new Req2IntfBundle()))
 
 
-
-
+  /*
+   * for Debug
+   */
+  val task_s3_dbg_addr = Wire(UInt(fullAddrBits.W))
+  task_s3_dbg_addr := task_s3_g.bits.taskMes.fullAddr(io.bank)
+  if (p(DebugOptionsKey).EnableDebug) {
+    dontTouch(task_s3_dbg_addr)
+  }
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //
