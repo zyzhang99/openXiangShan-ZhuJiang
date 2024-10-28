@@ -47,7 +47,7 @@ abstract class BaseCtrlMachine[
 
   val allDone = payload.state.u.completed && payload.state.d.completed
   val valid = RegInit(false.B)
-  val waiting = RegInit(0.U.asTypeOf(io.waitNum))
+  val waiting = RegInit(0.U(log2Ceil(outstanding).W))
   private val payloadEnqNext = WireInit(payload)
 
   valid := Mux(valid, !allDone, icn.rx.req.fire)
@@ -69,7 +69,7 @@ abstract class BaseCtrlMachine[
   private val wakeupNumReg = RegEnable(PopCount(wakeupVec), wakeupValid)
   private val waitNumSetEn = RegNext(icn.rx.req.fire, false.B)
   when(icn.rx.req.fire) {
-    waiting := Fill(waiting.getWidth, true.B) // to optimize waiting num calculation timing
+    waiting := Fill(log2Ceil(outstanding), true.B) // to optimize waiting num calculation timing
   }.elsewhen(waitNumSetEn){
     waiting := io.waitNum // set waiting num at next cycle of enqueue
   }.elsewhen(wakeupValidReg) {
