@@ -486,7 +486,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   val taskMatchVec  = entryFreeVec.zip(addrMatchVec.zip(reqOrSnpVec)).map{ case(a, (b, c)) => !a & b & c }
   //                                              | RESP(resp2Intf)                                 | SNP(req2Intf)                       | REQ(rxReq)
   entrySave.entryMes.nID          := Mux(respVal, 0.U,                                  Mux(snpVal, 0.U,                                  PopCount(taskMatchVec)))
-  entrySave.entryMes.useAddr      := Mux(respVal, 0.U,                                  Mux(snpVal, io.req2Intf.bits.pcuMes.useAddr,      parseFullAddr(rxReq.bits.Addr)._5))
+  entrySave.entryMes.useAddr      := Mux(respVal, 0.U,                                  Mux(snpVal, io.req2Intf.bits.pcuMes.useAddr,      parseFullAddr(rxReq.bits.Addr)._6))
   entrySave.pcuIndex.dcuID        := Mux(respVal, io.resp2Intf.bits.pcuIndex.dcuID,     Mux(snpVal, io.req2Intf.bits.pcuIndex.dcuID,      parseFullAddr(rxReq.bits.Addr)._3))
   entrySave.pcuIndex.from         := Mux(respVal, io.resp2Intf.bits.pcuIndex.from,      Mux(snpVal, io.req2Intf.bits.pcuIndex.from,       DontCare))
   entrySave.pcuIndex.mshrWay      := Mux(respVal, DontCare,                             Mux(snpVal, io.req2Intf.bits.pcuIndex.mshrWay,    DontCare))

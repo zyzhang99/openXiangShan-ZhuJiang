@@ -60,6 +60,13 @@ class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[
   val implicitClock   = clock
   val implicitReset   = reset
 
+  /*
+   * For Debug
+   */
+  if (p(DebugOptionsKey).EnableDebug) {
+    dontTouch(io)
+  }
+
 // ------------------------------------------ Modules declaration ----------------------------------------------//
   // interfaces
   val localRnSlave    = Module(new RnSlaveIntf(djparam.localRnSlaveIntf, localHf))
