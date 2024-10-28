@@ -126,9 +126,9 @@ trait HasParseZJParam extends HasZJParams {
     require(x.getWidth == fullNodeIdBits | x.getWidth == useNodeIdBits)
     val fromX = WireInit(false.B)
     if(x.getWidth == fullNodeIdBits) {
-      nodeIdSeq.map(_.asUInt >> nodeAidBits === x >> nodeAidBits).reduce(_ | _)
+      fromX := nodeIdSeq.map(_.asUInt >> nodeAidBits === x >> nodeAidBits).reduce(_ | _)
     } else {
-      nodeIdSeq.map(_.asUInt >> nodeAidBits === x).reduce(_ | _)
+      fromX := nodeIdSeq.map(_.asUInt >> nodeAidBits === x).reduce(_ | _)
     }
     fromX
   }
