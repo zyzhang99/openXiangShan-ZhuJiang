@@ -7,7 +7,6 @@ import chisel3.util._
 import org.chipsalliance.cde.config._
 import xijiang.NodeType
 import zhujiang.{HasZJParams, ZJParametersKey}
-
 import scala.math.{max, min}
 
 
@@ -104,6 +103,9 @@ trait HasParseZJParam extends HasZJParams {
   lazy val useNodeIdBits    = nodeNidBits
   lazy val opcodeBits       = 7
 
+  // DCU Freiends Node ID Max Length
+  lazy val nrFriendsNodeMax = localDcuNodes.map(_.friends.length).max
+
   // Local Base Node Mes
   // [bank] = [dcuBank] + [pcuBank]
   lazy val nrBank           = localDcuNodes.map(_.bankId).max + 1
@@ -181,6 +183,17 @@ trait HasParseZJParam extends HasZJParams {
     val nodeID = WireInit(0.U(fullNodeIdBits.W))
     ccNodeIdSeq.zipWithIndex.foreach { case (id, i) => when(x === i.U) { nodeID := id.U } }
     nodeID
+  }
+
+  def getDCUDirectByTgtID(x: UInt, friendsVec: Seq[Seq[UInt]]) = {
+    require(x.getWidth == fullNodeIdBits)
+    val directVec = Wire(Vec(friendsVec.length, Bool()))
+    friendsVec.zipWithIndex.foreach {
+      case(f, i) =>
+        directVec(i) := f.map(_ === x).reduce(_ | _)
+        assert(PopCount(f.map(_ === x)) <= 1.U)
+    }
+    directVec
   }
 }
 

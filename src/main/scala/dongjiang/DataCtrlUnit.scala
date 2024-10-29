@@ -80,11 +80,12 @@ class DCUWEntry(implicit p: Parameters) extends DJBundle {
  * DCUs do not have sorting capabilities and must use the DWT transfer structure to sort by using Comp
  */
 @instantiable
-class DataCtrlUnit(node: Node, nrIntf: Int = 1)(implicit p: Parameters) extends DJRawModule
+class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
   with ImplicitClock with ImplicitReset {
   // ------------------------------------------ IO declaration --------------------------------------------- //
   @public val io = IO(new Bundle {
-    val sn = Vec(nrIntf, new DeviceIcnBundle(node))
+    val friendsNodeIDVec = Input(Vec(nodes.length, Vec(nrFriendsNodeMax, UInt(fullNodeIdBits.W)))) // RN/HN Friend Node ID Vec
+    val icns = MixedVec(nodes.map(n => new DeviceIcnBundle(n)))
   })
   @public val reset = IO(Input(AsyncReset()))
   @public val clock = IO(Input(Clock()))
@@ -95,22 +96,56 @@ class DataCtrlUnit(node: Node, nrIntf: Int = 1)(implicit p: Parameters) extends 
     dontTouch(io)
   }
 
-  require(node.splitFlit)
-  require(1 <= nrIntf & nrIntf <= 2)
+  val nrIcn = nodes.length
+
+  require(1 <= nodes.length & nodes.length <= 2)
 
   io <> DontCare
 
 // ----------------------------------------- Reg and Wire declaration ------------------------------------ //
   // CHI
-  val rxReq                 = Wire(new DecoupledIO(new ReqFlit))
-  val rxDat                 = Wire(new DecoupledIO(new DataFlit))
-  val txRsp                 = WireInit(0.U.asTypeOf(Decoupled(new RespFlit)))
-  val txDat                 = WireInit(0.U.asTypeOf(Decoupled(new DataFlit)))
-  // TODO
-  io.sn(0).rx.req.get       <> rxReq
-  io.sn(0).rx.data.get      <> rxDat
-  io.sn(0).tx.resp.get      <> txRsp
-  io.sn(0).tx.data.get      <> txDat
+  val rxReq     = Wire(new DecoupledIO(new ReqFlit))
+  val rxDat     = Wire(new DecoupledIO(new DataFlit))
+  val txRsp     = WireInit(0.U.asTypeOf(Decoupled(new RespFlit)))
+  val txDat     = WireInit(0.U.asTypeOf(Decoupled(new DataFlit)))
+
+  val rxReqVec  = Wire(Vec(nrIcn, new DecoupledIO(new ReqFlit)))
+  val rxDatVec  = Wire(Vec(nrIcn, new DecoupledIO(new DataFlit)))
+  val txRspVec  = Wire(Vec(nrIcn, new DecoupledIO(new RespFlit)))
+  val txDatVec  = Wire(Vec(nrIcn, new DecoupledIO(new DataFlit)))
+
+  io.icns.zip(rxReqVec).foreach { case(a, b) => a.rx.req.get  <> b }
+  io.icns.zip(rxDatVec).foreach { case(a, b) => a.rx.data.get <> b }
+  io.icns.zip(txRspVec).foreach { case(a, b) => a.tx.resp.get <> b}
+  io.icns.zip(txDatVec).foreach { case(a, b) => a.tx.data.get <> b}
+
+  rxReq <> fastArbDec(rxReqVec)
+  rxDat <> fastArbDec(rxDatVec)
+
+  val txDatDirVec = Wire(Vec(nrIcn, Bool()))
+  val txRspDirVec = Wire(Vec(nrIcn, Bool()))
+  txDatDirVec     := getDCUDirectByTgtID(txDat.bits.TgtID, io.friendsNodeIDVec)
+  txRspDirVec     := getDCUDirectByTgtID(txRsp.bits.TgtID, io.friendsNodeIDVec)
+
+  // txDat
+  txDatVec.zipWithIndex.foreach {
+    case(t, i) =>
+      t.valid     := txDat.valid & txDatDirVec(i)
+      t.bits      := txDat.bits
+  }
+  txDat.ready     := txDatVec(OHToUInt(txDatDirVec)).ready
+  assert(PopCount(txDatDirVec) <= 1.U)
+  assert(PopCount(txDatDirVec) === 1.U | !txDat.valid)
+
+  // txRsp
+  txRspVec.zipWithIndex.foreach {
+    case(t, i) =>
+      t.valid     := txRsp.valid & txRspDirVec(i)
+      t.bits      := txRsp.bits
+  }
+  txRsp.ready     := txRspVec(OHToUInt(txRspDirVec)).ready
+  assert(PopCount(txRspDirVec) <= 1.U)
+  assert(PopCount(txRspDirVec) === 1.U | !txRsp.valid)
 
 
   // ReqBuf

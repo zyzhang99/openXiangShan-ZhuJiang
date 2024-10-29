@@ -222,6 +222,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
    * Send Snoop to RN-F
    */
   // taskSnp_s3
+  // TODO: Dont SnpNotShareDirty all hit node when RN is SC
   // TODO: Combine the following judgment logic into the S3_Decode
   sfHitVec                        := dirRes_s3.bits.sf.metaVec.map(!_.isInvalid)
   othHitVec.zipWithIndex.foreach { case(hit, i) => hit := dirRes_s3.bits.sf.hit & sfHitVec(i) & srcMetaID =/= i.U }
