@@ -202,7 +202,7 @@ case class ZJParameters(
   P: Boolean = false,
   clusterIdBits: Int = 8,
   bankOff: Int = 12,
-  cpuSpaceBits: Int = 16,
+  cpuSpaceBits: Int = 20,
   cpuDevSpaceBits: Int = 8,
   snoopEjectBufDepth: Int = 8,
   reqEjectBufDepth: Int = 8,
