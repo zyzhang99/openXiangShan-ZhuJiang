@@ -20,6 +20,7 @@ import zhujiang.axi.AxiBundle
 import zhujiang.device.async.{IcnAsyncBundle, IcnSideAsyncModule}
 import zhujiang.device.ddr.MemoryComplex
 import zhujiang.device.reset.ResetDevice
+import scala.math.pow
 
 class DftWires extends Bundle {
   val reset = new DFTResetSignals
@@ -97,7 +98,7 @@ class Zhujiang(implicit p: Parameters) extends ZJModule {
 
   require(localRing.icnHfs.get.nonEmpty)
   private val pcuIcnSeq = localRing.icnHfs.get
-  private val pcuDef = Definition(new ProtocolCtrlUnit(pcuIcnSeq.head.node))
+  private val pcuDef = Definition(new ProtocolCtrlUnit(pcuIcnSeq.head.node)) // TODO: There's a risk here
   private val pcuDevSeq = pcuIcnSeq.map(icn => Instance(pcuDef))
   private val nrPCU = localRing.icnHfs.get.length
   private val nrDCU = localRing.icnSns.get.filterNot(_.node.mainMemory).length
@@ -113,12 +114,14 @@ class Zhujiang(implicit p: Parameters) extends ZJModule {
   }
 
   require(!localRing.icnSns.get.forall(_.node.mainMemory))
-  private val dcuIcnSeq = localRing.icnSns.get.filterNot(_.node.mainMemory).groupBy(_.node.bankId).toSeq
-  private val dcuDef = Definition(new DataCtrlUnit(dcuIcnSeq.head._2.head.node, dcuIcnSeq.head._2.length))
+  private val dcuIcnSeq = localRing.icnSns.get.filterNot(_.node.mainMemory).sortBy(_.node.dpId).groupBy(_.node.bankId).toSeq
+  private val dcuDef = Definition(new DataCtrlUnit(dcuIcnSeq.head._2.map(_.node).sortBy(_.dpId))) // TODO: There's a risk here.
   private val dcuDevSeq = dcuIcnSeq.map(is => Instance(dcuDef))
   for(i <- dcuIcnSeq.indices) {
     val bankId = dcuIcnSeq(i)._1
-    for(j <- dcuIcnSeq(i)._2.indices) dcuDevSeq(i).io.sn(j) <> dcuIcnSeq(i)._2(j)
+    for(j <- dcuIcnSeq(i)._2.indices) dcuDevSeq(i).io.icns(j) <> dcuIcnSeq(i)._2(j)
+    for(j <- dcuIcnSeq(i)._2.indices) dcuDevSeq(i).io.friendsNodeIDVec(j).foreach(_ := (pow(2, nodeNidBits).toInt - 1).U)
+    for(j <- dcuIcnSeq(i)._2.indices) dcuDevSeq(i).io.friendsNodeIDVec(j) := dcuIcnSeq(i)._2.map(_.node.friends.map(_.nodeId.U))(j)
     dcuDevSeq(i).reset := placeResetGen(s"dcu_$bankId", dcuIcnSeq(i)._2.head)
     dcuDevSeq(i).clock := clock
     dcuDevSeq(i).suggestName(s"dcu_$bankId")

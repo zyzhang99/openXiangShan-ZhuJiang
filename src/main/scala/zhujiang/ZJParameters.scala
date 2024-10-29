@@ -101,6 +101,7 @@ object ZhujiangGlobal {
         splitFlit = np.splitFlit,
         domainId = getDomainId(np.nodeType),
         bankId = if(np.nodeType == NodeType.S || np.nodeType == NodeType.HF || np.nodeType == NodeType.RF && csn) np.bankId else 0,
+        dpId = if(np.nodeType == NodeType.S) np.dpId else 0,
         bankBits = if(np.nodeType == NodeType.RF) {
           rnfBankBits
         } else if(np.nodeType == NodeType.HF) {
@@ -140,6 +141,7 @@ object ZhujiangGlobal {
       val dcuGroupsMaps = dcuNodes.groupBy(_.bankId)
       for((_, dcus) <- dcuGroupsMaps) {
         require(dcus.length <= 2)
+        require(dcus.map(_.dpId).distinct.length == dcus.length)
         if(dcus.length == 1) {
           dcus.head.friends = nodes.filterNot(n => n.nodeType == NodeType.S && !n.mainMemory)
         } else {
