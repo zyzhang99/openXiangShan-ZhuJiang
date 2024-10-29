@@ -105,7 +105,7 @@ class SMEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle {
   val chiIndex      = new ChiIndexBundle()
   val chiMes        = new ChiMesBundle()
   val pcuIndex      = new PcuIndexBundle()
-  val entryMes      = new DJBundle with HasUseAddr {
+  val entryMes      = new DJBundle with HasUseAddr with HasDcuID {
     val state       = UInt(RSState.width.W)
     val doDMT       = Bool()
     val toDCU       = Bool()
@@ -127,13 +127,13 @@ class SMEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle {
   def isRead        = isReadX(chiMes.opcode)
   def isWrite       = isWriteX(chiMes.opcode)
   def isRepl        = isReplace(chiMes.opcode)
-  def mshrIndex     = Cat(pcuIndex.dcuID, entryMes.mSet, pcuIndex.mshrWay)
-  def fullAddr (p: UInt) = entryMes.fullAddr(pcuIndex.dcuID, p)
+  def mshrIndex     = Cat(entryMes.dcuID, entryMes.mSet, pcuIndex.mshrWay)
+  def fullAddr (p: UInt) = entryMes.fullAddr(entryMes.dcuID, p)
 
 
   def fullTgtID(fIDSeq: Seq[UInt]): UInt = { // friendIdSeq
     val nodeID      = WireInit(0.U(fullNodeIdBits.W))
-    when(entryMes.toDCU) { nodeID := getDcuFriendIDByDcuBankID(pcuIndex.dcuID, fIDSeq) }
+    when(entryMes.toDCU) { nodeID := getFriendDcuIDByDcuBankID(entryMes.dcuID, fIDSeq); assert(entryMes.dcuID <= nrBankPerPCU.U) }
     .otherwise           { nodeID := ddrcNodeId.U }
     nodeID
   }
@@ -336,11 +336,11 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
    * Receive req2Node(Snoop)
    */
   entrySave.entryMes.useAddr  := io.req2Intf.bits.pcuMes.useAddr
+  entrySave.entryMes.dcuID    := io.req2Intf.bits.from
   entrySave.entryMes.doDMT    := io.req2Intf.bits.pcuMes.doDMT; assert(!io.req2Intf.bits.pcuMes.doDMT, "TODO")
   entrySave.entryMes.toDCU    := io.req2Intf.bits.pcuMes.toDCU
   entrySave.entryMes.selfWay  := io.req2Intf.bits.pcuMes.selfWay
   entrySave.pcuIndex.mshrWay  := io.req2Intf.bits.pcuIndex.mshrWay
-  entrySave.pcuIndex.from     := io.req2Intf.bits.pcuIndex.from
   entrySave.pcuIndex.dbID     := io.req2Intf.bits.pcuIndex.dbID
   entrySave.chiMes.resp       := io.req2Intf.bits.chiMes.resp
   entrySave.chiMes.opcode     := io.req2Intf.bits.chiMes.opcode
@@ -375,7 +375,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
    * Set DataBuffer Req Value
    */
   io.dbSigs.getDBID.valid             := entryGetDBIDVec.reduce(_ | _)
-  io.dbSigs.getDBID.bits.from.incoID  := param.intfID.U
+  io.dbSigs.getDBID.bits.from         := param.intfID.U
   io.dbSigs.getDBID.bits.entryID      := entryGetDBID
 
   /*
@@ -400,8 +400,8 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   txReq.bits.SrcID        := io.hnfID
   txReq.bits.Size         := log2Ceil(djparam.blockBytes).U
   txReq.bits.MemAttr      := entrys(entryReq2NodeID).chiMes.resp // Multiplex MemAttr to transfer CHI State // Use in Read Req
-  txReq.bits.ReturnNID    := Mux(entrys(entryReq2NodeID).entryMes.doDMT, entrys(entryReq2NodeID).chiIndex.nodeID, io.hnfID)
-  txReq.bits.ReturnTxnID  := Mux(entrys(entryReq2NodeID).entryMes.doDMT,entrys(entryReq2NodeID).chiIndex.txnID,   entryReq2NodeID)
+  txReq.bits.ReturnNID    := Mux(entrys(entryReq2NodeID).entryMes.doDMT, getFullNodeID(entrys(entryReq2NodeID).chiIndex.nodeID), io.hnfID)
+  txReq.bits.ReturnTxnID  := Mux(entrys(entryReq2NodeID).entryMes.doDMT, entrys(entryReq2NodeID).chiIndex.txnID,                 entryReq2NodeID)
 
 // ---------------------------------------------------------------------------------------------------------------------- //
 // ------------------------------------------- Receive CHI DBID From From Node ------------------------------------------ //
@@ -420,7 +420,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   io.dbSigs.dbRCReq.bits.isRead     := true.B
   io.dbSigs.dbRCReq.bits.isClean    := true.B
   io.dbSigs.dbRCReq.bits.dbID       := entrys(entryRCDBID).pcuIndex.dbID
-  io.dbSigs.dbRCReq.bits.to.incoID  := param.intfID.U
+  io.dbSigs.dbRCReq.bits.to         := param.intfID.U
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //
@@ -468,8 +468,8 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   io.resp2Exu.bits.chiMes.resp          := entrys(entryResp2ExuID).chiMes.resp
   io.resp2Exu.bits.pcuIndex.mshrSet     := entrys(entryResp2ExuID).entryMes.mSet
   io.resp2Exu.bits.pcuIndex.mshrWay     := entrys(entryResp2ExuID).pcuIndex.mshrWay
-  io.resp2Exu.bits.pcuIndex.from.incoID := param.intfID.U
-  io.resp2Exu.bits.pcuIndex.to          := entrys(entryResp2ExuID).pcuIndex.from
+  io.resp2Exu.bits.from                 := param.intfID.U
+  io.resp2Exu.bits.to                   := entrys(entryResp2ExuID).entryMes.dcuID
 
   io.resp2Exu.bits.pcuIndex.dbID        := entrys(entryResp2ExuID).pcuIndex.dbID
 

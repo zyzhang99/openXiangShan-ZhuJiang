@@ -375,14 +375,14 @@ class DataCtrlUnit(node: Node, nrIntf: Int = 1)(implicit p: Parameters) extends 
   /*
     * Send Resp To CHI RxDat
     */
-  sendBeatNumReg      := sendBeatNumReg + rxDat.fire.asUInt
+  sendBeatNumReg      := sendBeatNumReg + txDat.fire.asUInt
   txDat.valid         := rRespQ.io.deq.valid & rDatQ.io.deq.valid
   txDat.bits          := rRespQ.io.deq.bits
   txDat.bits.Data     := rDatQ.io.deq.bits(sendBeatNumReg)
   txDat.bits.DataID   := toDataID(sendBeatNumReg)
 
-  rRespQ.io.deq.ready := sendBeatNumReg === (nrBeat - 1).U & rxDat.fire
-  rDatQ.io.deq.ready  := sendBeatNumReg === (nrBeat - 1).U & rxDat.fire
+  rRespQ.io.deq.ready := sendBeatNumReg === (nrBeat - 1).U & txDat.fire
+  rDatQ.io.deq.ready  := sendBeatNumReg === (nrBeat - 1).U & txDat.fire
 
 
 

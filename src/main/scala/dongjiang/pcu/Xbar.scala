@@ -43,14 +43,14 @@ class Xbar()(implicit p: Parameters) extends DJModule {
 
 
 // ------------------------------------------ Modules declaration And Connection ----------------------------------------------//
-  def idSelDec2DecVec[T <: Bundle](in: DecoupledIO[T], incoID: UInt, out: Seq[DecoupledIO[T]]): Unit = {
+  def idSelDec2DecVec[T <: Bundle with HasToIncoID](in: DecoupledIO[T], out: Seq[DecoupledIO[T]]): Unit = {
     in.ready := false.B
     out.foreach(_.bits := in.bits)
     out.zipWithIndex.foreach {
       case (o, i) =>
         o.bits := in.bits
         val idMatch = WireInit(false.B)
-        idMatch := incoID === i.U
+        idMatch := in.bits.to === i.U
         when(idMatch) {
           o.valid := in.valid
           in.ready := o.ready
@@ -62,30 +62,30 @@ class Xbar()(implicit p: Parameters) extends DJModule {
 
 
   // in --->  [redirects] ---> [queue0] ---> [arbiter] ---> [queue1] ---> out
-  def interConnect[T <: Bundle](in: Seq[DecoupledIO[T]], incoID: Seq[UInt], q1: Int, q2: Int, out: Seq[DecoupledIO[T]]): Unit = {
+  def interConnect[T <: Bundle with HasToIncoID](in: Seq[DecoupledIO[T]], q0: Int, q1: Int, q2: Int, out: Seq[DecoupledIO[T]]): Unit = {
     val redirects = Seq.fill(in.size) { Seq.fill(out.size) { WireInit(0.U.asTypeOf(in(0))) } }
-    in.zipWithIndex.foreach { case (m, i) => idSelDec2DecVec(m, incoID(i), redirects(i)) }
+    in.zipWithIndex.foreach { case (m, i) => idSelDec2DecVec(Queue(m, entries = q0, pipe = true), redirects(i)) }
     out.zipWithIndex.foreach { case (m, i) => m <> Queue(fastArbDec(redirects.map { case a => Queue(a(i), entries = q1, pipe = true) }), q2, pipe = true) }
   }
 
   // There is a lot of room for optimization of the connection
-  interConnect(in = io.req2Exu.in,      incoID = io.req2Exu.in.map(_.bits.pcuIndex.to.incoID),   q1 = 0, q2 = 0, out = io.req2Exu.out)
+  interConnect(in = io.req2Exu.in,      q0 = 0, q1 = 0, q2 = 0, out = io.req2Exu.out)
 
-  interConnect(in = io.reqAck2Intf.in,  incoID = io.reqAck2Intf.in.map(_.bits.to.incoID),         q1 = 0, q2 = 0, out = io.reqAck2Intf.out)
+  interConnect(in = io.reqAck2Intf.in,  q0 = 0, q1 = 0, q2 = 0, out = io.reqAck2Intf.out)
 
-  interConnect(in = io.resp2Intf.in,    incoID = io.resp2Intf.in.map(_.bits.pcuIndex.to.incoID),  q1 = 0, q2 = 0, out = io.resp2Intf.out)
+  interConnect(in = io.resp2Intf.in,    q0 = 0, q1 = 0, q2 = 0, out = io.resp2Intf.out)
 
-  interConnect(in = io.req2Intf.in,     incoID = io.req2Intf.in.map(_.bits.pcuIndex.to.incoID),   q1 = 0, q2 = 0, out = io.req2Intf.out)
+  interConnect(in = io.req2Intf.in,     q0 = 0, q1 = 0, q2 = 0, out = io.req2Intf.out)
 
-  interConnect(in = io.resp2Exu.in,     incoID = io.resp2Exu.in.map(_.bits.pcuIndex.to.incoID),   q1 = 0, q2 = 0, out = io.resp2Exu.out)
+  interConnect(in = io.resp2Exu.in,     q0 = 0, q1 = 0, q2 = 0, out = io.resp2Exu.out)
 
   io.dbSigs.out(0).dbRCReq <> fastArbDec(io.dbSigs.in0)
 
   io.dbSigs.out(0).getDBID <> fastArbDec(io.dbSigs.in1.map(_.getDBID))
 
-  interConnect(in = io.dbSigs.out.map(_.dbidResp),  incoID = io.dbSigs.out.map(_.dbidResp).map(_.bits.to.incoID), q1 = 0, q2 = 0, out = io.dbSigs.in1.map(_.dbidResp))
+  interConnect(in = io.dbSigs.out.map(_.dbidResp),  q0 = 0, q1 = 0, q2 = 0, out = io.dbSigs.in1.map(_.dbidResp))
 
-  interConnect(in = io.dbSigs.out.map(_.dataFDB),   incoID = io.dbSigs.out.map(_.dataFDB).map(_.bits.to.incoID),  q1 = 0, q2 = 0, out = io.dbSigs.in1.map(_.dataFDB))
+  interConnect(in = io.dbSigs.out.map(_.dataFDB),   q0 = 0, q1 = 0, q2 = 0, out = io.dbSigs.in1.map(_.dataFDB))
 
   io.dbSigs.out(0).dataTDB <> fastArbDec(io.dbSigs.in1.map(_.dataTDB))
 

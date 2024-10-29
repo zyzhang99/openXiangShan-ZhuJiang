@@ -56,7 +56,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   val taskNext_s3         = WireInit(0.U.asTypeOf(new PipeTaskBundle()))
   val task_s3_g           = RegInit(0.U.asTypeOf(Valid(new PipeTaskBundle())))
   val dirRes_s3           = WireInit(0.U.asTypeOf(Valid(new DirRespBundle())))
-  val srcMetaID           = Wire(UInt(nrCcNode.W))
+  val srcMetaID           = Wire(UInt(ccNodeIdBits.W))
   val sfHitVec            = Wire(Vec(nrCcNode, Bool()))
   val othHitVec           = Wire(Vec(nrCcNode, Bool()))
   // s3 decode base signals
@@ -114,14 +114,12 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   dirResQ.io.enq.bits   := io.dirResp.bits
   assert(Mux(io.dirResp.valid, dirResQ.io.enq.ready, true.B))
 
-  // Check Get Dir Result
-  // TODO: parameterization
-  require(djparam.dirMulticycle == 2 & djparam.dirHoldMcp)
-  val enqShiftReg       = RegInit(0.U(3.W))
-  val alreadyGetDir     = RegInit(false.B)
-  enqShiftReg           := Cat(taskQ.io.enq.fire & taskQ.io.enq.bits.taskMes.readDir, enqShiftReg(2, 1))
-  alreadyGetDir         := Mux(alreadyGetDir, !taskQ.io.enq.fire, dirResQ.io.enq.fire & !enqShiftReg(0))
-  assert(Mux(enqShiftReg(0), dirResQ.io.enq.fire | alreadyGetDir, true.B), "ProcessPipe need get dir result")
+//  // Check Get Dir Result
+//  // TODO: parameterization
+//  require(djparam.dirMulticycle == 2 & djparam.dirHoldMcp)
+//  val enqShiftReg       = RegInit(0.U(3.W))
+//  enqShiftReg           := Cat(taskQ.io.enq.fire & taskQ.io.enq.bits.taskMes.readDir, enqShiftReg(2, 1))
+//  assert(Mux(enqShiftReg(0), dirResQ.io.enq.fire | dirResQ.io.count > taskQ.io.count, true.B), "ProcessPipe need get dir result")
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //
@@ -162,7 +160,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   /*
    * Parse Dir Result
    */
-  srcMetaID     := getMetaIDByNodeID(task_s3_g.bits.chiIndex.nodeID)
+  srcMetaID     := getMetaIDByNodeID(task_s3_g.bits.chiIndex.nodeID); assert(fromCcNode(task_s3_g.bits.chiIndex.nodeID) | !task_s3_g.valid)
   val srcHit    = dirRes_s3.bits.sf.hit & !dirRes_s3.bits.sf.metaVec(srcMetaID).isInvalid
   val srcState  = Mux(srcHit, dirRes_s3.bits.sf.metaVec(srcMetaID).state, ChiState.I)
 
@@ -211,7 +209,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   decode_s3.decode(inst_s3, table)
   when(valid_s3) { assert(decode_s3.asUInt =/= 0.U,
     "\n\nADDR[0x%x] DECODE ERROR: No inst match in decode table\n" +
-      "INST: CHNL[0x%x] OP[0x%x] SRC[0x%x] OTH[0x%x] HN[0x%x] RESP[0x%x] DATA[0x%x] SNP[0x%x] FWD[0x%x] RD[0x%x]\n", task_s3_g.bits.taskMes.fullAddr(io.dcuID, io.dcuID),
+      "INST: CHNL[0x%x] OP[0x%x] SRC[0x%x] OTH[0x%x] HN[0x%x] RESP[0x%x] DATA[0x%x] SNP[0x%x] FWD[0x%x] RD[0x%x]\n", task_s3_g.bits.taskMes.fullAddr(io.dcuID, io.pcuID),
     inst_s3.channel, inst_s3.opcode, inst_s3.srcState, inst_s3.othState, inst_s3.hnState, inst_s3.respType, inst_s3.respHasData, inst_s3.snpResp, inst_s3.fwdState, inst_s3.rdResp) }
   when(valid_s3) { when(decode_s3.wSDir)  { assert(decode_s3.commit | (inst_s3.opcode === SnpUniqueEvict & inst_s3.channel === CHIChannel.SNP) | (isWriteX(inst_s3.opcode) & inst_s3.channel === CHIChannel.REQ)) } }
   when(valid_s3) { when(decode_s3.wSFDir) { assert(decode_s3.commit | (isWriteX(inst_s3.opcode) & inst_s3.channel === CHIChannel.REQ)) } }
@@ -237,13 +235,12 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   taskSnp_s3.chiMes.expCompAck    := false.B
   taskSnp_s3.chiMes.opcode        := decode_s3.snpOp
   taskSnp_s3.chiMes.resp          := DontCare
-  taskSnp_s3.pcuIndex.from.incoID := io.dcuID
-  taskSnp_s3.pcuIndex.to.incoID   := IncoID.LOCALSLV.U
+  taskSnp_s3.from                 := io.dcuID
+  taskSnp_s3.to                   := IncoID.LOCALSLV.U
   taskSnp_s3.pcuIndex.mshrSet     := DontCare
   taskSnp_s3.pcuIndex.mshrWay     := task_s3_g.bits.taskMes.mshrWay
   taskSnp_s3.pcuIndex.dbID        := DontCare
   taskSnp_s3.pcuIndex.entryID     := DontCare
-  taskSnp_s3.pcuIndex.dcuID       := io.dcuID
   taskSnp_s3.pcuMes.useAddr       := task_s3_g.bits.taskMes.useAddr
   taskSnp_s3.pcuMes.doDMT         := DontCare
   taskSnp_s3.pcuMes.selfWay       := DontCare
@@ -259,10 +256,9 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   taskRD_s3.chiMes.expCompAck     := false.B
   taskRD_s3.chiMes.opcode         := decode_s3.rdOp
   taskRD_s3.chiMes.resp           := ChiResp.UC
-  taskRD_s3.pcuIndex.from.incoID  := io.dcuID
-  taskRD_s3.pcuIndex.to.incoID    := IncoID.LOCALMST.U
+  taskRD_s3.from                  := io.dcuID
+  taskRD_s3.to                    := IncoID.LOCALMST.U
   taskRD_s3.pcuIndex.mshrWay      := task_s3_g.bits.taskMes.mshrWay
-  taskRD_s3.pcuIndex.dcuID        := io.dcuID
   taskRD_s3.pcuMes.useAddr        := task_s3_g.bits.taskMes.useAddr
   taskRD_s3.pcuMes.doDMT          := decode_s3.doDMT
   taskRD_s3.pcuMes.toDCU          := false.B
@@ -279,7 +275,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
    */
   val rcDBID            = Mux(task_s3_g.bits.respMes.slvDBID.valid, task_s3_g.bits.respMes.slvDBID.bits, task_s3_g.bits.respMes.masDBID.bits)
   assert(!(task_s3_g.bits.respMes.slvDBID.valid & task_s3_g.bits.respMes.masDBID.valid))
-  rcDBReq_s3.to.incoID  := IncoID.LOCALSLV.U
+  rcDBReq_s3.to         := IncoID.LOCALSLV.U
   rcDBReq_s3.isRead     := decode_s3.rDB2Src
   rcDBReq_s3.isClean    := decode_s3.cleanDB
   rcDBReq_s3.dbID       := rcDBID
@@ -294,10 +290,9 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   readDCU_s3.chiMes.expCompAck      := false.B
   readDCU_s3.chiMes.opcode          := decode_s3.rdOp
   readDCU_s3.chiMes.resp            := decode_s3.resp
-  readDCU_s3.pcuIndex.from.incoID   := io.dcuID
-  readDCU_s3.pcuIndex.to.incoID     := IncoID.LOCALMST.U
+  readDCU_s3.from                   := io.dcuID
+  readDCU_s3.to                     := IncoID.LOCALMST.U
   readDCU_s3.pcuIndex.mshrWay       := task_s3_g.bits.taskMes.mshrWay
-  readDCU_s3.pcuIndex.dcuID         := io.dcuID
   readDCU_s3.pcuMes.useAddr         := task_s3_g.bits.taskMes.useAddr
   readDCU_s3.pcuMes.doDMT           := decode_s3.doDMT
   readDCU_s3.pcuMes.selfWay         := OHToUInt(dirRes_s3.bits.s.wayOH)
@@ -312,11 +307,10 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   writeDCU_s3.chiMes.channel        := CHIChannel.REQ
   writeDCU_s3.chiMes.expCompAck     := false.B
   writeDCU_s3.chiMes.opcode         := decode_s3.wdOp
-  writeDCU_s3.pcuIndex.from.incoID  := io.dcuID
-  writeDCU_s3.pcuIndex.to.incoID    := IncoID.LOCALMST.U
+  writeDCU_s3.from                  := io.dcuID
+  writeDCU_s3.to                    := IncoID.LOCALMST.U
   writeDCU_s3.pcuIndex.mshrWay      := task_s3_g.bits.taskMes.mshrWay
   writeDCU_s3.pcuIndex.dbID         := rcDBID
-  writeDCU_s3.pcuIndex.dcuID        := io.dcuID
   writeDCU_s3.pcuMes.useAddr        := task_s3_g.bits.taskMes.useAddr
   writeDCU_s3.pcuMes.selfWay        := OHToUInt(dirRes_s3.bits.s.wayOH)
   writeDCU_s3.pcuMes.toDCU          := true.B
@@ -330,11 +324,10 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   taskRepl_s3.chiMes.channel        := CHIChannel.REQ
   taskRepl_s3.chiMes.expCompAck     := false.B
   taskRepl_s3.chiMes.opcode         := Replace
-  taskRepl_s3.pcuIndex.from.incoID  := io.dcuID
-  taskRepl_s3.pcuIndex.to.incoID    := IncoID.LOCALMST.U
+  taskRepl_s3.from                  := io.dcuID
+  taskRepl_s3.to                    := IncoID.LOCALMST.U
   taskRepl_s3.pcuIndex.mshrWay      := task_s3_g.bits.taskMes.mshrWay
   taskRepl_s3.pcuIndex.dbID         := rcDBID
-  taskRepl_s3.pcuIndex.dcuID        := io.dcuID
   taskRepl_s3.pcuMes.useAddr        := task_s3_g.bits.taskMes.useAddr
   taskRepl_s3.pcuMes.selfWay        := OHToUInt(dirRes_s3.bits.s.wayOH)
   taskRepl_s3.pcuMes.toDCU          := false.B
@@ -370,8 +363,9 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   commit_s3.chiMes.expCompAck     := task_s3_g.bits.chiMes.expCompAck
   commit_s3.chiMes.opcode         := decode_s3.respOp
   commit_s3.chiMes.resp           := decode_s3.resp
-  commit_s3.pcuIndex.from.incoID  := io.dcuID
-  commit_s3.pcuIndex.to.incoID    := IncoID.LOCALSLV.U
+  commit_s3.from                  := io.dcuID
+  commit_s3.to                    := IncoID.LOCALSLV.U
+  commit_s3.pcuIndex.dbID         := rcDBID
   commit_s3.pcuIndex.mshrSet      := task_s3_g.bits.taskMes.mSet
   commit_s3.pcuIndex.mshrWay      := task_s3_g.bits.taskMes.mshrWay
 
@@ -386,10 +380,9 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   taskSnpEvict_s3.chiMes.doNotGoToSD    := true.B
   taskSnpEvict_s3.chiMes.retToSrc       := true.B
   taskSnpEvict_s3.chiMes.opcode         := SnpUnique
-  taskSnpEvict_s3.pcuIndex.from.incoID  := io.dcuID
-  taskSnpEvict_s3.pcuIndex.to.incoID    := IncoID.LOCALSLV.U
+  taskSnpEvict_s3.from                  := io.dcuID
+  taskSnpEvict_s3.to                    := IncoID.LOCALSLV.U
   taskSnpEvict_s3.pcuIndex.mshrWay      := task_s3_g.bits.taskMes.mshrWay
-  taskSnpEvict_s3.pcuIndex.dcuID        := io.dcuID
   taskSnpEvict_s3.pcuMes.useAddr        := dirRes_s3.bits.sf.useAddr
 
 

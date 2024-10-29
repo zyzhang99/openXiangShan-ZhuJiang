@@ -90,9 +90,10 @@ trait HasParseZJParam extends HasZJParams {
   lazy val localRniNodes    = zjParams.localRing.filter(_.nodeType == NodeType.RI)
   lazy val localHnfNodes    = zjParams.localRing.filter(_.nodeType == NodeType.HF)
   lazy val localDcuNodes    = zjParams.localRing.filter(_.nodeType == NodeType.S).filter(!_.mainMemory)
-  lazy val localDDRCNode    = zjParams.localRing.filter(!_.mainMemory).head
+  lazy val localDDRCNode    = zjParams.localRing.filter(_.mainMemory).head
   require(localCcNodes.nonEmpty)
   require(localHnfNodes.nonEmpty)
+  require(zjParams.localRing.filter(_.mainMemory).length == 1)
 
   // TODO: Get CSN
   lazy val hasCSN           = false
@@ -159,7 +160,7 @@ trait HasParseZJParam extends HasZJParams {
     Cat(0.U(nodeNetBits.W), x, aID)
   }
 
-  def getDcuFriendIDByDcuBankID(x: UInt, friendIdSeq: Seq[UInt]): UInt = {
+  def getFriendDcuIDByDcuBankID(x: UInt, friendIdSeq: Seq[UInt]): UInt = {
     // Check dcuBankID when use it: assert(x < nrBankPerPCU.U)
     val nodeID = WireInit(0.U(fullNodeIdBits.W))
     friendIdSeq.zipWithIndex.foreach { case(id, i) => when(x === i.U) { nodeID := id } }
@@ -245,8 +246,8 @@ trait HasDJParam extends HasParseZJParam {
   // DIR SET MAX
   lazy val nrMinDirSet      = min(djparam.selfSets, djparam.sfDirSets)
   lazy val nrMaxDirSet      = max(djparam.selfSets, djparam.sfDirSets)
-  lazy val minDirSetBits    = min(sSetBits, sfSetBits)
-  lazy val maxDirSetBits    = max(sSetBits, sfSetBits)
+  lazy val minDirSetBits    = log2Ceil(nrMinDirSet)
+  lazy val maxDirSetBits    = log2Ceil(nrMaxDirSet)
 
   // MSHR TABLE Parameters: [useAddr] = [mshrTag] + [mshrSet]
   lazy val mshrWayBits      = log2Ceil(djparam.nrMSHRWays)
@@ -261,21 +262,21 @@ trait HasDJParam extends HasParseZJParam {
 
 
   // TIMEOUT CHECK CNT VALUE
-  lazy val TIMEOUT_DB       = 10000 // DataBuffer
-  lazy val TIMEOUT_MSHR     = 8000 // BlockTable
-  lazy val TIMEOUT_RSINTF   = 5000 // Rn Slave Intf
-  lazy val TIMEOUT_SMINTF   = 5000 // Sn Master Intf
-  lazy val TIMEOUT_RMINTF   = 5000 // Rn Master Intf
-  lazy val TIMEOUT_MSLOCK   = 3000 // MSHR Lock
-  lazy val TIMEOUT_PIPEEXU  = 3000 // Pipe Execute
+  lazy val TIMEOUT_DB       = 10000 + 10000 // DataBuffer
+  lazy val TIMEOUT_MSHR     = 8000  + 10000 // BlockTable
+  lazy val TIMEOUT_RSINTF   = 5000  + 10000 // Rn Slave Intf
+  lazy val TIMEOUT_SMINTF   = 5000  + 10000 // Sn Master Intf
+  lazy val TIMEOUT_RMINTF   = 5000  + 10000 // Rn Master Intf
+  lazy val TIMEOUT_MSLOCK   = 3000  + 10000 // MSHR Lock
+  lazy val TIMEOUT_PIPEEXU  = 3000          // Pipe Execute
 
   def parseFullAddr(x: UInt): (UInt, UInt, UInt, UInt, UInt, UInt) = {
     require(x.getWidth == fullAddrBits)
     val offset    = x
-    val pcuBank   = x >> bankOff
-    val dcuBank   = x >> pcuBankBits
-    val ccxChipID = x >> fullAddrBits - (ccxChipBits + cacheableBits)
-    val cacheable = x >> fullAddrBits - cacheableBits
+    val pcuBank   = x       >> bankOff
+    val dcuBank   = pcuBank >> pcuBankBits
+    val ccxChipID = x       >> fullAddrBits - (ccxChipBits + cacheableBits)
+    val cacheable = x       >> fullAddrBits - cacheableBits
     val useAddr   = Cat(x(fullAddrBits - (ccxChipBits + cacheableBits) - 1, bankOff + fullBankBits), x(bankOff - 1, offsetBits)); require(useAddr.getWidth == useAddrBits)
     // Additional check:
     // assert(cacheable === 0.U)

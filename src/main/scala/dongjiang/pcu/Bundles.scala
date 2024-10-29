@@ -18,19 +18,12 @@ object IncoID {
   val width       = 1
   val LOCALSLV    = 0
   val LOCALMST    = 1
+  def max = LOCALMST
 }
 
+trait HasFromIncoID extends DJBundle { this: Bundle => val from = UInt(max(IncoID.width, dcuBankBits).W) }
 
-class IDBundle(implicit p: Parameters) extends DJBundle {
-  val incoID      = UInt(IncoID.width.W)
-
-  def LOCALSLV    = incoID === IncoID.LOCALSLV.U
-  def LOCALMAS    = incoID === IncoID.LOCALMST.U
-}
-
-trait HasFromIncoID extends DJBundle { this: Bundle => val from = new IDBundle() }
-
-trait HasToIncoID extends DJBundle { this: Bundle => val to = new IDBundle() }
+trait HasToIncoID extends DJBundle { this: Bundle => val to = UInt(max(IncoID.width, dcuBankBits).W) }
 
 trait HasIncoID extends DJBundle with HasFromIncoID with HasToIncoID
 
@@ -45,7 +38,7 @@ trait HasUseAddr extends DJBundle {this: Bundle =>
   def sfTag       = parseSFAddr(useAddr)._1
   def sfSet       = parseSFAddr(useAddr)._2
   def dirBank     = parseSFAddr(useAddr)._3
-  def minDirSet   = useAddr(minDirSetBits + dirBankBits - 1, dirBankBits)
+  def minDirSet   = useAddr(minDirSetBits - 1, 0)
   def fullAddr(d: UInt, p:UInt) = getFullAddr(useAddr, d, p)
   def snpAddr (d: UInt, p:UInt) = fullAddr(d, p)(fullAddrBits - 1, 3)
 }
@@ -87,10 +80,10 @@ class ChiMesBundle(implicit p: Parameters) extends DJBundle with HasCHIChannel {
 
 // ---------------------------------------------------------------- PCU Base Bundle ----------------------------------------------------------------------------- //
 // Dont use mshrSet when Bundle HasUseAddr
-class PcuIndexBundle(implicit p: Parameters) extends DJBundle with HasIncoID with HasMHSRIndex with HasDBID with HasIntfEntryID with HasDcuID
+class PcuIndexBundle(implicit p: Parameters) extends DJBundle with HasMHSRIndex with HasDBID with HasIntfEntryID
 
 // ---------------------------------------------------------------- Req To EXU Bundle ----------------------------------------------------------------------------- //
-class Req2ExuBundle(implicit p: Parameters) extends DJBundle {
+class Req2ExuBundle(implicit p: Parameters) extends DJBundle with HasIncoID {
   val chiIndex      = new ChiIndexBundle()
   val chiMes        = new ChiMesBundle()
   val pcuIndex      = new PcuIndexBundle()
@@ -104,7 +97,7 @@ class ReqAck2IntfBundle(implicit p: Parameters) extends DJBundle with HasToIncoI
 }
 
 // ---------------------------------------------------------------- Resp To Intf Bundle ----------------------------------------------------------------------------- //
-class Resp2IntfBundle(implicit p: Parameters) extends DJBundle {
+class Resp2IntfBundle(implicit p: Parameters) extends DJBundle with HasIncoID {
   val chiIndex      = new ChiIndexBundle()
   val chiMes        = new ChiMesBundle()
   val pcuIndex      = new PcuIndexBundle()
@@ -112,7 +105,7 @@ class Resp2IntfBundle(implicit p: Parameters) extends DJBundle {
 
 
 // ---------------------------------------------------------------- Req To Intf Bundle ----------------------------------------------------------------------------- //
-class Req2IntfBundle(implicit p: Parameters) extends DJBundle {
+class Req2IntfBundle(implicit p: Parameters) extends DJBundle with HasIncoID {
   val chiIndex      = new ChiIndexBundle()
   val chiMes        = new ChiMesBundle()
   val pcuIndex      = new PcuIndexBundle()
@@ -122,11 +115,13 @@ class Req2IntfBundle(implicit p: Parameters) extends DJBundle {
     val selfWay     = UInt(sWayBits.W)
     val toDCU       = Bool()
   }
+
+  def addrWithDcuID = Cat(pcuMes.useAddr, from)
 }
 
 
 // ---------------------------------------------------------------- Resp To Exu Bundle ----------------------------------------------------------------------------- //
-class Resp2ExuBundle(implicit p: Parameters) extends DJBundle {
+class Resp2ExuBundle(implicit p: Parameters) extends DJBundle with HasIncoID {
   val chiIndex      = new ChiIndexBundle()
   val chiMes        = new ChiMesBundle()
   val pcuIndex      = new PcuIndexBundle()
