@@ -35,7 +35,7 @@ package object bridge {
     def completed: Bool = this.asUInt.andR
     def decode(req: ReqFlit, check: Bool): Unit = {
       when(check) {
-        assert(req.Opcode === ReqOpcode.ReadNoSnp || req.Opcode === ReqOpcode.WriteNoSnpPtl)
+        assert(req.Opcode === ReqOpcode.ReadNoSnp || req.Opcode === ReqOpcode.WriteNoSnpPtl || req.Opcode === ReqOpcode.WriteNoSnpFullCleanInv)
         assert(req.Size <= 6.U)
       }
       when(req.Opcode === ReqOpcode.ReadNoSnp) {
@@ -61,16 +61,17 @@ package object bridge {
     def needIssue:Bool
   }
 
-  class IcnIoDevCtrlInfoCommon(ioDataBits:Int, val withData:Boolean, val dxt:Boolean)(implicit p: Parameters) extends ZJBundle {
+  class IcnIoDevCtrlInfoCommon(ioDataBits:Int, val withData:Boolean, val mem:Boolean)(implicit p: Parameters) extends ZJBundle {
     val data = if(withData) Some(UInt(ioDataBits.W)) else None
     val mask = if(withData) Some(UInt((ioDataBits / 8).W)) else None
     val size = UInt(3.W)
     val addr = UInt(raw.W)
     val txnId = UInt(12.W)
     val srcId = UInt(niw.W)
-    val returnNid = if(dxt) Some(UInt(niw.W)) else None
-    val returnTxnId = if(dxt) Some(UInt(12.W)) else None
-    val dwt = if(dxt) Some(Bool()) else None
+    val returnNid = if(mem) Some(UInt(niw.W)) else None
+    val returnTxnId = if(mem) Some(UInt(12.W)) else None
+    val dwt = if(mem) Some(Bool()) else None
+    val cmo = if(mem) Some(Bool()) else None
     val readCnt = UInt(8.W)
   }
 

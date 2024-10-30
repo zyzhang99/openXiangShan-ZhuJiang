@@ -114,10 +114,19 @@ abstract class BaseCtrlMachine[
   }
 
   private val dwt = payload.info.dwt.getOrElse(false.B)
+  private val cmo = payload.info.cmo.getOrElse(false.B)
   private val icnReadReceipt = payload.state.icnReadReceipt
   private val icnDBID = payload.state.icnDBID
-  private val icnComp = Mux(dwt, payload.state.icnComp && payload.state.u.wdata, payload.state.icnComp)
+
+  private val icnCompCond = MuxCase(true.B, Seq(
+    (dwt, payload.state.u.wdata),
+    (cmo, payload.state.d.completed)
+  ))
+  private val icnComp = payload.state.icnComp & icnCompCond
   private val icnCompDBID = icnDBID && icnComp
+  when(valid) {
+    assert(Cat(dwt, cmo) =/= "b11".U, "CMO does not support DWT")
+  }
   icn.tx.resp.valid := valid & (icnReadReceipt || icnDBID || icnComp)
   icn.tx.resp.bits := DontCare
   icn.tx.resp.bits.Opcode := Mux(icnCompDBID, RspOpcode.CompDBIDResp, MuxCase(0.U, Seq(

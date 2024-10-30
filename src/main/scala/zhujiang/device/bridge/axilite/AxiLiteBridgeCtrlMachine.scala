@@ -33,10 +33,6 @@ class AxiLiteBridgeCtrlMachine(
   require(axiParams.dataBits >= bufDataBits)
   wakeupOutCond := allDone && valid
 
-  when(io.wakeupOut.valid) {
-    payloadMiscNext.info.isSnooped := false.B
-  }
-
   axi.b.ready := true.B
   private val plmnd = payloadMiscNext.state.d
   private val pld = payload.state.d

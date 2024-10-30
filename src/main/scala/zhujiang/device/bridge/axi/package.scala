@@ -53,7 +53,7 @@ package object axi {
     def needIssue: Bool = icnReadReceipt || icnDBID || icnComp || axiWaddr || axiRaddr || axiWdata
   }
 
-  class AxiCtrlInfo(implicit p: Parameters) extends IcnIoDevCtrlInfoCommon(ioDataBits = 0, withData = false, dxt = true) {
+  class AxiCtrlInfo(implicit p: Parameters) extends IcnIoDevCtrlInfoCommon(ioDataBits = 0, withData = false, mem = true) {
     val isSnooped = Bool()
   }
 
@@ -68,6 +68,7 @@ package object axi {
       info.returnTxnId.get := req.ReturnTxnID
       info.returnNid.get := req.ReturnNID
       info.dwt.get := req.Opcode =/= ReqOpcode.ReadNoSnp && req.DoDWT
+      info.cmo.get := req.Opcode === ReqOpcode.WriteNoSnpFullCleanInv
       info.readCnt := 0.U
       state.u.decode(req, valid)
       state.d.decode(req, valid)
