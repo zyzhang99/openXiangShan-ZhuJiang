@@ -182,9 +182,9 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   inst_s3.respType  := Cat(task_s3_g.bits.respMes.masResp.valid,  // Read Down Resp
                            task_s3_g.bits.respMes.fwdState.valid, // Snoop Fwd Resp
                            task_s3_g.bits.respMes.slvResp.valid)  // Snoop Resp
-  inst_s3.snpResp   := task_s3_g.bits.respMes.slvResp.bits
+  inst_s3.slvResp   := task_s3_g.bits.respMes.slvResp.bits
   inst_s3.fwdState  := task_s3_g.bits.respMes.fwdState.bits
-  inst_s3.rdResp    := task_s3_g.bits.respMes.masResp.bits
+  inst_s3.mstResp   := task_s3_g.bits.respMes.masResp.bits
   inst_s3.respHasData := (task_s3_g.bits.respMes.masDBID.valid | task_s3_g.bits.respMes.slvDBID.valid).asUInt
 
   /*
@@ -209,8 +209,8 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   decode_s3.decode(inst_s3, table)
   when(valid_s3) { assert(decode_s3.asUInt =/= 0.U,
     "\n\nADDR[0x%x] DECODE ERROR: No inst match in decode table\n" +
-      "INST: CHNL[0x%x] OP[0x%x] SRC[0x%x] OTH[0x%x] HN[0x%x] RESP[0x%x] DATA[0x%x] SNP[0x%x] FWD[0x%x] RD[0x%x]\n", task_s3_g.bits.taskMes.fullAddr(io.dcuID, io.pcuID),
-    inst_s3.channel, inst_s3.opcode, inst_s3.srcState, inst_s3.othState, inst_s3.hnState, inst_s3.respType, inst_s3.respHasData, inst_s3.snpResp, inst_s3.fwdState, inst_s3.rdResp) }
+      "INST: CHNL[0x%x] OP[0x%x] SRC[0x%x] OTH[0x%x] HN[0x%x] RESP[0x%x] DATA[0x%x] SLV[0x%x] FWD[0x%x] MST[0x%x]\n", task_s3_g.bits.taskMes.fullAddr(io.dcuID, io.pcuID),
+    inst_s3.channel, inst_s3.opcode, inst_s3.srcState, inst_s3.othState, inst_s3.hnState, inst_s3.respType, inst_s3.respHasData, inst_s3.slvResp, inst_s3.fwdState, inst_s3.mstResp) }
   when(valid_s3) { when(decode_s3.wSDir)  { assert(decode_s3.commit | (inst_s3.opcode === SnpUniqueEvict & inst_s3.channel === CHIChannel.SNP) | (isWriteX(inst_s3.opcode) & inst_s3.channel === CHIChannel.REQ)) } }
   when(valid_s3) { when(decode_s3.wSFDir) { assert(decode_s3.commit | (isWriteX(inst_s3.opcode) & inst_s3.channel === CHIChannel.REQ)) } }
 

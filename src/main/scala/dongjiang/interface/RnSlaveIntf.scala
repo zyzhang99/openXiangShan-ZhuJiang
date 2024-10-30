@@ -109,7 +109,7 @@ import xs.utils.perf.{DebugOptions, DebugOptionsKey}
  * Write:
  * { Write           } TxReq  From CHI And Store In Intf          { chiIdx.nodeID = SrcID } { chiIdx.txnID = TxnID }                                        |
  * { CompDBIDResp    } RxRsp  Send To CHI                         { TgtID = chiIdx.nodeID } { TxnID = chiIdx.txnID } { DBID = entryID }                     |
- * { WriteData       } TxRsp  From CHI And Match With Entry ID    { TxnID == entryID }                                                                      |
+ * { CBWriteData     } TxRat  From CHI And Match With Entry ID    { TxnID == entryID }                                                                      |
  * { Req2Exu         } Req    From Intf And Send To EXU                                                                                                     | { pcuIdx.to = chiMes.dcuID } { pcuIdx.incfrom = LOCALSLV } { pcuIdx.entryID = entryID } { pcuIdx.dbID = pcuIdx.dbID }
  * { ReqAck          } ReqAck From EXU and Match With Entry ID                                                                                              | { pcuIdx.entryID == entryID }
  *
@@ -272,6 +272,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
         val hitRespRsp  = rxRsp.fire & entryRecChiRspID === i.U
         chiMes.resp     := Mux(hitRespDat, rxDat.bits.Resp, Mux(hitRespRsp & !chiMes.retToSrc, rxRsp.bits.Resp, chiMes.resp))
         when(hitRespDat) {
+          assert(rxDat.bits.Opcode === SnpRespData | rxDat.bits.Opcode === CopyBackWriteData, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
           assert(Mux(chiMes.isSnp & chiMes.retToSrc, entrys(i).state === RSState.Snp2NodeIng | entrys(i).state === RSState.WaitSnpResp, entrys(i).state === RSState.WaitData), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
         }.elsewhen(hitRespRsp) {
           when(rxRsp.bits.Opcode === CompAck) { assert(entrys(i).state === RSState.WaitCompAck, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state) }
@@ -525,6 +526,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   io.req2Exu.bits.chiMes.channel        := entrys(entrySendReqID).chiMes.channel
   io.req2Exu.bits.chiMes.opcode         := entrys(entrySendReqID).chiMes.opcode
   io.req2Exu.bits.chiMes.expCompAck     := entrys(entrySendReqID).chiMes.expCompAck
+  io.req2Exu.bits.chiMes.resp           := entrys(entrySendReqID).chiMes.resp
   io.req2Exu.bits.chiIndex.nodeID       := entrys(entrySendReqID).chiIndex.nodeID
   io.req2Exu.bits.chiIndex.txnID        := entrys(entrySendReqID).chiIndex.txnID
   io.req2Exu.bits.pcuMes.useAddr        := entrys(entrySendReqID).entryMes.useAddr

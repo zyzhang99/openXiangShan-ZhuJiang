@@ -164,8 +164,10 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
   mshrAlloc_s0.chiMes.opcode            := io.req2Exu.bits.chiMes.opcode
   mshrAlloc_s0.chiIndex                 := io.req2Exu.bits.chiIndex
   when(io.req2Exu.bits.chiMes.isReq & isWriteX(io.req2Exu.bits.chiMes.opcode)) {
-    mshrAlloc_s0.respMes.slvDBID.valid := true.B
-    mshrAlloc_s0.respMes.slvDBID.bits  := io.req2Exu.bits.pcuIndex.dbID
+    mshrAlloc_s0.respMes.slvDBID.valid  := true.B
+    mshrAlloc_s0.respMes.slvDBID.bits   := io.req2Exu.bits.pcuIndex.dbID
+    mshrAlloc_s0.respMes.slvResp.valid  := true.B
+    mshrAlloc_s0.respMes.slvResp.bits   := io.req2Exu.bits.chiMes.resp
   }
 
 

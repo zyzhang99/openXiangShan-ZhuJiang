@@ -17,6 +17,7 @@ object RespType {
   val Snp           = "b001".U
   val SnpFwd        = "b010".U
   val RD            = "b100".U // Read Down
+  val WB            = "b001".U // Write Back
 
   def Snp_RD        = Snp | RD
   def SnpFwd_RD     = SnpFwd | RD
@@ -37,9 +38,9 @@ class InstBundle extends Bundle {
   val hnState     = UInt(ChiStateWidth.W)
   val respType    = UInt(RespTypeWidth.W)
   val respHasData = Bool()
-  val snpResp     = UInt(ChiRespWidth.W)
+  val slvResp     = UInt(ChiRespWidth.W)
   val fwdState    = UInt(ChiRespWidth.W)
-  val rdResp      = UInt(ChiRespWidth.W) // Read Down
+  val mstResp     = UInt(ChiRespWidth.W) // Read Down
 }
 
 
@@ -124,12 +125,12 @@ object Inst {
   def HnIs      (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new InstBundle())); temp.hnState := x;                temp.asUInt }
   def RespIs    (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new InstBundle())); temp.respType := x;               temp.asUInt }
   def RespData  (x: Bool) : UInt = { val temp = WireInit(0.U.asTypeOf(new InstBundle())); temp.respHasData := x;            temp.asUInt }
-  def SnpRespIs (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new InstBundle())); temp.snpResp := x;                temp.asUInt }
+  def RnRespIs  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new InstBundle())); temp.slvResp := x;                temp.asUInt }
   def FwdStateIs(x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new InstBundle())); temp.fwdState := x;               temp.asUInt }
-  def RDRespIs  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new InstBundle())); temp.rdResp := x;                 temp.asUInt }
+  def SnRespIs  (x: UInt) : UInt = { val temp = WireInit(0.U.asTypeOf(new InstBundle())); temp.mstResp := x;                 temp.asUInt }
 
   def LocalReqInst (op: UInt, src: UInt, oth: UInt, hn: UInt, data: Bool = false.B): UInt = Chnl(CHIChannel.REQ) | Op(op) | SrcIs(src) | OthIs(oth) | HnIs(hn) | RespData(data)
-  def LocalRespInst(chnl: UInt, op: UInt, src: UInt, oth: UInt, hn: UInt, respType: UInt, data: Bool = false.B, snp: UInt = ChiResp.I, fwd: UInt = ChiResp.I, rd: UInt = ChiResp.I): UInt = Chnl(chnl) | Op(op) | SrcIs(src) | OthIs(oth) | HnIs(hn) | RespIs(respType) | RespData(data) | SnpRespIs(snp) | FwdStateIs(fwd) | RDRespIs(rd)
+  def LocalRespInst(chnl: UInt, op: UInt, src: UInt, oth: UInt, hn: UInt, respType: UInt, data: Bool = false.B, rn: UInt = ChiResp.I, fwd: UInt = ChiResp.I, sn: UInt = ChiResp.I): UInt = Chnl(chnl) | Op(op) | SrcIs(src) | OthIs(oth) | HnIs(hn) | RespIs(respType) | RespData(data) | RnRespIs(rn) | FwdStateIs(fwd) | SnRespIs(sn)
 }
 
 
