@@ -31,8 +31,8 @@ class MemoryComplex(cfgNode: Node, memNode: Node)(implicit p: Parameters) extend
   })
   chiCfgBridge.icn <> io.icn.cfg
   chiMemBridge.icn <> io.icn.mem
-  memXBar.io.upstream.head <> chiCfgBridge.axi
-  memXBar.io.upstream.last <> chiMemBridge.axi
+  memXBar.io.upstream.head <> AxiBuffer(chiCfgBridge.axi)
+  memXBar.io.upstream.last <> AxiBuffer(chiMemBridge.axi)
   memBuffer.io.in <> memXBar.io.downstream.head
   io.ddr <> memBuffer.io.out
 }

@@ -14,3 +14,12 @@ class AxiBuffer(axiParams: AxiParams, depth:Int = 2) extends Module {
   io.in.r <> Queue(io.out.r, entries = depth, pipe = true)
   io.in.b <> Queue(io.out.b, entries = depth, pipe = true)
 }
+
+object AxiBuffer {
+  def apply(in: AxiBundle, depth:Int = 2, name:Option[String] = None) = {
+    val buffer = Module(new AxiBuffer(in.params, depth))
+    buffer.io.in <> in
+    if(name.isDefined) buffer.suggestName(name.get)
+    buffer.io.out
+  }
+}
