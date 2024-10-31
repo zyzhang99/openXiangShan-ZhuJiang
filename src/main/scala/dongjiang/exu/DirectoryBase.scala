@@ -9,7 +9,6 @@ import org.chipsalliance.cde.config._
 import xs.utils.sram.SRAMTemplate
 import chisel3.util.random.LFSR
 import freechips.rocketchip.util.ReplacementPolicy
-import dongjiang.utils.SramWrapper
 
 object DirCtrlState {
   // [Free] ---> [ReqFire] ---> [WaitMcp]  ---> [GetResp]
