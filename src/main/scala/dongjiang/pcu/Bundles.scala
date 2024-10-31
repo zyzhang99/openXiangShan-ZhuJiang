@@ -129,9 +129,10 @@ class Resp2ExuBundle(implicit p: Parameters) extends DJBundle with HasIncoID {
     val isSnpResp   = Bool()
     val isReqResp   = Bool()
     val isWriResp   = Bool()
+    val isCompAck   = Bool()
     val hasData     = Bool()
     val fwdSVald    = Bool()
-    def isResp      = isSnpResp | isReqResp | isWriResp
+    def isResp      = isSnpResp | isReqResp | isWriResp | isCompAck
     def isUpdate    = !isResp
   }
 }

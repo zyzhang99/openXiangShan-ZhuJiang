@@ -1,5 +1,10 @@
 package dongjiang.pcu.exu.decode
 
+import zhujiang.chi.ReqOpcode._
+import zhujiang.chi.RspOpcode._
+import zhujiang.chi.DatOpcode._
+import zhujiang.chi.SnpOpcode._
+import zhujiang.chi._
 import dongjiang._
 import dongjiang.pcu._
 import dongjiang.chi._
@@ -9,18 +14,20 @@ import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
 import xs.utils.ParallelLookUp
 import dongjiang.chi.ChiState._
-
+import math.max
 
 object RespType {
   val width         = 3
-  val NotResp       = "b000".U
-  val Snp           = "b001".U
-  val SnpFwd        = "b010".U
-  val RD            = "b100".U // Read Down
-  val WB            = "b001".U // Write Back
+  val NotResp       = "b0000".U
+  val Snp           = "b0001".U
+  val SnpFwd        = "b0010".U
+  val RD            = "b0100".U // Read Down
+  val WB            = "b1000".U // Write Back
 
   def Snp_RD        = Snp | RD
   def SnpFwd_RD     = SnpFwd | RD
+
+  def isSnpX(x: UInt) = x === Snp | x === SnpFwd
 }
 
 class InstBundle extends Bundle {
@@ -32,7 +39,7 @@ class InstBundle extends Bundle {
 
 //  val chipType    = UInt(ChipTypeWidth.W)
   val channel     = UInt(ChiChnlWidth.W)
-  val opcode      = UInt(7.W)
+  val opcode      = UInt(ReqOpcode.width.W)
   val srcState    = UInt(ChiStateWidth.W)
   val othState    = UInt(ChiStateWidth.W)
   val hnState     = UInt(ChiStateWidth.W)
@@ -68,7 +75,7 @@ trait HasOperationsBundle extends Bundle {
   val wSFDir      = Bool()
 
   def reqToSlv    = snoop
-  def reqToMas    = readDown | writeDown | readDCU | writeDCU
+  def reqToMst    = readDown | writeDown | readDCU | writeDCU
 }
 
 class OperationsBundle extends Bundle with HasOperationsBundle
@@ -80,19 +87,18 @@ class DecodeBundle extends Bundle with HasOperationsBundle {
 
   // Commit(Resp to Rn Node)
   val respChnl    = UInt(CHIChnlWidth.W)
-  val respOp      = UInt(5.W)
+  val respOp      = UInt(max(DatOpcode.width, RspOpcode.width).W)
   val resp        = UInt(ChiRespWidth.W)
   val fwdState    = UInt(ChiRespWidth.W)
 
   // Send Snoop to Slave Node
-  val snpOp       = UInt(5.W)
-  val retToSrc    = Bool()
+  val snpOp       = UInt(SnpOpcode.width.W)
+  val retToSrc    = Bool() // only one snp will be set reqToSec when it need to snp more than 1 node
 //  val doNotGoToSD = Bool() // The default is true
 
   // Send Read or Write to Master Node
-  val doDMT       = Bool()
-  val rdOp        = UInt(7.W)
-  val wdOp        = UInt(7.W)
+  val rdOp        = UInt(ReqOpcode.width.W)
+  val wdOp        = UInt(ReqOpcode.width.W)
 
   // Write New State to Directory
   val hnState     = UInt(ChiStateWidth.W)
@@ -155,7 +161,6 @@ object Code {
   def FwdState(x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.fwdState := x;          temp.asUInt }
   def SnpOp   (x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.snpOp := x;             temp.asUInt }
   def retToSrc         : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.retToSrc := true.B;     temp.asUInt }
-  def doDMT            : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.doDMT := true.B;        temp.asUInt }
   def ReadOp  (x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.rdOp := x;              temp.asUInt }
   def WriOp   (x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.wdOp := x;              temp.asUInt }
   def HnState (x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.hnState := x;           temp.asUInt }

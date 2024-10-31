@@ -46,7 +46,7 @@ class MSHREntry(implicit p: Parameters) extends DJBundle {
   def isBeSend        = mshrMes.state === MSHRState.BeSend
   def isAlreadySend   = mshrMes.state === MSHRState.AlreadySend
   def isWaitResp      = mshrMes.state === MSHRState.WaitResp
-  def isResp          = respMes.slvResp.valid | respMes.masResp.valid | respMes.fwdState.valid
+  def isResp          = respMes.slvResp.valid | respMes.mstResp.valid | respMes.fwdState.valid
   def isReq           = !isResp
   def respBeSend      = isBeSend & isResp
   def reqBeSend       = isBeSend & isReq
@@ -224,11 +224,11 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
               m.respMes.slvResp.bits    := io.resp2Exu.bits.chiMes.resp
               m.respMes.slvDBID.valid   := io.resp2Exu.bits.pcuMes.hasData
               m.respMes.slvDBID.bits    := io.resp2Exu.bits.pcuIndex.dbID
-              m.respMes.fwdState.valid  := io.resp2Exu.bits.chiMes.fwdState | m.respMes.fwdState.valid
+              m.respMes.fwdState.valid  := io.resp2Exu.bits.pcuMes.fwdSVald | m.respMes.fwdState.valid
               m.respMes.fwdState.bits   := Mux(io.resp2Exu.bits.pcuMes.fwdSVald, io.resp2Exu.bits.chiMes.fwdState, m.respMes.fwdState.bits)
             }.elsewhen(io.resp2Exu.bits.pcuMes.isReqResp) {
-              m.respMes.masResp.valid   := true.B
-              m.respMes.masResp.bits    := io.resp2Exu.bits.chiMes.resp
+              m.respMes.mstResp.valid   := true.B
+              m.respMes.mstResp.bits    := io.resp2Exu.bits.chiMes.resp
               m.respMes.masDBID.valid   := io.resp2Exu.bits.pcuMes.hasData
               m.respMes.masDBID.bits    := io.resp2Exu.bits.pcuIndex.dbID
             }.elsewhen(io.resp2Exu.bits.pcuMes.isWriResp) {

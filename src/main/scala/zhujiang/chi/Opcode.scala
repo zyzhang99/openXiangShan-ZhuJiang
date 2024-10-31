@@ -170,5 +170,41 @@ object SnpOpcode {
   // Self define, only use in DongJiang internal
   val SnpUniqueEvict = 0x18.U(width.W)
 
-  def isSnpXFwd(x: UInt): Bool = x >= SnpSharedFwd & x =/= SnpPreferUnique
+  def isSnpXFwd        (x: UInt): Bool = x >= SnpSharedFwd & x =/= SnpPreferUnique
+  def isSnpToInvalid   (x: UInt): Bool = x === SnpUnique | x === SnpUniqueFwd | x === SnpMakeInvalid | x === SnpUniqueEvict
+  def isSnpToShare     (x: UInt): Bool = x === SnpNotSharedDirty | x === SnpNotSharedDirtyFwd
+  def isLegalSnpOpInPCU(x: UInt): Bool = isSnpToShare(x) | isSnpToInvalid(x)
+
+  def getSnpOp(x: UInt): UInt = {
+    val snpOp = WireInit(0.U(width.W))
+    switch(x) {
+      is(ReqOpcode.ReadNotSharedDirty) { snpOp := SnpNotSharedDirty }
+      is(ReqOpcode.ReadUnique)         { snpOp := SnpUnique }
+      is(ReqOpcode.MakeUnique)         { snpOp := SnpMakeInvalid }
+    }
+    snpOp
+  }
+
+  def getSnpFwdOp(x: UInt): UInt = {
+    val snpOp = WireInit(0.U(width.W))
+    switch(x) {
+      is(ReqOpcode.ReadNotSharedDirty) { snpOp := SnpNotSharedDirtyFwd }
+      is(ReqOpcode.ReadUnique)         { snpOp := SnpUniqueFwd }
+      is(ReqOpcode.MakeUnique)         { snpOp := 0x1F.U }
+    }
+    snpOp
+  }
+
+  def getNoFwdSnpOp(x: UInt): UInt = {
+    val snpOp = WireInit(0.U(width.W))
+    when(isSnpXFwd(x)) {
+      switch(x) {
+        is(SnpNotSharedDirtyFwd) { snpOp := SnpNotSharedDirty}
+        is(SnpUniqueFwd)         { snpOp := SnpUnique }
+      }
+    }.otherwise {
+      snpOp := x
+    }
+    snpOp
+  }
 }

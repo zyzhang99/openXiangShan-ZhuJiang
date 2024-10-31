@@ -32,7 +32,7 @@ import xs.utils.perf.{DebugOptions, DebugOptionsKey}
  *                              waitWBDone       waitWBDone             waitWBDone        waitWBDone  -----> trans2Snp        trans2Snp
  *
  *
- * Snoop Need Data:       [Free]  -----> [GetDBID] -----> [WaitDBID] -----> [Snp2Node] -----> ([Snp2NodeIng]) -----> [WaitSnpResp] -----> [Resp2Exu]
+ * Snoop Need Data:       [Free]  -----> [GetDBID] -----> [WaitDBID] -----> [Snp2Node] -----> ([Snp2NodeIng]) -----> [WaitSnpResp] -----> [Resp2Exu] // TODO: cant send snoop to node when has resp with same addr in the entry
  * Snoop No Need Data:    [Free]                   ----->                   [Snp2Node] -----> ([Snp2NodeIng]) -----> [WaitSnpResp] -----> [Resp2Exu]
  * Snoop Nest Write 0:    [XXXX]                   ----->                   [Snp2Node] -----> ([Snp2NodeIng]) -----> [WaitSnpResp] -----> [Resp2Exu]
  * Snoop Nest Write 1:    [XXXX]                   ----->                                                                                 [Resp2Exu] * only need to snp one node
@@ -166,6 +166,7 @@ class RSEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle  {
     val hasData       = Bool()
     val getDataNum    = UInt(beatNumBits.W)
     val getSnpRespOH  = UInt(nrCcNode.W)
+    val snpFwdWaitAck = Bool() // CompAck
     val nestMes       = new Bundle {
       val waitWBDone  = Bool()
       val trans2Snp   = Bool()
@@ -270,12 +271,14 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
       }.elsewhen((rxDat.fire & entryRecChiDatID === i.U) | (rxRsp.fire & entryRecChiRspID === i.U)) {
         val hitRespDat  = rxDat.fire & entryRecChiDatID === i.U
         val hitRespRsp  = rxRsp.fire & entryRecChiRspID === i.U
-        chiMes.resp     := Mux(hitRespDat, rxDat.bits.Resp, Mux(hitRespRsp & !chiMes.retToSrc, rxRsp.bits.Resp, chiMes.resp))
+        val fwdState     = Mux(hitRespDat, rxDat.bits.FwdState, rxRsp.bits.FwdState)
+        chiMes.resp     := Mux(hitRespDat, rxDat.bits.Resp, Mux(hitRespRsp & !chiMes.retToSrc & rxRsp.bits.Opcode =/= CompAck, rxRsp.bits.Resp, chiMes.resp))
+        chiMes.fwdState := Mux(fwdState > ChiResp.I, fwdState, chiMes.fwdState)
         when(hitRespDat) {
           assert(rxDat.bits.Opcode === SnpRespData | rxDat.bits.Opcode === CopyBackWriteData, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
           assert(Mux(chiMes.isSnp & chiMes.retToSrc, entrys(i).state === RSState.Snp2NodeIng | entrys(i).state === RSState.WaitSnpResp, entrys(i).state === RSState.WaitData), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
         }.elsewhen(hitRespRsp) {
-          when(rxRsp.bits.Opcode === CompAck) { assert(entrys(i).state === RSState.WaitCompAck, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state) }
+          when(rxRsp.bits.Opcode === CompAck) { assert(entrys(i).state === RSState.WaitCompAck | entrys(i).entryMes.snpFwdWaitAck, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state) }
           .otherwise { assert(entrys(i).state === RSState.Snp2NodeIng | entrys(i).state === RSState.WaitSnpResp, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state) }
         }
       }
@@ -311,6 +314,10 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
         val hitRespDat = rxDat.fire & entryRecChiDatID === i.U
         entryMes.getDataNum := entryMes.getDataNum + hitRespDat.asUInt
         entryMes.hasData    := true.B
+        assert(isWriteX(entrys(i).chiMes.opcode) | (entrys(i).chiMes.isSnp & entrys(i).chiMes.retToSrc))
+      // Get CompAck
+      }.elsewhen(rxRsp.fire & entryRecChiRspID === i.U & rxRsp.bits.Opcode === CompAck) {
+        entryMes.snpFwdWaitAck  := false.B
       }
 
       // ---------------------------------------------------- Set Task NID ------------------------------------------------- //
@@ -490,6 +497,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   entrySave.entryMes.nID          := Mux(respVal, 0.U,                                  Mux(snpVal, 0.U,                                  PopCount(taskMatchVec)))
   entrySave.entryMes.useAddr      := Mux(respVal, 0.U,                                  Mux(snpVal, io.req2Intf.bits.pcuMes.useAddr,      parseFullAddr(rxReq.bits.Addr)._6))
   entrySave.entryMes.dcuID        := Mux(respVal, io.resp2Intf.bits.from,               Mux(snpVal, io.req2Intf.bits.from,                parseFullAddr(rxReq.bits.Addr)._3))
+  entrySave.entryMes.snpFwdWaitAck:= Mux(respVal, false.B,                              Mux(snpVal, isSnpXFwd(io.req2Intf.bits.chiMes.opcode), false.B))
   entrySave.pcuIndex.mshrWay      := Mux(respVal, DontCare,                             Mux(snpVal, io.req2Intf.bits.pcuIndex.mshrWay,    DontCare))
   entrySave.pcuIndex.dbID         := Mux(respVal, io.resp2Intf.bits.pcuIndex.dbID,      Mux(snpVal, 0.U,                                  0.U))
   entrySave.chiIndex.txnID        := Mux(respVal, io.resp2Intf.bits.chiIndex.txnID,     Mux(snpVal, io.req2Intf.bits.chiIndex.txnID,      rxReq.bits.TxnID))
@@ -647,6 +655,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   val snpTgtID          = getNodeIDByMetaID(PriorityEncoder(snpBeSendVec)); assert(PriorityEncoder(snpBeSendVec) < nrCcNode.U | !txSnp.valid)
   snpIsLast             := PopCount(snpBeSendVec.asBools) === 1.U; dontTouch(snpIsLast)
   snpAlreadySendVecReg  := Mux(txSnp.fire, Mux(snpIsLast, 0.U, snpAlreadySendVecReg | UIntToOH(getMetaIDByNodeID(snpTgtID))), snpAlreadySendVecReg); assert(fromCcNode(snpTgtID) | !txSnp.valid)
+  assert(Mux(isSnpToShare(txSnp.bits.Opcode) & isSnpXFwd(txSnp.bits.Opcode) & txSnp.valid, PopCount(snpShouldSendVec) === 1.U, true.B))
 
   /*
    * Send Snp to Node
@@ -654,12 +663,12 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   txSnp.valid          := entrySendSnpVec.reduce(_ | _) | entrySendSnpIngVec.reduce(_ | _)
   txSnp.bits           := DontCare
   txSnp.bits.Addr      := entrys(entrySendSnpID).snpAddr(io.pcuID)
-  txSnp.bits.Opcode    := entrys(entrySendSnpID).chiMes.opcode
+  txSnp.bits.Opcode    := Mux(snpAlreadySendVecReg === 0.U, entrys(entrySendSnpID).chiMes.opcode, getNoFwdSnpOp(entrys(entrySendSnpID).chiMes.opcode))
   txSnp.bits.TgtID     := snpTgtID
   txSnp.bits.SrcID     := io.hnfID
   txSnp.bits.TxnID     := entrySendSnpID
-  txSnp.bits.FwdNID    := 0.U // TODO
-  txSnp.bits.FwdTxnID  := 0.U // TODO
+  txSnp.bits.FwdNID    := entrys(entrySendSnpID).chiIndex.nodeID
+  txSnp.bits.FwdTxnID  := entrys(entrySendSnpID).chiIndex.txnID
   txSnp.bits.RetToSrc  := entrys(entrySendSnpID).chiMes.retToSrc & snpAlreadySendVecReg === 0.U
   txSnp.bits.DoNotGoToSD := entrys(entrySendSnpID).chiMes.doNotGoToSD
 
@@ -670,7 +679,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   /*
    * Select one Entry to Send RxDat
    */
-  val respBeSendVec                     = entrys.map { case p => p.state === RSState.Resp2Exu }
+  val respBeSendVec                     = entrys.map { case p => p.state === RSState.Resp2Exu & !p.entryMes.snpFwdWaitAck }
   entryResp2ExuID                     := PriorityEncoder(respBeSendVec)
 
   io.resp2Exu.valid                     := respBeSendVec.reduce(_ | _)

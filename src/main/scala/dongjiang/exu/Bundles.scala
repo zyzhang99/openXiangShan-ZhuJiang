@@ -20,12 +20,12 @@ class ExuChiMesBundle(implicit p: Parameters) extends DJBundle with HasCHIChanne
 
 class ExuRespMesBundle(implicit p: Parameters) extends DJBundle {
     val slvResp         = Valid(UInt(ChiResp.width.W))
-    val masResp         = Valid(UInt(ChiResp.width.W))
+    val mstResp         = Valid(UInt(ChiResp.width.W))
     val fwdState        = Valid(UInt(ChiResp.width.W))
     val slvDBID         = Valid(UInt(dbIdBits.W))
     val masDBID         = Valid(UInt(dbIdBits.W))
 
-    def noRespValid     = !slvResp.valid & !masResp.valid
+    def noRespValid     = !slvResp.valid & !mstResp.valid
 }
 
 class PipeTaskBundle(implicit p: Parameters) extends DJBundle  {

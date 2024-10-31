@@ -127,7 +127,7 @@ class SMEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle {
   def isRead        = isReadX(chiMes.opcode)
   def isWrite       = isWriteX(chiMes.opcode)
   def isRepl        = isReplace(chiMes.opcode)
-  def mshrIndex     = Cat(entryMes.dcuID, entryMes.mSet, pcuIndex.mshrWay)
+  def mshrIndexTxnID = Cat(entryMes.dcuID, entryMes.mSet, pcuIndex.mshrWay) | (1 << (nodeNidBits - 1)).U
   def fullAddr (p: UInt) = entryMes.fullAddr(entryMes.dcuID, p)
 
 
@@ -396,7 +396,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   txReq.bits.Addr         := entrys(entryReq2NodeID).reqAddr(io.pcuID)
   txReq.bits.Opcode       := entrys(entryReq2NodeID).reqOp
   txReq.bits.TgtID        := entrys(entryReq2NodeID).fullTgtID(io.fIDVec)
-  txReq.bits.TxnID        := Mux(entrys(entryReq2NodeID).entryMes.doDMT, entrys(entryReq2NodeID).mshrIndex, entryReq2NodeID)
+  txReq.bits.TxnID        := Mux(entrys(entryReq2NodeID).entryMes.doDMT, entrys(entryReq2NodeID).mshrIndexTxnID, entryReq2NodeID)
   txReq.bits.SrcID        := io.hnfID
   txReq.bits.Size         := log2Ceil(djparam.blockBytes).U
   txReq.bits.MemAttr      := entrys(entryReq2NodeID).chiMes.resp // Multiplex MemAttr to transfer CHI State // Use in Read Req
