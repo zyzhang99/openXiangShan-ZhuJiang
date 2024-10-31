@@ -16,6 +16,7 @@ package object bridge {
     val rdata = Bool()
     val compAck = Bool()
     val comp = Bool()
+    val compCmo = Bool()
     def readReq(order: UInt, expCompAck: Bool): Unit = {
       receiptResp := order === 0.U
       dbidResp := true.B
@@ -23,14 +24,16 @@ package object bridge {
       rdata := false.B
       compAck := !expCompAck
       comp := true.B
+      compCmo := true.B
     }
-    def writeReq(expCompAck: Bool): Unit = {
+    def writeReq(expCompAck: Bool, cmo:Bool): Unit = {
       receiptResp := true.B
       dbidResp := false.B
       wdata := false.B
       rdata := true.B
       compAck := !expCompAck
       comp := false.B
+      compCmo := !cmo
     }
     def completed: Bool = this.asUInt.andR
     def decode(req: ReqFlit, check: Bool): Unit = {
@@ -41,7 +44,7 @@ package object bridge {
       when(req.Opcode === ReqOpcode.ReadNoSnp) {
         readReq(req.Order, req.ExpCompAck)
       }.otherwise {
-        writeReq(req.ExpCompAck)
+        writeReq(req.ExpCompAck, req.Opcode === ReqOpcode.WriteNoSnpFullCleanInv)
       }
     }
   }
@@ -57,6 +60,7 @@ package object bridge {
     def icnReadReceipt:Bool
     def icnDBID:Bool
     def icnComp:Bool
+    def icnCompCmo:Bool = d.completed && !u.compCmo
 
     def needIssue:Bool
   }
@@ -71,7 +75,6 @@ package object bridge {
     val returnNid = if(mem) Some(UInt(niw.W)) else None
     val returnTxnId = if(mem) Some(UInt(12.W)) else None
     val dwt = if(mem) Some(Bool()) else None
-    val cmo = if(mem) Some(Bool()) else None
     val readCnt = UInt(8.W)
   }
 

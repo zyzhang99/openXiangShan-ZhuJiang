@@ -28,7 +28,7 @@ package object axi {
     def completed: Bool = this.asUInt.andR
     def decode(req: ReqFlit, check: Bool): Unit = {
       when(check) {
-        assert(req.Opcode === ReqOpcode.ReadNoSnp || req.Opcode === ReqOpcode.WriteNoSnpPtl)
+        assert(req.Opcode === ReqOpcode.ReadNoSnp || req.Opcode === ReqOpcode.WriteNoSnpPtl || req.Opcode === ReqOpcode.WriteNoSnpFullCleanInv)
         assert(req.Size <= 6.U)
       }
       when(req.Opcode === ReqOpcode.ReadNoSnp) {
@@ -68,7 +68,6 @@ package object axi {
       info.returnTxnId.get := req.ReturnTxnID
       info.returnNid.get := req.ReturnNID
       info.dwt.get := req.Opcode =/= ReqOpcode.ReadNoSnp && req.DoDWT
-      info.cmo.get := req.Opcode === ReqOpcode.WriteNoSnpFullCleanInv
       info.readCnt := 0.U
       state.u.decode(req, valid)
       state.d.decode(req, valid)

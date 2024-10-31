@@ -114,35 +114,29 @@ abstract class BaseCtrlMachine[
   }
 
   private val dwt = payload.info.dwt.getOrElse(false.B)
-  private val cmo = payload.info.cmo.getOrElse(false.B)
   private val icnReadReceipt = payload.state.icnReadReceipt
   private val icnDBID = payload.state.icnDBID
-
-  private val icnCompCond = MuxCase(true.B, Seq(
-    (dwt, payload.state.u.wdata),
-    (cmo, payload.state.d.completed)
-  ))
-  private val icnComp = payload.state.icnComp & icnCompCond
+  private val icnComp = Mux(dwt, payload.state.u.wdata & payload.state.icnComp, payload.state.icnComp)
+  private val icnCompCmo = payload.state.icnCompCmo
   private val icnCompDBID = icnDBID && icnComp
-  when(valid) {
-    assert(Cat(dwt, cmo) =/= "b11".U, "CMO does not support DWT")
-  }
-  icn.tx.resp.valid := valid & (icnReadReceipt || icnDBID || icnComp)
+  icn.tx.resp.valid := valid & (icnReadReceipt || icnDBID || icnComp || icnCompCmo)
   icn.tx.resp.bits := DontCare
   icn.tx.resp.bits.Opcode := Mux(icnCompDBID, RspOpcode.CompDBIDResp, MuxCase(0.U, Seq(
     icnReadReceipt -> RspOpcode.ReadReceipt,
     icnDBID -> RspOpcode.DBIDResp,
-    icnComp -> RspOpcode.Comp
+    icnComp -> RspOpcode.Comp,
+    icnCompCmo -> RspOpcode.CompCMO
   )))
   icn.tx.resp.bits.DBID := io.idx
   icn.tx.resp.bits.TxnID := Mux(icnDBID && dwt, payload.info.returnTxnId.getOrElse(0.U), payload.info.txnId)
   icn.tx.resp.bits.SrcID := 0.U
   icn.tx.resp.bits.TgtID := Mux(icnDBID && dwt, payload.info.returnNid.getOrElse(0.U), payload.info.srcId)
-  icn.tx.resp.bits.Resp := Mux(icnDBID || icnComp, "b000".U, "b010".U)
+  icn.tx.resp.bits.Resp := Mux(icnDBID || icnComp || icnCompCmo, "b000".U, "b010".U)
   when(icn.tx.resp.fire) {
     plmnu.receiptResp := icn.tx.resp.bits.Opcode === RspOpcode.ReadReceipt || plu.receiptResp
     plmnu.dbidResp := icn.tx.resp.bits.Opcode === RspOpcode.DBIDResp || icn.tx.resp.bits.Opcode === RspOpcode.CompDBIDResp || plu.dbidResp
     plmnu.comp := icn.tx.resp.bits.Opcode === RspOpcode.Comp || icn.tx.resp.bits.Opcode === RspOpcode.CompDBIDResp || plu.comp
+    plmnu.compCmo := icn.tx.resp.bits.Opcode === RspOpcode.CompCMO || plu.compCmo
   }
 
   private val busDataBytes = slvBusDataBits / 8
