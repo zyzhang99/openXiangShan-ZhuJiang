@@ -120,8 +120,16 @@ class Zhujiang(implicit p: Parameters) extends ZJModule {
   for(i <- dcuIcnSeq.indices) {
     val bankId = dcuIcnSeq(i)._1
     for(j <- dcuIcnSeq(i)._2.indices) dcuDevSeq(i).io.icns(j) <> dcuIcnSeq(i)._2(j)
-    for(j <- dcuIcnSeq(i)._2.indices) dcuDevSeq(i).io.friendsNodeIDVec(j).foreach(_ := (pow(2, nodeNidBits).toInt - 1).U)
-    for(j <- dcuIcnSeq(i)._2.indices) dcuDevSeq(i).io.friendsNodeIDVec(j) := dcuIcnSeq(i)._2.map(_.node.friends.map(_.nodeId.U))(j)
+    for(j <- dcuIcnSeq(i)._2.indices) {
+      dcuDevSeq(i).io.friendsNodeIDVec(j).zipWithIndex.foreach {
+        case (v, k) =>
+          if (k < dcuIcnSeq(i)._2.map(_.node.friends.map(_.nodeId.U))(j).length) {
+            v := dcuIcnSeq(i)._2.map(_.node.friends.map(_.nodeId.U))(j)(k)
+          } else {
+            v := (pow(2, nodeNidBits).toInt - 1).U
+          }
+      }
+    }
     dcuDevSeq(i).reset := placeResetGen(s"dcu_$bankId", dcuIcnSeq(i)._2.head)
     dcuDevSeq(i).clock := clock
     dcuDevSeq(i).suggestName(s"dcu_$bankId")
