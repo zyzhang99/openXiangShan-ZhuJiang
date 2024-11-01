@@ -47,6 +47,7 @@ class WrStateEntry(implicit p: Parameters) extends ZJBundle {
   val sendReqOrder = UInt(6.W)
   val state        = UInt(WRState.width.W)
   val tgtID        = UInt(niw.W)
+  val sendFull     = Bool()
 }
 
 class WriteHandle(implicit p: Parameters) extends ZJModule{
@@ -92,8 +93,9 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
   val mask              = RegInit(VecInit(Seq.fill(dw/8){0.U(8.W)}))
   val data              = RegInit(0.U(dw.W))
   val strbReg           = RegInit(0.U(bew.W))
+  val rxRspTxnid        = WireInit(io.chi_rxrsp.bits.TxnID(log2Ceil(dmaParams.bufferSize) - 1, 0))
+  val txReqTxnid        = WireInit(io.chi_txreq.bits.TxnID(log2Ceil(dmaParams.bufferSize) - 1, 0))
   
-
   /* 
   Sram start Index pointer and End Index pointer
    */
@@ -155,18 +157,21 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
 
  
   dataSram.io.w.req.valid        := Mux(maskValid & mergeValid_s2, true.B, false.B)
-  dataSram.io.w.req.bits.setIdx  := Mux(maskValid & mergeValid_s2, endIndex, 0.U)
-  dataSram.io.w.req.bits.data(0) := Mux(maskValid & mergeValid_s2, mergeDataReg, 0.U)
+  dataSram.io.w.req.bits.setIdx  := endIndex
+  dataSram.io.w.req.bits.data(0) := mergeDataReg
 
   maskSram.io.w.req.valid        := Mux(maskValid & mergeValid_s2, true.B, false.B)
-  maskSram.io.w.req.bits.setIdx  := Mux(maskValid & mergeValid_s2, endIndex, 0.U)
-  maskSram.io.w.req.bits.data(0) := Mux(maskValid & mergeValid_s2, mergeMaskReg, 0.U)
+  maskSram.io.w.req.bits.setIdx  := endIndex
+  maskSram.io.w.req.bits.data(0) := mergeMaskReg
 
 
   val sendReqNum                  = wrStateEntrys.map(w => w.areid === selWrDataEntry && (w.state === WRState.SendWrReq || w.state === WRState.WaitDBID && (w.full && !w.last || !w.full)))
+  val shouldSendFull              = mergeMaskReg.andR
+
 
   when(mergeMaskReg(bew - 1) && !lastWrData && judgeSendReq && mergeValid_s2){ 
     wrStateEntrys(endIndex).areid := selWrDataEntry
+    wrStateEntrys(endIndex).sendFull := shouldSendFull
     wrStateEntrys(endIndex).state := WRState.SendWrReq
     wrStateEntrys(endIndex).full  := Mux(awEntrys(selWrDataEntry).unalign, false.B, true.B)
     wrStateEntrys(endIndex).last  := Mux(awEntrys(selWrDataEntry).unalign, true.B, false.B)
@@ -178,6 +183,7 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
 
   }.elsewhen(mergeMaskReg(bew - 1) && !lastWrData && !judgeSendReq && mergeValid_s2){
     wrStateEntrys(endIndex).areid := selWrDataEntry
+    wrStateEntrys(endIndex).sendFull := shouldSendFull
     wrStateEntrys(endIndex).state := Mux(awEntrys(selWrDataEntry).unalign, WRState.SendWrReq, WRState.WaitDBID)
     wrStateEntrys(endIndex).full  := Mux(awEntrys(selWrDataEntry).unalign, false.B, true.B)
     wrStateEntrys(endIndex).last  := true.B
@@ -188,6 +194,7 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
     judgeSendReq := true.B
   }.elsewhen(lastWrData && judgeSendReq  && mergeValid_s2){
     wrStateEntrys(endIndex).areid := selWrDataEntry
+    wrStateEntrys(endIndex).sendFull := shouldSendFull
     wrStateEntrys(endIndex).state := WRState.SendWrReq
     wrStateEntrys(endIndex).full  := false.B
     wrStateEntrys(endIndex).last  := true.B
@@ -198,6 +205,7 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
     judgeSendReq := true.B
   }.elsewhen(lastWrData && !judgeSendReq  && mergeValid_s2){
     wrStateEntrys(endIndex).areid := selWrDataEntry
+    wrStateEntrys(endIndex).sendFull := shouldSendFull
     wrStateEntrys(endIndex).state := WRState.WaitDBID
     wrStateEntrys(endIndex).full  := true.B
     wrStateEntrys(endIndex).last  := true.B
@@ -218,11 +226,21 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
   val selSendReqEntry   = PriorityEncoder(sramSendReqVec)
   val txReqFlit         = Wire(new ReqFlit)
   txReqFlit            := 0.U.asTypeOf(txReqFlit)
+  val txReqOpcode       = WireInit(0.U(7.W))
+  when(awEntrys(wrStateEntrys(selSendReqEntry).areid).addr(raw - 1) && wrStateEntrys(selSendReqEntry).sendFull){
+    txReqOpcode        := ReqOpcode.WriteNoSnpFull
+  }.elsewhen(awEntrys(wrStateEntrys(selSendReqEntry).areid).addr(raw - 1) && !wrStateEntrys(selSendReqEntry).sendFull){
+    txReqOpcode        := ReqOpcode.WriteNoSnpPtl
+  }.elsewhen(wrStateEntrys(selSendReqEntry).sendFull){
+    txReqOpcode        := ReqOpcode.WriteUniqueFull
+  }.elsewhen(!wrStateEntrys(selSendReqEntry).sendFull){
+    txReqOpcode        := ReqOpcode.WriteUniquePtl
+  }
 
-  txReqFlit.Addr       := Mux(txWrReqValid, awEntrys(wrStateEntrys(selSendReqEntry).areid).addr, 0.U)
-  txReqFlit.ExpCompAck := Mux(txWrReqValid, true.B, false.B)
-  txReqFlit.Opcode     := Mux(txWrReqValid, ReqOpcode.WriteUniquePtl, 0.U)
-  txReqFlit.Order      := Mux(txWrReqValid, "b10".U, 0.U)
+  txReqFlit.Addr       := awEntrys(wrStateEntrys(selSendReqEntry).areid).addr
+  txReqFlit.ExpCompAck := true.B
+  txReqFlit.Opcode     := txReqOpcode
+  txReqFlit.Order      := "b10".U
   txReqFlit.SrcID      := 1.U
   txReqFlit.TxnID      := selSendReqEntry
   txReqFlit.Size       := Mux(wrStateEntrys(selSendReqEntry).full, 6.U, 5.U)
@@ -231,7 +249,7 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
   val txnid               = io.chi_rxrsp.bits.TxnID(log2Ceil(dmaParams.bufferSize) - 1, 0) + 1.U
 
 
-  when(io.chi_rxrsp.fire && wrStateEntrys(io.chi_rxrsp.bits.TxnID).full && (io.chi_rxrsp.bits.Opcode === RspOpcode.DBIDResp || io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp)){
+  when(io.chi_rxrsp.fire && wrStateEntrys(rxRspTxnid).full && (io.chi_rxrsp.bits.Opcode === RspOpcode.DBIDResp || io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp)){
     wrStateEntrys(txnid).state := WRState.SendWrData
     wrStateEntrys(txnid).dbid  := io.chi_rxrsp.bits.DBID
     wrStateEntrys(txnid).tgtID := io.chi_rxrsp.bits.SrcID
@@ -308,7 +326,7 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
         is(AWState.ReceiveData){
           val hit       = a.nid === 0.U && lastWrData  
           val reduceNid = a.nid =/= 0.U && lastWrData
-          val addrIncr  = wrStateEntrys(io.chi_txreq.bits.TxnID).areid  === i.U && io.chi_txreq.fire
+          val addrIncr  = wrStateEntrys(txReqTxnid).areid  === i.U && io.chi_txreq.fire
           val alignHit  = a.nid === 0.U && mergeValid_s2
           a.unalign := Mux(alignHit, false.B, a.unalign)
           a.state   := Mux(hit, AWState.Comp, a.state)
@@ -317,7 +335,7 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
         }
         is(AWState.Comp){
           val hit       = a.nid === 0.U && io.axi_b.bits.id === a.awid && io.axi_b.fire
-          val addrIncr  = wrStateEntrys(io.chi_txreq.bits.TxnID).areid  === i.U && io.chi_txreq.fire
+          val addrIncr  = wrStateEntrys(txReqTxnid).areid  === i.U && io.chi_txreq.fire
           a.addr       := Mux(addrIncr && io.chi_txreq.bits.Size === 5.U, a.addr + 32.U, Mux(addrIncr && io.chi_txreq.bits.Size === 6.U, a.addr + 64.U, a.addr))
           when(hit){
             a := 0.U.asTypeOf(a)
@@ -394,7 +412,7 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
   io.chi_txreq.valid := txWrReqValid
   io.chi_txreq.bits  := txReqFlit
   io.chi_txdat.valid := RegNext(RegNext(dataSram.io.r.req.fire))
-  io.chi_txdat.bits  := Mux(RegNext(RegNext(dataSram.io.r.req.fire)), txDatFlit, 0.U.asTypeOf(txDatFlit))
+  io.chi_txdat.bits  := txDatFlit
   io.chi_rxrsp.ready := true.B
 
   //AXI interface
