@@ -18,11 +18,13 @@ import xs.utils.perf.{DebugOptions, DebugOptionsKey}
 /*
  * ************************************************************** State transfer ***********************************************************************************
  *
- * Read Req:  [Free] -----> [GetDBID] -----> [WaitDBID] -----> [Req2Node] -----> [WaitNodeData] -----> [Resp2Exu]
+ * Read Req Without DMT:  [Free] -----> [GetDBID] -----> [WaitDBID] -----> [Req2Node] -----> [WaitNodeData] -----> [Resp2Exu]
  *
- * Write Req: [Free] -----> [Req2Node] -----> [WaitNodeDBID] -----> [RCDB] -----> [WriteData2Node] -----> [WaitNodeComp] -----> [Resp2Exu]
+ * Read Req With DMT:     [Free] -----> [Req2Node] -----> [Resp2Exu]
  *
- * Replace:   [Free] -----> [Req2Node] -----> [WaitNodeDBID] -----> [Replace2Node] -----> [WaitReplDBID] -----> [RCDB] -----> [WriteData2Node] -----> [WaitNodeComp] -----> [Resp2Exu]
+ * Write Req:             [Free] -----> [Req2Node] -----> [WaitNodeDBID] -----> [RCDB] -----> [WriteData2Node] -----> [WaitNodeComp] -----> [Resp2Exu]
+ *
+ * Replace:               [Free] -----> [Req2Node] -----> [WaitNodeDBID] -----> [Replace2Node] -----> [WaitReplDBID] -----> [RCDB] -----> [WriteData2Node] -----> [WaitNodeComp] -----> [Resp2Exu]
  *
  *
  * ************************************************************** ID Transfer ********************************************************************************
@@ -47,6 +49,7 @@ import xs.utils.perf.{DebugOptions, DebugOptionsKey}
  * Read With DMT: Not implemented in the system
  * { Req2Intf        } Req    From Exu And Store In Intf          { chiIdx.nodeID = chiIdx.nodeID } { chiIdx.txnID =  chiIdx.txnID }                        | { pcuIdx.mshrIdx = pcuIdx.mshrIdx }
  * { Read            } Req    Send To CHI                         { TgtID = chiMes.tgtID } { TxnID = Cat(chiMes.dcuID, pcuIdx.mshrIdx) } { ReturnNID = chiIdx.nodeID } { ReturnTxnID = chiIdx.txnID }
+ * { Resp2Exu        } Resp   Send To Exu                                                                                                                   | { pcuIdx.to = chiMes.dcuID } { pcuIdx.from = LOCALMAS } { pcuIdx.mshrIdx = mshrIdx }
  *
  *
  * Write:
@@ -337,7 +340,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
    */
   entrySave.entryMes.useAddr  := io.req2Intf.bits.pcuMes.useAddr
   entrySave.entryMes.dcuID    := io.req2Intf.bits.from
-  entrySave.entryMes.doDMT    := io.req2Intf.bits.pcuMes.doDMT; assert(!io.req2Intf.bits.pcuMes.doDMT, "TODO")
+  entrySave.entryMes.doDMT    := io.req2Intf.bits.pcuMes.doDMT
   entrySave.entryMes.toDCU    := io.req2Intf.bits.pcuMes.toDCU
   entrySave.entryMes.selfWay  := io.req2Intf.bits.pcuMes.selfWay
   entrySave.pcuIndex.mshrWay  := io.req2Intf.bits.pcuIndex.mshrWay
@@ -468,10 +471,10 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   io.resp2Exu.bits.chiMes.resp          := entrys(entryResp2ExuID).chiMes.resp
   io.resp2Exu.bits.pcuIndex.mshrSet     := entrys(entryResp2ExuID).entryMes.mSet
   io.resp2Exu.bits.pcuIndex.mshrWay     := entrys(entryResp2ExuID).pcuIndex.mshrWay
+  io.resp2Exu.bits.pcuIndex.dbID        := entrys(entryResp2ExuID).pcuIndex.dbID
   io.resp2Exu.bits.from                 := param.intfID.U
   io.resp2Exu.bits.to                   := entrys(entryResp2ExuID).entryMes.dcuID
 
-  io.resp2Exu.bits.pcuIndex.dbID        := entrys(entryResp2ExuID).pcuIndex.dbID
 
 
 

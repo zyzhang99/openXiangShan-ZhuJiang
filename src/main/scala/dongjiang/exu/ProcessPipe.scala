@@ -278,7 +278,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   taskRD_s3.to                    := IncoID.LOCALMST.U
   taskRD_s3.pcuIndex.mshrWay      := task_s3_g.bits.taskMes.mshrWay
   taskRD_s3.pcuMes.useAddr        := task_s3_g.bits.taskMes.useAddr
-  taskRD_s3.pcuMes.doDMT          := false.B // TODO: DMT
+  taskRD_s3.pcuMes.doDMT          := djparam.openDMT.asBool
   taskRD_s3.pcuMes.toDCU          := false.B
 
 
@@ -312,7 +312,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   readDCU_s3.to                     := IncoID.LOCALMST.U
   readDCU_s3.pcuIndex.mshrWay       := task_s3_g.bits.taskMes.mshrWay
   readDCU_s3.pcuMes.useAddr         := task_s3_g.bits.taskMes.useAddr
-  readDCU_s3.pcuMes.doDMT           := false.B // TODO: DMT
+  readDCU_s3.pcuMes.doDMT           := djparam.openDMT.asBool
   readDCU_s3.pcuMes.selfWay         := OHToUInt(dirRes_s3.bits.s.wayOH)
   readDCU_s3.pcuMes.toDCU           := true.B
 
@@ -440,9 +440,10 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   io.updMSHR.bits.mshrSet     := task_s3_g.bits.taskMes.mSet
   io.updMSHR.bits.mshrWay     := task_s3_g.bits.taskMes.mshrWay
   io.updMSHR.bits.updType     := Mux(todo_s3_retry,   UpdMSHRType.RETRY,  UpdMSHRType.UPD)
-  io.updMSHR.bits.waitIntfVec := (Mux(todo_s3.reqToSlv | todo_s3_sfEvict, UIntToOH(IncoID.LOCALSLV.U), 0.U) |
+  io.updMSHR.bits.waitIntfVec := (Mux(todo_s3.reqToSlv | todo_s3_sfEvict, UIntToOH(IncoID.LOCALSLV.U), (todo_s3.readDown | todo_s3.readDCU) & djparam.openDMT.asBool) |
                                   Mux(todo_s3.reqToMst | todo_s3_replace, UIntToOH(IncoID.LOCALMST.U), 0.U)).asBools
   io.updMSHR.bits.mTag        := Mux(todo_s3_replace | todo_s3_sfEvict, Mux(todo_s3_replace, dirRes_s3.bits.s.mTag, dirRes_s3.bits.sf.mTag), task_s3_g.bits.taskMes.mTag)
+  assert(!((todo_s3.reqToSlv | todo_s3_sfEvict) & ((todo_s3.readDCU | todo_s3.readDCU) & djparam.openDMT.B)))
   // Only Use In New Req
   io.updMSHR.bits.hasNewReq   := todo_s3_replace | todo_s3_sfEvict
   io.updMSHR.bits.opcode      := Mux(todo_s3_replace, Replace,            SnpUniqueEvict)

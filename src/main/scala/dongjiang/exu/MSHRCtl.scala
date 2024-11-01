@@ -219,6 +219,12 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
             // Recovery of pending intf identifiers
             m.mshrMes.waitIntfVec(io.resp2Exu.bits.from) := false.B
             // Record Resp Mes
+            when(io.resp2Exu.bits.pcuMes.isCompAck) {
+              // Only use in DMT
+              // Nothing to do and it has been receicve master resp
+              assert(PopCount(m.mshrMes.waitIntfVec) === 1.U, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
+              assert(m.respMes.mstResp.valid, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
+            }
             when(io.resp2Exu.bits.pcuMes.isSnpResp) {
               m.respMes.slvResp.valid   := true.B
               m.respMes.slvResp.bits    := io.resp2Exu.bits.chiMes.resp
@@ -232,9 +238,9 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
               m.respMes.masDBID.valid   := io.resp2Exu.bits.pcuMes.hasData
               m.respMes.masDBID.bits    := io.resp2Exu.bits.pcuIndex.dbID
             }.elsewhen(io.resp2Exu.bits.pcuMes.isWriResp) {
+              // Nothing to do and State Will be Free
               assert(PopCount(m.mshrMes.waitIntfVec) === 1.U, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
               assert(m.respMes.noRespValid, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
-              // Nothing to do and State Will be Free
             }
             assert(m.mshrMes.waitIntfVec(io.resp2Exu.bits.from), s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
             assert(m.isWaitResp, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
