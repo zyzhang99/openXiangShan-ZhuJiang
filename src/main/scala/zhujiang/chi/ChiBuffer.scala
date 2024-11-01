@@ -7,7 +7,7 @@ import xijiang.Node
 import xijiang.router.base.{DeviceIcnBundle, IcnBundle}
 
 class ChiBuffer(node: Node, depth:Int = 2)(implicit p:Parameters) extends Module {
-  private val io = IO(new Bundle{
+  val io = IO(new Bundle{
     val in = new DeviceIcnBundle(node)
     val out = Flipped(new DeviceIcnBundle(node))
   })

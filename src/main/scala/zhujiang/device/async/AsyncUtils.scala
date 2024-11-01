@@ -76,22 +76,18 @@ class IcnRxAsyncBundle(node: Node)(implicit p: Parameters) extends ZJBundle with
 class IcnAsyncBundle(val node: Node)(implicit p: Parameters) extends ZJBundle {
   val tx = new IcnTxAsyncBundle(node)
   val rx = new IcnRxAsyncBundle(node)
-  val resetTx = Output(AsyncReset())
   def <>(that: DeviceIcnAsyncBundle): Unit = {
     this.rx <> that.tx
     that.rx <> this.tx
-    that.resetRx := this.resetTx
   }
 }
 
 class DeviceIcnAsyncBundle(val node: Node)(implicit p: Parameters) extends ZJBundle {
   val tx = Flipped(new IcnRxAsyncBundle(node))
   val rx = Flipped(new IcnTxAsyncBundle(node))
-  val resetRx = Input(AsyncReset())
   def <>(that: IcnAsyncBundle): Unit = {
     this.rx <> that.tx
     that.rx <> this.tx
-    this.resetRx := that.resetTx
   }
 }
 
@@ -151,7 +147,6 @@ class IcnSideAsyncModule(node: Node)(implicit p: Parameters) extends BaseIcnAsyn
   val asyncTxBundle = io.async.tx
   val icnTxBundle = io.icn.tx
   val asyncRxBundle = io.async.rx
-  io.async.resetTx := reset
   makeConnections()
 }
 

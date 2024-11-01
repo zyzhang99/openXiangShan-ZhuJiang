@@ -206,6 +206,7 @@ case class ZJParameters(
   bankOff: Int = 12,
   cpuSpaceBits: Int = 20,
   cpuDevSpaceBits: Int = 8,
+  cpuAsync: Boolean = true,
   snoopEjectBufDepth: Int = 8,
   reqEjectBufDepth: Int = 8,
   externalInterruptNum: Int = 32,
