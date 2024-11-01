@@ -5,19 +5,19 @@ import chisel3.experimental.hierarchy.{Definition, Instance}
 import chisel3.util._
 import chisel3.experimental.{ChiselAnnotation, annotate}
 import org.chipsalliance.cde.config.Parameters
-import xijiang.{NodeType, Ring}
+import xijiang.{Node, NodeType, Ring}
 import dongjiang.pcu._
 import dongjiang.dcu._
 import dongjiang.ddrc._
 import chisel3.util.{Decoupled, DecoupledIO}
 import xijiang.c2c.C2cLinkPort
-import zhujiang.chi.{DataFlit, ReqFlit, RespFlit}
+import zhujiang.chi.{ChiBuffer, DataFlit, ReqFlit, RespFlit}
 import sifive.enterprise.firrtl.NestedPrefixModulesAnnotation
-import xijiang.router.base.IcnBundle
+import xijiang.router.base.{DeviceIcnBundle, IcnBundle}
 import xs.utils.sram.SramBroadcastBundle
 import xs.utils.{DFTResetSignals, ResetGen}
 import zhujiang.axi.AxiBundle
-import zhujiang.device.async.{IcnAsyncBundle, IcnSideAsyncModule}
+import zhujiang.device.async.{DeviceIcnAsyncBundle, IcnAsyncBundle, IcnSideAsyncModule}
 import zhujiang.device.ddr.MemoryComplex
 import zhujiang.device.reset.ResetDevice
 import scala.math.pow
@@ -77,8 +77,8 @@ class Zhujiang(implicit p: Parameters) extends ZJModule {
   private val socDmaDev = Module(new IcnSideAsyncModule(socDmaIcn.node))
   socCfgDev.io.icn <> socCfgIcn
   socDmaDev.io.icn <> socDmaIcn
-  socCfgDev.reset := placeResetGen(s"cfg", socCfgIcn)
-  socDmaDev.reset := placeResetGen(s"dma", socDmaIcn)
+  socCfgDev.reset := placeResetGen(s"soc", socCfgIcn)
+  socDmaDev.reset := socCfgDev.reset
 
   private val resetDev = Module(new ResetDevice)
   resetDev.clock := clock
@@ -88,12 +88,14 @@ class Zhujiang(implicit p: Parameters) extends ZJModule {
 
   require(localRing.icnCcs.get.nonEmpty)
   private val ccnIcnSeq = localRing.icnCcs.get
-  private val ccnDevSeq = ccnIcnSeq.map(icn => Module(new IcnSideAsyncModule(icn.node)))
+  private val ccnAysncDevSeq = if(p(ZJParametersKey).cpuAsync) Some(ccnIcnSeq.map(icn => Module(new IcnSideAsyncModule(icn.node)))) else None
+  private val ccnSyncDevSeq = if(p(ZJParametersKey).cpuAsync) None else Some(ccnIcnSeq.map(icn => Module(new ChiBuffer(icn.node))))
   for(i <- ccnIcnSeq.indices) {
     val domainId = ccnIcnSeq(i).node.domainId
-    ccnDevSeq(i).io.icn <> ccnIcnSeq(i)
-    ccnDevSeq(i).reset := placeResetGen(s"cc_$domainId", ccnIcnSeq(i))
-    ccnDevSeq(i).suggestName(s"cluster_async_sink_$domainId")
+    ccnAysncDevSeq.foreach(devs => devs(i).io.icn <> ccnIcnSeq(i))
+    ccnSyncDevSeq.foreach(devs => devs(i).io.in <> ccnIcnSeq(i))
+    ccnAysncDevSeq.foreach(devs => devs(i).reset := placeResetGen(s"cc_$domainId", ccnIcnSeq(i)))
+    ccnSyncDevSeq.foreach(devs => devs(i).reset := placeResetGen(s"cc_$domainId", ccnIcnSeq(i)))
   }
 
   require(localRing.icnHfs.get.nonEmpty)
@@ -137,19 +139,68 @@ class Zhujiang(implicit p: Parameters) extends ZJModule {
 
   val io = IO(new Bundle {
     val ddr = new AxiBundle(memSubSys.io.ddr.params)
-    val soc = new Bundle {
-      val cfg = new IcnAsyncBundle(socCfgDev.io.icn.node)
-      val dma = new IcnAsyncBundle(socDmaDev.io.icn.node)
-    }
-    val cluster = MixedVec(ccnDevSeq.map(cc => new IcnAsyncBundle(cc.io.icn.node)))
+    val soc = new SocIcnBundle(socCfgDev.io.icn.node, socDmaDev.io.icn.node)
+    val ccn = MixedVec(ccnIcnSeq.map(cc => new CcnIcnBundle(cc.node)))
     val chip = Input(UInt(nodeAidBits.W))
     val onReset = Output(Bool())
   })
   io.onReset := resetDev.io.onReset
-  io.cluster.suggestName("cluster_async")
   io.ddr <> memSubSys.io.ddr
   io.soc.cfg <> socCfgDev.io.async
   io.soc.dma <> socDmaDev.io.async
-  for(i <- ccnDevSeq.indices) io.cluster(i) <> ccnDevSeq(i).io.async
+  io.soc.reset := socCfgDev.reset
   localRing.io_chip := io.chip
+  for(i <- io.ccn.indices) {
+    io.ccn(i).async.foreach(_ <> ccnAysncDevSeq.get(i).io.async)
+    io.ccn(i).sync.foreach(_ <> ccnSyncDevSeq.get(i).io.out)
+    if(p(ZJParametersKey).cpuAsync) {
+      io.ccn(i).reset := ccnAysncDevSeq.get(i).reset
+    } else {
+      io.ccn(i).reset := ccnSyncDevSeq.get(i).reset
+    }
+  }
+}
+
+class CcnIcnBundle(val node:Node)(implicit p:Parameters) extends Bundle {
+  val async = if(p(ZJParametersKey).cpuAsync) Some(new IcnAsyncBundle(node)) else None
+  val sync = if(p(ZJParametersKey).cpuAsync) None else Some(new IcnBundle(node))
+  val reset = Output(AsyncReset())
+  def <>(that: CcnDevBundle):Unit = {
+    this.async.foreach(_ <> that.async.get)
+    this.sync.foreach(_ <> that.sync.get)
+    that.reset := this.reset
+  }
+}
+
+class CcnDevBundle(val node:Node)(implicit p:Parameters) extends Bundle {
+  val async = if(p(ZJParametersKey).cpuAsync) Some(new DeviceIcnAsyncBundle(node)) else None
+  val sync = if(p(ZJParametersKey).cpuAsync) None else Some(new DeviceIcnBundle(node))
+  val reset = Input(AsyncReset())
+  def <>(that: CcnIcnBundle):Unit = {
+    this.async.foreach(_ <> that.async.get)
+    this.sync.foreach(_ <> that.sync.get)
+    this.reset := that.reset
+  }
+}
+
+class SocIcnBundle(cfgNode:Node, dmaNode:Node)(implicit p:Parameters) extends Bundle {
+  val cfg = new IcnAsyncBundle(cfgNode)
+  val dma = new IcnAsyncBundle(dmaNode)
+  val reset = Output(AsyncReset())
+  def <>(that: SocDevBundle):Unit = {
+    this.cfg <> that.cfg
+    this.dma <> that.dma
+    that.reset := this.reset
+  }
+}
+
+class SocDevBundle(cfgNode:Node, dmaNode:Node)(implicit p:Parameters) extends Bundle {
+  val cfg = new DeviceIcnAsyncBundle(cfgNode)
+  val dma = new DeviceIcnAsyncBundle(dmaNode)
+  val reset = Input(AsyncReset())
+  def <>(that: SocIcnBundle):Unit = {
+    this.cfg <> that.cfg
+    this.dma <> that.dma
+    this.reset := that.reset
+  }
 }
