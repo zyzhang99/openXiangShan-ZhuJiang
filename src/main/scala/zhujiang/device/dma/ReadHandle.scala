@@ -8,10 +8,7 @@ import zhujiang._
 import zhujiang.chi._
 import zhujiang.axi._
 import xs.utils.sram._
-import freechips.rocketchip.util.Annotated.srams
 import zhujiang.device.dma.SRAMState.{WaitReceipt => WaitReceipt}
-import DONGJIANG.DCU.DCUWState.WaitData
-import freechips.rocketchip.rocket.Instructions.SRA
 
 object ARState {
   val width = 2
