@@ -33,7 +33,7 @@ class ExecuteUnit(implicit p: Parameters) extends DJModule {
   val mpRespQueue   = Module(new Queue(gen = new Resp2IntfBundle(),entries = djparam.nrExuRespQueue, pipe = true, flow = true))
 
 // --------------------------- Connection ---------------------------//
-  directory.io.earlyRReqVec           <> mshrCtl.io.earlyRReqVec
+  directory.io.dirRReadyVec           <> mshrCtl.io.dirRReadyVec
   directory.io.dirRead                <> mshrCtl.io.dirRead
   directory.io.dirWrite(PipeID.RESP)  <> respPipe.io.dirWrite // Low bit is high priority
   directory.io.dirWrite(PipeID.REQ)   <> reqPipe.io.dirWrite

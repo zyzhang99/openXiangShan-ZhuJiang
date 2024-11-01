@@ -76,7 +76,7 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
     val updMSHR       = Flipped(Decoupled(new UpdateMSHRReqBundle()))
     val updLockMSHR   = Vec(2, Flipped(Valid(UInt(minDirSetBits.W))))
     // Directory Read Req
-    val earlyRReqVec  = Vec(djparam.nrDirBank, Decoupled())
+    val dirRReadyVec  = Input(Vec(djparam.nrDirBank, Bool()))
     val dirRead       = Vec(2, Valid(new DirReadBundle()))
     // Directory Read MSHR Set Mes
     val dirReadMshr   = Vec(2, Flipped(Valid(new DirReadMSHRBundle())))
@@ -96,7 +96,6 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
   // Transfer Req From Node To MSHREntry
   val mshrAlloc_s0          = WireInit(0.U.asTypeOf(new MSHREntry()))
   // task s0
-  val dirCanRecVec          = Wire(Vec(djparam.nrDirBank, Bool()))
   val reqWillSendVecVec     = Wire(Vec(djparam.nrMSHRSets, Vec(djparam.nrMSHRWays, Bool())))
   val respWillSendVecVec    = Wire(Vec(djparam.nrMSHRSets, Vec(djparam.nrMSHRWays, Bool())))
   val taskReq_s0            = Wire(Valid(new PipeTaskBundle()))
@@ -108,8 +107,6 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
   val canGoReq_s1           = Wire(Bool())
   val taskResp_s1_g         = RegInit(0.U.asTypeOf(Valid(new PipeTaskBundle())))
   val canGoResp_s1          = Wire(Bool())
-  val reqAlreadyReadDirReg  = RegInit(false.B)
-  val respAlreadyReadDirReg = RegInit(false.B)
   // dir read mshr
   val resp2dirRegVec        = RegInit(0.U.asTypeOf(io.mshrResp2Dir))
 
@@ -334,11 +331,9 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
   /*
    * Get Can Send Set From Dir Read Ready and mshrLockVecReg
    */
-  // TODO: Consider creating a copy of shiftReg in MSHR
-  dirCanRecVec            := io.earlyRReqVec.map(_.ready)
   // TODO: if dont need to read Dir, it should not be ctrl by mshrLockVecReg
-  mshrTableReg.zip(reqWillSendVecVec).zipWithIndex.foreach  { case((m, v), i) => m.zip(v).foreach { case(m, v) => v := m.reqBeSend & dirCanRecVec(m.dirBank(i.U)) & !mshrLockVecReg(m.minDirSet(i.U)) } }
-  mshrTableReg.zip(respWillSendVecVec).zipWithIndex.foreach { case((m, v), i) => m.zip(v).foreach { case(m, v) => v := m.respBeSend & dirCanRecVec(m.dirBank(i.U)) & !mshrLockVecReg(m.minDirSet(i.U)) } }
+  mshrTableReg.zip(reqWillSendVecVec).zipWithIndex.foreach  { case((m, v), i) => m.zip(v).foreach { case(m, v) => v := m.reqBeSend  & io.dirRReadyVec(m.dirBank(i.U)) & !mshrLockVecReg(m.minDirSet(i.U)) } }
+  mshrTableReg.zip(respWillSendVecVec).zipWithIndex.foreach { case((m, v), i) => m.zip(v).foreach { case(m, v) => v := m.respBeSend & io.dirRReadyVec(m.dirBank(i.U)) & !mshrLockVecReg(m.minDirSet(i.U)) } }
 
 
   /*
@@ -388,13 +383,18 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
 
 
   /*
-   * Read Directory Early Req
+   * Read Directory
    */
-  io.earlyRReqVec.map(_.valid).zipWithIndex.foreach {
-    case(v, i) =>
-      v := (taskResp_s0.valid & canGoResp_s0 & taskResp_s0.bits.taskMes.dirBank === i.U) | (taskReq_s0.valid & canGoReq_s0 & taskReq_s0.bits.taskMes.dirBank === i.U)
-  }
-  assert(PopCount(io.earlyRReqVec.map(_.fire)) === PopCount(Seq(taskResp_s0.valid & canGoResp_s0, taskReq_s0.valid & canGoReq_s0)))
+  // resp
+  io.dirRead(PipeID.RESP).valid         := taskResp_s0.valid & canGoResp_s0
+  io.dirRead(PipeID.RESP).bits.useAddr  := taskResp_s0.bits.taskMes.useAddr
+  io.dirRead(PipeID.RESP).bits.mshrWay  := taskResp_s0.bits.taskMes.mshrWay
+  io.dirRead(PipeID.RESP).bits.pipeID   := taskResp_s0.bits.taskMes.pipeID
+  // req
+  io.dirRead(PipeID.REQ).valid          := taskReq_s0.valid & canGoReq_s0
+  io.dirRead(PipeID.REQ).bits.useAddr   := taskReq_s0.bits.taskMes.useAddr
+  io.dirRead(PipeID.REQ).bits.mshrWay   := taskReq_s0.bits.taskMes.mshrWay
+  io.dirRead(PipeID.REQ).bits.pipeID    := taskReq_s0.bits.taskMes.pipeID
 
 
   // ---------------------------------------------------------------------------------------------------------------------- //
@@ -416,27 +416,11 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
    * Send Task to Pipe
    */
   // resp
-  respAlreadyReadDirReg           := Mux(respAlreadyReadDirReg, !io.pipeTask(PipeID.RESP).fire, io.pipeTask(PipeID.RESP).valid & !canGoResp_s1)
   io.pipeTask(PipeID.RESP).valid  := taskResp_s1_g.valid
   io.pipeTask(PipeID.RESP).bits   := taskResp_s1_g.bits
   // req
-  reqAlreadyReadDirReg            := Mux(reqAlreadyReadDirReg, !io.pipeTask(PipeID.REQ).fire, io.pipeTask(PipeID.REQ).valid & !canGoReq_s1)
   io.pipeTask(PipeID.REQ).valid   := taskReq_s1_g.valid
   io.pipeTask(PipeID.REQ).bits    := taskReq_s1_g.bits
-
-  /*
-   * Read Directory
-   */
-  // resp
-  io.dirRead(PipeID.RESP).valid         := taskResp_s1_g.valid & !respAlreadyReadDirReg
-  io.dirRead(PipeID.RESP).bits.useAddr  := taskResp_s1_g.bits.taskMes.useAddr
-  io.dirRead(PipeID.RESP).bits.mshrWay  := taskResp_s1_g.bits.taskMes.mshrWay
-  io.dirRead(PipeID.RESP).bits.pipeID   := taskResp_s1_g.bits.taskMes.pipeID
-  // req
-  io.dirRead(PipeID.REQ).valid          := taskReq_s1_g.valid & !reqAlreadyReadDirReg
-  io.dirRead(PipeID.REQ).bits.useAddr   := taskReq_s1_g.bits.taskMes.useAddr
-  io.dirRead(PipeID.REQ).bits.mshrWay   := taskReq_s1_g.bits.taskMes.mshrWay
-  io.dirRead(PipeID.REQ).bits.pipeID    := taskReq_s1_g.bits.taskMes.pipeID
 
 
 

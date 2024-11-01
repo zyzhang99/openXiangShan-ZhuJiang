@@ -25,7 +25,6 @@ object DCURState {
   val width             = 2
   val Free              = "b00".U
   val ReadSram          = "b01".U
-  val Reading           = "b10".U
 }
 
 
@@ -53,9 +52,8 @@ object DCUWState {
   val Free              = "b000".U
   val SendDBIDResp      = "b001".U
   val WaitData          = "b010".U
-  val WriteSram         = "b011".U // Send Write Req To DataStorage And Send Comp To Src
-  val Writting          = "b100".U // Write Data To DataStorage
-  val SendComp          = "b101".U
+  val WriteSram         = "b011".U
+  val SendComp          = "b100".U
 }
 
 class DCUWEntry(implicit p: Parameters) extends DJBundle {
@@ -158,7 +156,6 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
 
   // DataStorage
   val ds                    = Seq.fill(djparam.nrDSBank) { Module(new DataStorage(sets = nrDSEntry)) }
-  ds.zipWithIndex.foreach { case(d, i) => d.io.id := i.U }
 
   // ChiRespQueue
   val rRespReg              = RegInit(0.U.asTypeOf(Valid(new DataFlit)))
@@ -191,7 +188,7 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
   /*
    * Send DBID Or Comp To Src
    */
-  val wBufSCompVec          = wBufRegVec.map { case w => w.state === DCUWState.Writting | w.state === DCUWState.SendComp}
+  val wBufSCompVec          = wBufRegVec.map(_.state === DCUWState.SendComp)
   val wBufSDBIDVec          = wBufRegVec.map(_.state === DCUWState.SendDBIDResp)
   val selSCompID            = PriorityEncoder(wBufSCompVec)
   val selSDBID              = PriorityEncoder(wBufSDBIDVec)
@@ -204,40 +201,45 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
 
 
   /*
-      * Select Buf Send Early Req To SRAM
-      */
-  sramRReadyVec             := ds.map(_.io.earlyRReq.ready)
-  sramWReadyVec             := ds.map(_.io.earlyWReq.ready)
+    * Select Buf Send Req To SRAM
+    */
+  sramRReadyVec             := ds.map(_.io.read.ready)
+  sramWReadyVec             := ds.map(_.io.write.ready)
 
   val willSendRVec          = rBufRegVec.map { case r => r.state === DCURState.ReadSram      & sramRReadyVec(r.dsBank) & (!rRespReg.valid | rRespCanGo) }
   val willSendReplVec       = wBufRegVec.map { case r => r.replRState === DCURState.ReadSram & sramRReadyVec(r.dsBank) & (!rRespReg.valid | rRespCanGo) & !willSendRVec.reduce(_ | _) }
-  val willSendWVec          = wBufRegVec.map { case w => w.state === DCUWState.WriteSram     & w.canWrite & sramWReadyVec(w.dsBank) }
+  val willSendWVec          = wBufRegVec.map { case w => w.state === DCUWState.WriteSram     & sramWReadyVec(w.dsBank) & w.canWrite}
 
-  val earlyWID              = PriorityEncoder(willSendWVec)
-  val earlyRID              = PriorityEncoder(willSendRVec)
-  val earlyReplID           = PriorityEncoder(willSendReplVec)
-  val earlyRepl             = !willSendRVec.reduce(_ | _) & willSendReplVec.reduce(_ | _)
+  val sramWID              = PriorityEncoder(willSendWVec)
+  val sramRID              = PriorityEncoder(willSendRVec)
+  val sramReplID           = PriorityEncoder(willSendReplVec)
+  val sramRepl             = !willSendRVec.reduce(_ | _) & willSendReplVec.reduce(_ | _)
 
   ds.zipWithIndex.foreach {
     case(d, i) =>
-      d.io.earlyRReq.valid := (willSendRVec.reduce(_ | _) | willSendReplVec.reduce(_ | _)) & rBufRegVec(earlyRID).dsBank === i.U
-      d.io.earlyWReq.valid := willSendWVec.reduce(_ | _)                                   & wBufRegVec(earlyWID).dsBank === i.U
+      d.io.read.valid       := rBufRegVec(sramRID).dsBank === i.U & (willSendRVec.reduce(_ | _) | willSendReplVec.reduce(_ | _))
+      d.io.write.valid      := wBufRegVec(sramWID).dsBank === i.U &  willSendWVec.reduce(_ | _)
+      d.io.read.bits        := rBufRegVec(sramRID).dsIndex
+      d.io.write.bits.index := wBufRegVec(sramWID).dsIndex
+      d.io.write.bits.data  := Cat(wBufRegVec(sramWID).data.map(_.bits).reverse)
+      assert(wBufRegVec(sramWID).data.map(_.valid).reduce(_ & _) | !d.io.write.valid)
   }
 
 
   /*
     * Get Read CHI Resp
     */
-  val earlyRValid           = ds.map(_.io.earlyRReq.fire).reduce(_ | _)
-  rRespReg.valid            := Mux(earlyRValid, true.B, rRespReg.valid & !rRespCanGo)
+  val sramRFire             = ds.map(_.io.read.fire).reduce(_ | _)
+  val sramWFire             = ds.map(_.io.write.fire).reduce(_ | _)
+  rRespReg.valid            := Mux(sramRFire, true.B, rRespReg.valid & !rRespCanGo)
   rRespCanGo                := rRespQ.io.enq.ready
-  when(earlyRValid & rRespCanGo) {
-    rRespReg.bits.Opcode    := Mux(earlyRepl, NonCopyBackWriteData,                 CompData)
-    rRespReg.bits.TgtID     := Mux(earlyRepl, ddrcNodeId.U,                         rBufRegVec(earlyRID).returnNID)
-    rRespReg.bits.TxnID     := Mux(earlyRepl, wBufRegVec(earlyReplID).returnTxnID,  rBufRegVec(earlyRID).returnTxnID)
-    rRespReg.bits.Resp      := Mux(earlyRepl, 0.U,                                  rBufRegVec(earlyRID).resp)
-    rRespReg.bits.HomeNID   := Mux(earlyRepl, 0.U,                                  rBufRegVec(earlyRID).srcID)
-    rRespReg.bits.DBID      := Mux(earlyRepl, 0.U,                                  rBufRegVec(earlyRID).txnID)
+  when(sramRFire & rRespCanGo) {
+    rRespReg.bits.Opcode    := Mux(sramRepl, NonCopyBackWriteData,                CompData)
+    rRespReg.bits.TgtID     := Mux(sramRepl, ddrcNodeId.U,                        rBufRegVec(sramRID).returnNID)
+    rRespReg.bits.TxnID     := Mux(sramRepl, wBufRegVec(sramReplID).returnTxnID,  rBufRegVec(sramRID).returnTxnID)
+    rRespReg.bits.Resp      := Mux(sramRepl, 0.U,                                 rBufRegVec(sramRID).resp)
+    rRespReg.bits.HomeNID   := Mux(sramRepl, 0.U,                                 rBufRegVec(sramRID).srcID)
+    rRespReg.bits.DBID      := Mux(sramRepl, 0.U,                                 rBufRegVec(sramRID).txnID)
   }
 
 
@@ -261,14 +263,11 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
           }
         }
         is(DCURState.ReadSram) {
-          val hit       = ds.map(_.io.earlyRReq.fire).reduce(_ | _) & earlyRID === i.U & !earlyRepl
+          val hit       = sramRFire & sramRID === i.U & !sramRepl
           when(hit) {
-              r.state   := DCURState.Reading
+            r           := 0.U.asTypeOf(r)
+            r.state     := DCURState.Free
           }
-        }
-        is(DCURState.Reading) {
-          r             := 0.U.asTypeOf(r)
-          r.state       := DCURState.Free
         }
       }
   }
@@ -305,17 +304,8 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
           }
         }
         is(DCUWState.WriteSram) {
-          val hit       = ds.map(_.io.earlyWReq.fire).reduce(_ | _) & earlyWID === i.U
+          val hit       = sramWFire & sramWID === i.U
           when(hit) {
-            w.state     := DCUWState.Writting
-          }
-        }
-        is(DCUWState.Writting) {
-          val hit       = txRsp.fire & txRsp.bits.Opcode === Comp & selSCompID === i.U
-          when(hit) {
-            w           := 0.U.asTypeOf(w)
-            w.state     := DCUWState.Free
-          }.otherwise {
             w.state     := DCUWState.SendComp
           }
         }
@@ -345,57 +335,25 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
           }
         }
         is(DCURState.ReadSram) {
-          val hit         = ds.map(_.io.earlyRReq.fire).reduce(_ | _) & earlyReplID === i.U & earlyRepl
+          val hit         = sramRFire & sramRID === i.U & sramRepl
           when(hit) {
-            r.replRState  := DCURState.Reading
+            r             := 0.U.asTypeOf(r)
+            r.state       := DCURState.Free
           }
         }
-        is(DCURState.Reading) {
-          r.returnTxnID   := 0.U
-          r.replRState    := DCURState.Free
-        }
       }
   }
 
 
-
 // ---------------------------------------------------------------------------------------------------------------------- //
-// ------------------------------------------- S1: Send Req To DataStorage ---------------------------------------------- //
+// ------------------------------------- S1: Receive SRAM Resp and Send RxDat ------------------------------------------- //
 // ---------------------------------------------------------------------------------------------------------------------- //
-  /*
-    * Send Write / Read Req
-    */
-  val sendWReqID = PriorityEncoder(wBufRegVec.map(_.state === DCUWState.Writting))
-  val sendRReqID = PriorityEncoder(rBufRegVec.map(_.state === DCURState.Reading))
-  ds.foreach(_.io.read  := DontCare)
-  ds.foreach(_.io.write := DontCare)
-  ds.zipWithIndex.foreach {
-    case (d, i) =>
-      val wHit = wBufRegVec(sendWReqID).state === DCUWState.Writting & wBufRegVec(sendWReqID).dsBank === i.U
-      val rHit = rBufRegVec(sendRReqID).state === DCURState.Reading & rBufRegVec(sendRReqID).dsBank === i.U
-      when(wHit) {
-        d.io.write.index := wBufRegVec(sendWReqID).dsIndex
-        d.io.write.data  := Cat(wBufRegVec(sendWReqID).data.map(_.bits).reverse)
-        assert(wBufRegVec(sendWReqID).data.map(_.valid).reduce(_ & _))
-      }.elsewhen(rHit) {
-        d.io.read        := rBufRegVec(sendRReqID).dsIndex
-      }
-      assert(!(wHit & rHit))
-  }
-  assert(PopCount(rBufRegVec.map(_.state === DCURState.Reading))  <= 1.U)
-  assert(PopCount(wBufRegVec.map(_.state === DCUWState.Writting)) <= 1.U)
-
-
   /*
     * Get Read CHI Resp
     */
   rRespQ.io.enq.valid := rRespReg.valid
   rRespQ.io.enq.bits  := rRespReg.bits
 
-
-// ---------------------------------------------------------------------------------------------------------------------- //
-// ------------------------------------- S2: Receive SRAM Resp and Send RxDat ------------------------------------------- //
-// ---------------------------------------------------------------------------------------------------------------------- //
   /*
     * Receive SRAM Resp
     */

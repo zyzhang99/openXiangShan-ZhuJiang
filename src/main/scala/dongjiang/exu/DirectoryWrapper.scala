@@ -14,8 +14,7 @@ import xs.utils.perf.{DebugOptions, DebugOptionsKey}
 class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
 // --------------------- IO declaration ------------------------//
   val io = IO(new Bundle {
-    val earlyRReqVec  = Vec(djparam.nrDirBank, Flipped(Decoupled()))
-
+    val dirRReadyVec  = Output(Vec(djparam.nrDirBank, Bool()))
     val dirRead       = Vec(2, Flipped(Valid(new DirReadBundle())))
     val dirResp       = Vec(2, Valid(new DirRespBundle()))
     val dirWrite      = Vec(2, Flipped(new DirWriteBundle()))
@@ -30,8 +29,9 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
                                                                       ways        = djparam.selfWays,
                                                                       nrMetas     = 1,
                                                                       replPolicy  = djparam.selfReplacementPolicy,
-                                                                      mcp         = djparam.dirMulticycle,
-                                                                      holdMcp     = djparam.dirHoldMcp,
+                                                                      setup       = djparam.dirSetup,
+                                                                      latency     = djparam.dirLatency,
+                                                                      extraHold   = djparam.dirExtraHold,
                                                                       nrWayBank   = 4)) }
 
   selfs.zipWithIndex.foreach { case(s, i) => s.io.dirBank := i.U }
@@ -41,99 +41,82 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
                                                                       ways        = djparam.sfDirWays,
                                                                       nrMetas     = nrCcNode,
                                                                       replPolicy  = djparam.sfReplacementPolicy,
-                                                                      mcp         = djparam.dirMulticycle,
-                                                                      holdMcp     = djparam.dirHoldMcp,
+                                                                      setup       = djparam.dirSetup,
+                                                                      latency     = djparam.dirLatency,
+                                                                      extraHold   = djparam.dirExtraHold,
                                                                       nrWayBank   = 4)) }
 
   sfs.zipWithIndex.foreach { case(sf, i) => sf.io.dirBank := i.U }
 
 // -------------------------- Reg and Wire declaration ------------------------//
-  val dirWSRegVec   = RegInit(VecInit(Seq.fill(2) { 0.U.asTypeOf(Valid(new DirWriteBaseBundle(djparam.selfWays, 1, sReplWayBits))) }))
-  val dirWSFRegVec  = RegInit(VecInit(Seq.fill(2) { 0.U.asTypeOf(Valid(new DirWriteBaseBundle(djparam.sfDirWays, nrCcNode, sfReplWayBits))) }))
+  val selfWReadyVec = Wire(Vec(2, Vec(djparam.nrDirBank, Bool())))
 
-  val wSelfReadVec  = Wire(Vec(djparam.nrDirBank, Bool()))
-  val wSFReadVec    = Wire(Vec(djparam.nrDirBank, Bool()))
+  val sfWReadyVec   = Wire(Vec(2, Vec(djparam.nrDirBank, Bool())))
 
   val readMSHRVec   = Wire(Vec(djparam.nrDirBank, new DirReadMSHRBundle()))
 
   val dirRespVec    = Wire(Vec(djparam.nrDirBank, new DirRespBundle()))
 
 // ---------------------------------------------------------------------------------------------------------------------- //
-// ------------------------------------------------- Receive Req From IO ------------------------------------------------ //
+// --------------------------------------------- Receive Req From MSHR / Pipe ------------------------------------------- //
 // ---------------------------------------------------------------------------------------------------------------------- //
-  /*
-   * Receive Read Req
-   */
-  io.earlyRReqVec.zipWithIndex.foreach {
-    case(rReq, i) =>
-      rReq.ready  := selfs(i).io.earlyRReq.ready & sfs(i).io.earlyRReq.ready
-      selfs(i).io.earlyRReq.valid := rReq.valid
-      sfs(i).io.earlyRReq.valid   := rReq.valid
-  }
-
+  io.dirRReadyVec.zipWithIndex.foreach { case(r, i) => r := selfs(i).io.dirRead.ready & sfs(i).io.dirRead.ready }
 
   /*
-   * Set Early Write Req Value
-   */
-  val wSBankVec   = io.dirWrite.map { case w => getDirBank(w.s.bits.useAddr) }
-  val wSFBankVec  = io.dirWrite.map { case w => getDirBank(w.sf.bits.useAddr) }
-
-  selfs.map(_.io.earlyWReq).zipWithIndex.foreach {
-    case(wReq, i) =>
-      val hitVec      = wSBankVec.zip(io.dirWrite.map(_.s.valid)).map { case(b, v) => b === i.U & v }
-      wReq.valid      := hitVec.reduce(_ | _)
-      wSelfReadVec(i) := wReq.ready
-  }
-
-  sfs.map(_.io.earlyWReq).zipWithIndex.foreach {
-    case (wReq, i) =>
-      val hitVec      = wSFBankVec.zip(io.dirWrite.map(_.sf.valid)).map { case (b, v) => b === i.U & v }
-      wReq.valid      := hitVec.reduce(_ | _)
-      wSFReadVec(i)   := wReq.ready
-  }
-
-
-
-  /*
-   * Receive IO DirWrite Req
-   */
-  io.dirWrite(0).s.ready  := wSelfReadVec(wSBankVec(0))
-  io.dirWrite(0).sf.ready := wSFReadVec(wSBankVec(0))
-
-  io.dirWrite(1).s.ready  := wSelfReadVec(wSBankVec(1)) & !(io.dirWrite(0).s.valid  & wSBankVec(0)  === wSBankVec(1))
-  io.dirWrite(1).sf.ready := wSFReadVec(wSBankVec(1))   & !(io.dirWrite(0).sf.valid & wSFBankVec(0) === wSFBankVec(1))
-
-  io.dirWrite.zipWithIndex.foreach {
-    case (w, i) =>
-      dirWSRegVec(i).valid  := w.s.fire
-      dirWSFRegVec(i).valid := w.sf.fire
-
-      dirWSRegVec(i).bits   := w.s.bits
-      dirWSFRegVec(i).bits  := w.sf.bits
-  }
-
-  /*
-   * Set selfs and sfs dirRead and dirWrite IO Value
+   * read dir
    */
   selfs.zip(sfs).zipWithIndex.foreach {
-    case ((s, sf), i) =>
-      val rHitVec     = io.dirRead.map { case r => r.valid & getDirBank(r.bits.useAddr) === i.U }
-      val wSHitVec    = dirWSRegVec.map { case w => w.valid & getDirBank(w.bits.useAddr) === i.U }
-      val wSFHitVec   = dirWSFRegVec.map { case w => w.valid & getDirBank(w.bits.useAddr) === i.U }
-      // Read
-      s.io.dirRead    := Mux(rHitVec(0), io.dirRead(0).bits, io.dirRead(1).bits)
-      sf.io.dirRead   := Mux(rHitVec(0), io.dirRead(0).bits, io.dirRead(1).bits)
-      // Write
-      s.io.dirWrite   := Mux(wSHitVec(0), dirWSRegVec(0).bits, dirWSRegVec(1).bits)
-      sf.io.dirWrite  := Mux(wSFHitVec(0), dirWSFRegVec(0).bits, dirWSFRegVec(1).bits)
-      // Assert
-      assert(PopCount(rHitVec) <= 1.U)
-      assert(PopCount(wSHitVec) <= 1.U)
-      assert(PopCount(wSFHitVec) <= 1.U)
+    case((s, sf), i) =>
+      val rHit0 = io.dirRead(0).valid & io.dirRead(0).bits.dirBank === i.U
+      val rHit1 = io.dirRead(1).valid & io.dirRead(1).bits.dirBank === i.U
+      // self
+      s.io.dirRead.valid  := rHit0 | rHit1
+      s.io.dirRead.bits   := Mux(rHit0, io.dirRead(0).bits, io.dirRead(1).bits)
+      // sf
+      sf.io.dirRead.valid := rHit0 | rHit1
+      sf.io.dirRead.bits  := Mux(rHit0, io.dirRead(0).bits, io.dirRead(1).bits)
+      assert(!(rHit0 & rHit1))
+      assert(Mux(s.io.dirRead.valid,  s.io.dirRead.ready,  true.B))
+      assert(Mux(sf.io.dirRead.valid, sf.io.dirRead.ready, true.B))
   }
 
+
+  /*
+   * write self dir
+   */
+  selfs.zipWithIndex.foreach {
+    case (s, i) =>
+      val wSHit0 = io.dirWrite(0).s.valid & io.dirWrite(0).s.bits.dirBank === i.U
+      val wSHit1 = io.dirWrite(1).s.valid & io.dirWrite(1).s.bits.dirBank === i.U
+      s.io.dirWrite.valid     := wSHit0 | wSHit1
+      s.io.dirWrite.bits      := Mux(wSHit0, io.dirWrite(0).s.bits, io.dirWrite(1).s.bits)
+      selfWReadyVec(0)(i)     := wSHit0 & s.io.dirWrite.ready
+      selfWReadyVec(1)(i)     := wSHit1 & s.io.dirWrite.ready
+      assert(!(wSHit0 & wSHit1))
+  }
+  io.dirWrite.map(_.s.ready).zip(selfWReadyVec).foreach { case(a, b) => a := b.reduce(_ | _); assert(PopCount(b) <= 1.U) }
+
+
+
+  /*
+   * write sf dir
+   */
+  sfs.zipWithIndex.foreach {
+    case (sf, i) =>
+      val wSFHit0 = io.dirWrite(0).sf.valid & io.dirWrite(0).sf.bits.dirBank === i.U
+      val wSFHit1 = io.dirWrite(1).sf.valid & io.dirWrite(1).sf.bits.dirBank === i.U
+      sf.io.dirWrite.valid    := wSFHit0 | wSFHit1
+      sf.io.dirWrite.bits     := Mux(wSFHit0, io.dirWrite(0).sf.bits, io.dirWrite(1).sf.bits)
+      sfWReadyVec(0)(i)       := wSFHit0 & sf.io.dirWrite.ready
+      sfWReadyVec(1)(i)       := wSFHit1 & sf.io.dirWrite.ready
+      assert(!(wSFHit0 & wSFHit1))
+  }
+  io.dirWrite.map(_.sf.ready).zip(sfWReadyVec).foreach { case(a, b) => a := b.reduce(_ | _); assert(PopCount(b) <= 1.U) }
+
+
+
 // ---------------------------------------------------------------------------------------------------------------------- //
-// ------------------------------------------------- Receive Req From IO ------------------------------------------------ //
+// --------------------------------------------------- Send Req To MSHR ------------------------------------------------- //
 // ---------------------------------------------------------------------------------------------------------------------- //
   /*
    * Get Mes From MSHR
@@ -195,16 +178,20 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
 
 
 // ------------------------------------------------------- Assertion --------------------------------------------------- //
-  assert(PopCount(selfs.map(_.io.earlyRReq.valid)) <= 2.U, "selfDirs: no more than two read request can be entered at the same time")
-  assert(PopCount(selfs.map(_.io.earlyWReq.valid)) <= 2.U, "selfDirs: no more than two write request can be entered at the same time")
-  assert(PopCount(sfs.map(_.io.earlyRReq.valid)) <= 2.U, "sfDirs: no more than two read request can be entered at the same time")
-  assert(PopCount(sfs.map(_.io.earlyWReq.valid)) <= 2.U, "sfDirs: no more than two write request can be entered at the same time")
-  assert(!selfs.map(_.io.earlyRReq.fire).zip(sfs.map(_.io.earlyRReq.fire)).map { case(s, sf) => s ^ sf }.reduce(_ | _), "selfDirs and sfDirs dirRead must be fire at the same time")
+  assert(PopCount(selfs.map(_.io.dirRead.valid)) <= 2.U, "selfDirs: no more than two read request can be entered at the same time")
+  assert(PopCount(selfs.map(_.io.dirWrite.valid)) <= 2.U, "selfDirs: no more than two write request can be entered at the same time")
+  assert(PopCount(sfs.map(_.io.dirRead.valid)) <= 2.U, "sfDirs: no more than two read request can be entered at the same time")
+  assert(PopCount(sfs.map(_.io.dirWrite.valid)) <= 2.U, "sfDirs: no more than two write request can be entered at the same time")
+  assert(!selfs.map(_.io.dirRead.fire).zip(sfs.map(_.io.dirRead.fire)).map { case(s, sf) => s ^ sf }.reduce(_ | _), "selfDirs and sfDirs dirRead must be fire at the same time")
 
   assert(PopCount(selfs.map(_.io.dirResp.valid)) <= 2.U, "selfDirs dirResp: no more than two resp can be output at a time")
   assert(PopCount(sfs.map(_.io.dirResp.valid)) <= 2.U, "sfDirs dirResp: no more than two resp can be output at a time")
 
-  val sResValVec = selfs.map(_.io.dirResp.valid)
-  val sfResValVec = sfs.map(_.io.dirResp.valid)
+  val sReadFireVec  = selfs.map(_.io.dirRead.fire)
+  val sfReadFireVec = sfs.map(_.io.dirRead.fire)
+  assert(sReadFireVec.zip(sfReadFireVec).map { case (s, sf) => s === sf }.reduce(_ & _))
+
+  val sResValVec    = selfs.map(_.io.dirResp.valid)
+  val sfResValVec   = sfs.map(_.io.dirResp.valid)
   assert(sResValVec.zip(sfResValVec).map { case (s, sf) => s === sf }.reduce(_ & _))
 }

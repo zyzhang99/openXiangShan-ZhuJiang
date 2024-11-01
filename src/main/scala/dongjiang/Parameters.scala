@@ -46,8 +46,9 @@ case class DJParam(
                   nrDCUWBuf:          Int = 16,
                   nrDCURBuf:          Int = 16,
                   nrDCURespQ:         Int = 4,
-                  dcuMulticycle:      Int = 2,
-                  dcuHoldMcp:         Boolean = true,
+                  dcuSetup:           Int = 2,
+                  dcuLatency:         Int = 3,
+                  dcuExtraHold:       Boolean = true,
                   // --------------------------- Data Buffer Base Mes ------------------- //
                   nrDatBuf:           Int = 32, // The number of Data Buffer entries Per PCU
                   // ------------------------ EXU Base Mes Per Bank ------------------ //
@@ -67,8 +68,9 @@ case class DJParam(
                   sfReplacementPolicy: String = "plru",
                   // DIR SRAM
                   nrDirBank:          Int = 4, // The number of Self / Snoop Filter Directory Bank Per EXU
-                  dirMulticycle:      Int = 2,
-                  dirHoldMcp:         Boolean = true,
+                  dirSetup:           Int = 2,
+                  dirLatency:         Int = 2,
+                  dirExtraHold:       Boolean = false,
                 ) {
   val nrMSHRWays = min(selfWays, sfDirWays)
   require(min(selfSets, sfDirSets) >= nrMSHRSets)
