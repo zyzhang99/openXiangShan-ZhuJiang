@@ -14,12 +14,18 @@ import xijiang.c2c.C2cLinkPort
 import zhujiang.chi.{DataFlit, ReqFlit, RespFlit}
 import sifive.enterprise.firrtl.NestedPrefixModulesAnnotation
 import xijiang.router.base.IcnBundle
+import xs.utils.sram.SramBroadcastBundle
 import xs.utils.{DFTResetSignals, ResetGen}
 import zhujiang.axi.AxiBundle
 import zhujiang.device.async.{IcnAsyncBundle, IcnSideAsyncModule}
-import zhujiang.device.cluster.interconnect.DftWires
 import zhujiang.device.ddr.MemoryComplex
 import zhujiang.device.reset.ResetDevice
+import scala.math.pow
+
+class DftWires extends Bundle {
+  val reset = new DFTResetSignals
+  val func = new SramBroadcastBundle
+}
 
 class Zhujiang(implicit p: Parameters) extends ZJModule {
   require(p(ZJParametersKey).tfsParams.isEmpty)
@@ -92,11 +98,15 @@ class Zhujiang(implicit p: Parameters) extends ZJModule {
 
   require(localRing.icnHfs.get.nonEmpty)
   private val pcuIcnSeq = localRing.icnHfs.get
-  private val pcuDef = Definition(new ProtocolCtrlUnit(pcuIcnSeq.head.node))
+  private val pcuDef = Definition(new ProtocolCtrlUnit(pcuIcnSeq.head.node)) // TODO: There's a risk here
   private val pcuDevSeq = pcuIcnSeq.map(icn => Instance(pcuDef))
+  private val nrPCU = localRing.icnHfs.get.length
+  private val nrDCU = localRing.icnSns.get.filterNot(_.node.mainMemory).length
   for(i <- pcuIcnSeq.indices) {
     val bankId = pcuIcnSeq(i).node.bankId
     pcuDevSeq(i).io.hnfID := pcuIcnSeq(i).node.nodeId.U
+    pcuDevSeq(i).io.pcuID := bankId.U
+    pcuDevSeq(i).io.dcuNodeIDVec.zipWithIndex.foreach { case(n, j) => n := pcuIcnSeq(i).node.friends(j).nodeId.U }
     pcuDevSeq(i).io.toLocal <> pcuIcnSeq(i)
     pcuDevSeq(i).reset := placeResetGen(s"pcu_$bankId", pcuIcnSeq(i))
     pcuDevSeq(i).clock := clock
@@ -104,12 +114,22 @@ class Zhujiang(implicit p: Parameters) extends ZJModule {
   }
 
   require(!localRing.icnSns.get.forall(_.node.mainMemory))
-  private val dcuIcnSeq = localRing.icnSns.get.filterNot(_.node.mainMemory).groupBy(_.node.bankId).toSeq
-  private val dcuDef = Definition(new DataCtrlUnit(dcuIcnSeq.head._2.head.node, dcuIcnSeq.head._2.length))
+  private val dcuIcnSeq = localRing.icnSns.get.filterNot(_.node.mainMemory).sortBy(_.node.dpId).groupBy(_.node.bankId).toSeq
+  private val dcuDef = Definition(new DataCtrlUnit(dcuIcnSeq.head._2.map(_.node).sortBy(_.dpId))) // TODO: There's a risk here.
   private val dcuDevSeq = dcuIcnSeq.map(is => Instance(dcuDef))
   for(i <- dcuIcnSeq.indices) {
     val bankId = dcuIcnSeq(i)._1
-    for(j <- dcuIcnSeq(i)._2.indices) dcuDevSeq(i).io.sn(j) <> dcuIcnSeq(i)._2(j)
+    for(j <- dcuIcnSeq(i)._2.indices) dcuDevSeq(i).io.icns(j) <> dcuIcnSeq(i)._2(j)
+    for(j <- dcuIcnSeq(i)._2.indices) {
+      dcuDevSeq(i).io.friendsNodeIDVec(j).zipWithIndex.foreach {
+        case (v, k) =>
+          if (k < dcuIcnSeq(i)._2.map(_.node.friends.map(_.nodeId.U))(j).length) {
+            v := dcuIcnSeq(i)._2.map(_.node.friends.map(_.nodeId.U))(j)(k)
+          } else {
+            v := (pow(2, nodeNidBits).toInt - 1).U
+          }
+      }
+    }
     dcuDevSeq(i).reset := placeResetGen(s"dcu_$bankId", dcuIcnSeq(i)._2.head)
     dcuDevSeq(i).clock := clock
     dcuDevSeq(i).suggestName(s"dcu_$bankId")

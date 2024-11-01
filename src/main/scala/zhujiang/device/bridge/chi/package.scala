@@ -60,7 +60,7 @@ package object chi {
   }
 
   class ChiSnBridgeCtrlInfo(ioDataBits: Int)(implicit p: Parameters)
-    extends IcnIoDevCtrlInfoCommon(ioDataBits = ioDataBits, withData = true, dxt = false ){
+    extends IcnIoDevCtrlInfoCommon(ioDataBits = ioDataBits, withData = true, mem = false ){
     val order = UInt(2.W)
     val dbid = UInt(12.W)
     val isSnooped = Bool()

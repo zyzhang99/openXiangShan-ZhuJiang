@@ -1,4 +1,4 @@
-package zhujiang.device.cluster.tlu2chi
+package zhujiang.device.tlu2chi
 
 import chisel3._
 import chisel3.util._

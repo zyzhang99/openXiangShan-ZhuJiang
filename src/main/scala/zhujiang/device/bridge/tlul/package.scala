@@ -50,7 +50,7 @@ package object tlul {
     def needIssue: Bool = icnReadReceipt || icnDBID || icnComp || tlaPut || tlaGet
   }
 
-  class TLULCtrlInfo(ioDataBits: Int)(implicit p: Parameters) extends IcnIoDevCtrlInfoCommon(ioDataBits = ioDataBits, withData = true, dxt = false)
+  class TLULCtrlInfo(ioDataBits: Int)(implicit p: Parameters) extends IcnIoDevCtrlInfoCommon(ioDataBits = ioDataBits, withData = true, mem = false)
 
   class TLULRsEntry(dataBits: Int)(implicit p: Parameters) extends IcnIoDevRsEntryCommon[TLULBridgeCtrlOpVec, TLULCtrlInfo] {
     val state = new TLULBridgeCtrlOpVec

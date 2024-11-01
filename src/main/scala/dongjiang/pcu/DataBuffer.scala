@@ -9,14 +9,12 @@ import dongjiang.utils.Encoder.RREncoder
 /*
  * ID Transfer:
  *
- * pcuIdx: PCU Index
- * { from(incoID) | to(incoID) | entryID | mshrIdx(mshrWay | mshrSet) | dbid | dcuIdx }
  *
- * { dbRCReq  } Read / Clean Req To DataBuffer      { to }                { dbid }
+ * { dbRCReq  } Read / Clean Req To DataBuffer      { to }                { dbID }
  * { getDBID  } Get DBID Req To DataBuffer          { from }  { entryID }
- * { DBIDResp } Resp With DBID From DataBuffer      { to }    { entryID } { dbid }
- * { dataTDB  } Send Data To DataBufer                                    { dbid }
- * { dataFDB  } Send Data From DataBuffer           { to }                { dbid }
+ * { dbidResp } Resp With DBID From DataBuffer      { to }    { entryID } { dbID }
+ * { dataTDB  } Send Data To DataBufer                                    { dbID }
+ * { dataFDB  } Send Data From DataBuffer           { to }                { dbID }
  *
  */
 
@@ -60,8 +58,8 @@ class DataBuffer()(implicit p: Parameters) extends DJModule {
 
 // --------------------- Reg and Wire declaration ------------------------//
   val entrys    = RegInit(VecInit(Seq.fill(djparam.nrDatBuf) { 0.U.asTypeOf(new DBEntry()) }))
-  // wResp
-  val wRespQ    = Module(new Queue(new DBWResp, 1, flow = false, pipe = true))
+  // dbidResp
+  val dbidRespQ = Module(new Queue(new DBIDResp(), 1, flow = false, pipe = true))
 
 
 
@@ -69,25 +67,25 @@ class DataBuffer()(implicit p: Parameters) extends DJModule {
 // ---------------------------------------------------------------------------------------------------------------------- //
 // ----------------------------------------------------- WREQ & WRESP --------------------------------------------------- //
 // ---------------------------------------------------------------------------------------------------------------------- //
-  val dbFreeVec             = entrys.map(_.isFree)
-  val wReqId                = PriorityEncoder(dbFreeVec)
+  val dbFreeVec                 = entrys.map(_.isFree)
+  val getDBIDId                 = PriorityEncoder(dbFreeVec)
   // receive
-  io.wReq.ready             := wRespQ.io.enq.ready & dbFreeVec.reduce(_ | _)
-  wRespQ.io.enq.valid       := io.wReq.valid & dbFreeVec.reduce(_ | _)
-  wRespQ.io.enq.bits.dbid   := wReqId
-  wRespQ.io.enq.bits.to     := io.wReq.bits.from
-  wRespQ.io.enq.bits.pcuId  := io.wReq.bits.pcuId
+  io.getDBID.ready              := dbidRespQ.io.enq.ready & dbFreeVec.reduce(_ | _)
+  dbidRespQ.io.enq.valid        := io.getDBID.valid & dbFreeVec.reduce(_ | _)
+  dbidRespQ.io.enq.bits.dbID    := getDBIDId
+  dbidRespQ.io.enq.bits.to      := io.getDBID.bits.from
+  dbidRespQ.io.enq.bits.entryID := io.getDBID.bits.entryID
   // output
-  io.wResp                  <> wRespQ.io.deq
+  io.dbidResp                   <> dbidRespQ.io.deq
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //
 // ----------------------------------------------------- DATA TO DB ----------------------------------------------------- //
 // ---------------------------------------------------------------------------------------------------------------------- //
   when(io.dataTDB.valid){
-    entrys(io.dataTDB.bits.dbid).beatVals(toBeatNum(io.dataTDB.bits.dataID))  := true.B
-    entrys(io.dataTDB.bits.dbid).beats(toBeatNum(io.dataTDB.bits.dataID))     := io.dataTDB.bits.data
-    assert(!entrys(io.dataTDB.bits.dbid).beatVals(toBeatNum(io.dataTDB.bits.dataID)))
+    entrys(io.dataTDB.bits.dbID).beatVals(toBeatNum(io.dataTDB.bits.dataID))  := true.B
+    entrys(io.dataTDB.bits.dbID).beats(toBeatNum(io.dataTDB.bits.dataID))     := io.dataTDB.bits.data
+    assert(!entrys(io.dataTDB.bits.dbID).beatVals(toBeatNum(io.dataTDB.bits.dataID)))
   }
   io.dataTDB.ready := true.B
 
@@ -96,14 +94,14 @@ class DataBuffer()(implicit p: Parameters) extends DJModule {
 // ---------------------------------------------------- RC REQ TO DB ---------------------------------------------------- //
 // ---------------------------------------------------------------------------------------------------------------------- //
   when(io.dbRCReqOpt.get.fire) {
-    entrys(io.dbRCReqOpt.get.bits.dbid).needClean := io.dbRCReqOpt.get.bits.isClean
-    entrys(io.dbRCReqOpt.get.bits.dbid).to        := io.dbRCReqOpt.get.bits.to
+    entrys(io.dbRCReqOpt.get.bits.dbID).needClean := io.dbRCReqOpt.get.bits.isClean
+    entrys(io.dbRCReqOpt.get.bits.dbID).to        := io.dbRCReqOpt.get.bits.to
 
   }
-  io.dbRCReqOpt.get.ready := entrys(io.dbRCReqOpt.get.bits.dbid).canRecReq
+  io.dbRCReqOpt.get.ready := entrys(io.dbRCReqOpt.get.bits.dbID).canRecReq
   when(io.dbRCReqOpt.get.valid) {
-    assert(!entrys(io.dbRCReqOpt.get.bits.dbid).isFree)
-    assert(entrys(io.dbRCReqOpt.get.bits.dbid).beatVals.reduce(_ & _))
+    assert(!entrys(io.dbRCReqOpt.get.bits.dbID).isFree)
+    assert(entrys(io.dbRCReqOpt.get.bits.dbID).beatVals.reduce(_ & _))
   }
 
 // ---------------------------------------------------------------------------------------------------------------------- //
@@ -121,12 +119,12 @@ class DataBuffer()(implicit p: Parameters) extends DJModule {
   io.dataFDB.valid            := readVec.reduce(_ | _) | readingVec.reduce(_ | _)
   io.dataFDB.bits.data        := entrys(selReadId).getBeat
   io.dataFDB.bits.dataID      := toDataID(entrys(selReadId).beatRNum)
-  io.dataFDB.bits.dbid        := selReadId
+  io.dataFDB.bits.dbID        := selReadId
   io.dataFDB.bits.to          := entrys(selReadId).to
   entrys(selReadId).beatRNum  := entrys(selReadId).beatRNum + io.dataFDB.fire.asUInt
 
   when(io.dataFDB.valid) {
-    assert(entrys(io.dataFDB.bits.dbid).beatVals(toBeatNum(io.dataTDB.bits.dataID)))
+    assert(entrys(io.dataFDB.bits.dbID).beatVals(toBeatNum(io.dataTDB.bits.dataID)))
   }
 
 
@@ -138,20 +136,20 @@ class DataBuffer()(implicit p: Parameters) extends DJModule {
       switch(e.state) {
         // FREE
         is(DBState.FREE) {
-          val hit     = wRespQ.io.enq.fire & wReqId === i.U
+          val hit     = dbidRespQ.io.enq.fire & getDBIDId === i.U
           e           := 0.U.asTypeOf(e)
           e.state     := Mux(hit, DBState.ALLOC, e.state)
         }
         // ALLOC
         is(DBState.ALLOC) {
-          val hit     = io.dbRCReqOpt.get.fire & io.dbRCReqOpt.get.bits.dbid === i.U
+          val hit     = io.dbRCReqOpt.get.fire & io.dbRCReqOpt.get.bits.dbID === i.U
           val read    = io.dbRCReqOpt.get.bits.isRead & hit
           val clean   = io.dbRCReqOpt.get.bits.isClean & hit
           e.state     := Mux(read, DBState.READ, Mux(clean, DBState.FREE, e.state))
         }
         // READ
         is(DBState.READ) {
-          val hit     = io.dataFDB.fire & !hasReading & io.dataFDB.bits.dbid === i.U
+          val hit     = io.dataFDB.fire & !hasReading & io.dataFDB.bits.dbID === i.U
           if(nrBeat > 1) {
             e.state   := Mux(hit, DBState.READING, e.state)
           } else {
@@ -160,14 +158,14 @@ class DataBuffer()(implicit p: Parameters) extends DJModule {
         }
         // READING
         is(DBState.READING) {
-          val hit     = io.dataFDB.fire & io.dataFDB.bits.dbid === i.U
+          val hit     = io.dataFDB.fire & io.dataFDB.bits.dbID === i.U
           val isLast  = entrys(i).beatRNum === (nrBeat - 1).U
           val clean   = entrys(i).needClean
           e.state     := Mux(hit & isLast, Mux(clean, DBState.FREE, DBState.READ_DONE), e.state)
         }
         // READ_DONE
         is(DBState.READ_DONE) {
-          val hit     = io.dbRCReqOpt.get.fire & io.dbRCReqOpt.get.bits.dbid === i.U
+          val hit     = io.dbRCReqOpt.get.fire & io.dbRCReqOpt.get.bits.dbID === i.U
           val read    = io.dbRCReqOpt.get.bits.isRead & hit
           val clean   = io.dbRCReqOpt.get.bits.isClean & hit
           e.state     := Mux(read, DBState.READ, Mux(clean, DBState.FREE, e.state))
@@ -177,7 +175,7 @@ class DataBuffer()(implicit p: Parameters) extends DJModule {
 
 
 // ----------------------------------------------------- Assertion ---------------------------------------------------------- //
-  when(io.dataTDB.valid){ assert(entrys(io.dataTDB.bits.dbid).isAlloc) }
+  when(io.dataTDB.valid){ assert(entrys(io.dataTDB.bits.dbID).isAlloc) }
 
   val cntReg = RegInit(VecInit(Seq.fill(djparam.nrDatBuf) { 0.U(64.W) }))
   cntReg.zip(entrys).foreach { case (c, e) => c := Mux(e.isFree, 0.U, c + 1.U) }

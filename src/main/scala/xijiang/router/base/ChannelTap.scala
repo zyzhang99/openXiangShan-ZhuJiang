@@ -115,6 +115,8 @@ class ChannelTap[T <: Flit](
   }
   private val taps = Seq.fill(2)(Module(new SingleChannelTap(gen, channel, node)))
   private val ejectArb = Module(new ResetRRArbiter(gen, 2))
+  private val recordBuf = if(ejectBuf > 0) Some(Module(new EjectBuffer(gen, ejectBuf, channel))) else None
+  private val ejectBufSeq = Seq.fill(2)(Module(new Queue(gen, 2)))
   for(idx <- taps.indices) {
     taps(idx).io.in := io.rx(idx)
     io.tx(idx) := taps(idx).io.out
@@ -122,16 +124,15 @@ class ChannelTap[T <: Flit](
     taps(idx).io.inject.bits := io.inject.bits
     taps(idx).io.matchTag := io.matchTag
     taps(idx).io.tapIdx := idx.U
-    if(ejectBuf > 0) {
-      val ejectBuffer = Module(new EjectBuffer(gen, ejectBuf, channel))
-      ejectBuffer.io.enq <> taps(idx).io.eject
-      ejectArb.io.in(idx) <> ejectBuffer.io.deq
-    } else {
-      val ejectBuffer = Module(new Queue(gen, 2))
-      ejectBuffer.io.enq <> taps(idx).io.eject
-      ejectArb.io.in(idx) <> ejectBuffer.io.deq
-    }
+    ejectBufSeq(idx).io.enq <> taps(idx).io.eject
+    ejectArb.io.in(idx) <> ejectBufSeq(idx).io.deq
+    ejectBufSeq(idx).suggestName(s"eject_buf_$idx")
   }
   io.inject.ready := Mux1H(io.injectTapSelOH, taps.map(_.io.inject.ready))
-  io.eject <> ejectArb.io.out
+  if(recordBuf.isDefined) {
+    recordBuf.get.io.enq <> ejectArb.io.out
+    io.eject <> recordBuf.get.io.deq
+  } else {
+    io.eject <> ejectArb.io.out
+  }
 }

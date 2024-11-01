@@ -27,6 +27,7 @@ case class NodeParam(
   nodeType: Int = NodeType.P,
   splitFlit: Boolean = false,
   bankId: Int = 0, // Only applied in SN and HNF
+  dpId: Int = 0, // Only applied in SN
   mainMemory: Boolean = false, // Only applied in SN
   cpuNum: Int = 1, // Only applied in CC
   addressRange: (Long, Long) = (0L, 0L), // Only applied in HNI
@@ -45,6 +46,7 @@ case class Node(
   splitFlit: Boolean = false,
   domainId:Int = 0,
   bankId: Int = 0, // Only applied in SN, HNF and CRF
+  dpId: Int = 0, // Only applied in SN, HNF and CRF
   bankBits: Int = 1, // Only applied in SN, HNF and CRF
   mainMemory: Boolean = false, // Only applied in SN
   cpuNum: Int = 1, // Only applied in CCN

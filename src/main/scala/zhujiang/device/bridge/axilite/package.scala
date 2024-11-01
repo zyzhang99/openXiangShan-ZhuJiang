@@ -55,10 +55,7 @@ package object axilite {
     def needIssue: Bool = icnReadReceipt || icnDBID || icnComp || axiWaddr || axiRaddr || axiWdata
   }
 
-  class AxiLiteCtrlInfo(ioDataBits: Int)(implicit p: Parameters) extends IcnIoDevCtrlInfoCommon(ioDataBits = ioDataBits, withData = true, dxt = false) {
-    val isSnooped = Bool()
-    val write = Bool()
-  }
+  class AxiLiteCtrlInfo(ioDataBits: Int)(implicit p: Parameters) extends IcnIoDevCtrlInfoCommon(ioDataBits = ioDataBits, withData = true, mem = false)
 
   class AxiLiteRsEntry(dataBits: Int)(implicit p: Parameters) extends IcnIoDevRsEntryCommon[AxiLiteBridgeCtrlOpVec, AxiLiteCtrlInfo] {
     val state = new AxiLiteBridgeCtrlOpVec
@@ -71,8 +68,6 @@ package object axilite {
       info.readCnt := 0.U
       state.u.decode(req, valid)
       state.d.decode(req, valid)
-      info.isSnooped := true.B
-      info.write := req.Opcode =/= ReqOpcode.ReadNoSnp
     }
   }
 }

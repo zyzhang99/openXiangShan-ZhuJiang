@@ -101,6 +101,7 @@ object ZhujiangGlobal {
         splitFlit = np.splitFlit,
         domainId = getDomainId(np.nodeType),
         bankId = if(np.nodeType == NodeType.S || np.nodeType == NodeType.HF || np.nodeType == NodeType.RF && csn) np.bankId else 0,
+        dpId = if(np.nodeType == NodeType.S) np.dpId else 0,
         bankBits = if(np.nodeType == NodeType.RF) {
           rnfBankBits
         } else if(np.nodeType == NodeType.HF) {
@@ -115,7 +116,7 @@ object ZhujiangGlobal {
         clusterId = if(np.nodeType == NodeType.CC) ccId.toInt else 0,
         addressRange = if(np.nodeType == NodeType.CC) {
           ccAddr
-        } else if(np.nodeType == NodeType.CC) {
+        } else if(np.nodeType == NodeType.HI) {
           hiAddr
         } else {
           (0L, 0L)
@@ -140,8 +141,9 @@ object ZhujiangGlobal {
       val dcuGroupsMaps = dcuNodes.groupBy(_.bankId)
       for((_, dcus) <- dcuGroupsMaps) {
         require(dcus.length <= 2)
+        require(dcus.map(_.dpId).distinct.length == dcus.length)
         if(dcus.length == 1) {
-          dcus.head.friends = nodes
+          dcus.head.friends = nodes.filterNot(n => n.nodeType == NodeType.S && !n.mainMemory)
         } else {
           val dcusPos = dcus.map(d => nodes.indexOf(d))
           val idxMin = dcusPos.min
@@ -153,17 +155,16 @@ object ZhujiangGlobal {
           val friendsOfIdxMin = segment0.slice(0, half0) ++ segment1.slice(half1, segment1.length)
           val friendsOfIdxMax = segment1.slice(0, half1) ++ segment0.slice(half0, segment0.length)
           if(idxMin == dcusPos.head) {
-            dcus.head.friends = friendsOfIdxMin
-            dcus.last.friends = friendsOfIdxMax
+            dcus.head.friends = friendsOfIdxMin.filterNot(n => n.nodeType == NodeType.S || n.nodeType == NodeType.HI)
+            dcus.last.friends = friendsOfIdxMax.filterNot(n => n.nodeType == NodeType.S || n.nodeType == NodeType.HI)
           } else {
-            dcus.head.friends = friendsOfIdxMax
-            dcus.last.friends = friendsOfIdxMin
+            dcus.head.friends = friendsOfIdxMax.filterNot(n => n.nodeType == NodeType.S || n.nodeType == NodeType.HI)
+            dcus.last.friends = friendsOfIdxMin.filterNot(n => n.nodeType == NodeType.S || n.nodeType == NodeType.HI)
           }
         }
       }
 
       val pcuNodes = nodes.filter(n => n.nodeType == NodeType.HF)
-      val memNode = nodes.filter(n => n.nodeType == NodeType.S && n.mainMemory)
       require(pcuNodes.nonEmpty)
       val nto1 = pcuNodes.length > dcuNodes.length
       val dcuOfPcu = pcuNodes.map({ p =>
@@ -179,7 +180,7 @@ object ZhujiangGlobal {
           val disSeq = n.map(d => abs(nodes.indexOf(d) - pcuPos))
           val pos = disSeq.indexOf(disSeq.min)
           n(pos)
-        }).toSeq ++ memNode
+        }).toSeq.filter(n => n.nodeType == NodeType.S && !n.mainMemory).sortBy(_.bankId)
       }
     }
     nodes
@@ -203,7 +204,7 @@ case class ZJParameters(
   P: Boolean = false,
   clusterIdBits: Int = 8,
   bankOff: Int = 12,
-  cpuSpaceBits: Int = 16,
+  cpuSpaceBits: Int = 20,
   cpuDevSpaceBits: Int = 8,
   snoopEjectBufDepth: Int = 8,
   reqEjectBufDepth: Int = 8,
@@ -250,7 +251,6 @@ case class ZJParameters(
   lazy val djParams = DJParam(
     selfWays = cacheWays,
     selfSets = cacheSizeInMiB * 1024 * 1024 / cacheWays / bank / cachelineBytes,
-    nrBank = bank,
     sfDirWays = snoopFilterWays,
     sfDirSets = clusterTotalCacheSizeInKiB * 1024 * 2 / snoopFilterWays / bank / cachelineBytes,
     nrDirBank = 1

@@ -13,7 +13,7 @@ import chisel3.util._
 import org.chipsalliance.cde.config._
 import xs.utils.perf.{DebugOptions, DebugOptionsKey}
 import dongjiang.utils.FastArb._
-import xijiang.router.base.IcnBundle
+import xijiang.router.base.DeviceIcnBundle
 import zhujiang.HasZJParams
 
 
@@ -42,149 +42,160 @@ import zhujiang.HasZJParams
  */
 
 @instantiable
-class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[Node] = None, hasReset: Boolean = true)(implicit p: Parameters) extends DJRawModule
+class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[Node] = None)(implicit p: Parameters) extends DJRawModule
   with ImplicitClock with ImplicitReset {
   // ------------------------------------------ IO declaration ----------------------------------------------//
   @public val io  = IO(new Bundle {
-    val hnfID     = Input(UInt(chiNodeIdBits.W))
-    val toLocal   = Flipped(new IcnBundle(localHf, hasReset)) //TODO:Use DeviceIcnBundle
-    val toCSNOpt  = if(hasCSNIntf) Some(new Bundle {
-      val hn      = Flipped(new IcnBundle(csnHf.get))
-      val rn      = Flipped(new IcnBundle(csnRf.get))
+    val hnfID         = Input(UInt(fullNodeIdBits.W))
+    val pcuID         = Input(UInt(pcuBankBits.W)) // PCU Bank ID
+    val dcuNodeIDVec  = Input(Vec(nrBankPerPCU, UInt(fullNodeIdBits.W))) // DCU Friend Node ID Vec
+    val toLocal       = new DeviceIcnBundle(localHf)
+    val toCSNOpt      = if(hasCSN) Some(new Bundle {
+      val hn          = new DeviceIcnBundle(csnHf.get)
+      val rn          = new DeviceIcnBundle(csnRf.get)
     }) else None
   })
-  @public val reset = IO(Input(AsyncReset()))
-  @public val clock = IO(Input(Clock()))
-  val implicitClock = clock
-  val implicitReset = reset
+  @public val reset   = IO(Input(AsyncReset()))
+  @public val clock   = IO(Input(Clock()))
+  val implicitClock   = clock
+  val implicitReset   = reset
+
+  /*
+   * For Debug
+   */
+  if (p(DebugOptionsKey).EnableDebug) {
+    dontTouch(io)
+  }
 
 // ------------------------------------------ Modules declaration ----------------------------------------------//
+  // interfaces
+  val localRnSlave    = Module(new RnSlaveIntf(djparam.localRnSlaveIntf, localHf))
+  val localSnMaster   = Module(new SnMasterIntf(djparam.localSnMasterIntf, localHf))
+  val csnRnSlaveOpt   = if (hasCSN) Some(Module(new RnSlaveIntf(djparam.csnRnSlaveIntf.get,csnHf.get))) else None
+  val csnRnMasterOpt  = if (hasCSN) Some(Module(new RnMasterIntf(djparam.csnRnMasterIntf.get, csnRf.get))) else None
+  val intfs           = if (hasCSN) Seq(localRnSlave, localSnMaster, csnRnSlaveOpt.get, csnRnMasterOpt.get)
+                        else        Seq(localRnSlave, localSnMaster)
+  // data buffer
+  val databuffer      = Module(new DataBuffer())
+  // xbar
+  val xbar            = Module(new Xbar())
+  // EXUs
+  val exus            = Seq.fill(nrBankPerPCU) { Module(new ExecuteUnit()) }
 
-    val localRnSlave    = Module(new RnSlaveIntf(IncoID.LOCALSLV, djparam.localRnSlaveIntf))
-    val localSnMaster   = Module(new SnMasterIntf(IncoID.LOCALMAS, djparam.localSnMasterIntf))
-    val csnRnSlaveOpt   = if (hasCSNIntf) Some(Module(new RnSlaveIntf(IncoID.CSNSLV, djparam.csnRnSlaveIntf.get))) else None
-    val csnRnMasterOpt  = if (hasCSNIntf) Some(Module(new RnMasterIntf(IncoID.CSNMAS, djparam.csnRnMasterIntf.get))) else None
-    val intfs           = if (hasCSNIntf) Seq(localRnSlave, localSnMaster, csnRnSlaveOpt.get, csnRnMasterOpt.get)
-                          else            Seq(localRnSlave, localSnMaster)
-    val databuffer      = Module(new DataBuffer())
-
-    val xbar            = Module(new Xbar())
-    val exus            = Seq.fill(nrBankPerDJ) { Module(new ExecuteUnit()) }
-    exus.zipWithIndex.foreach { case(s, i) => s.io.sliceId := i.U }
-
-    // TODO:
-    exus.foreach(_.io.valid := true.B)
 
 
 // ---------------------------------------------- Connection ---------------------------------------------------//
-    /*
-     * Connect LOCAL RING CHI IO
-     * TODO: opposite direction
-     */
-    // tx req
-    io.toLocal.tx.req.get   <> localRnSlave.io.chi.txreq
-    // tx rsp & dat
-    val rspQ = Module(new Queue(new RespFlit(), entries = 2))
-    val datQ = Module(new Queue(new DataFlit(), entries = 2))
-    io.toLocal.tx.resp.get  <> rspQ.io.enq
-    io.toLocal.tx.data.get  <> datQ.io.enq
-    // tx rsp
-    localSnMaster.io.chi.rxrsp.valid    := rspQ.io.deq.valid & fromSnNode(rspQ.io.deq.bits.SrcID)
-    localRnSlave.io.chi.txrsp.valid     := rspQ.io.deq.valid & !fromSnNode(rspQ.io.deq.bits.SrcID)
-    localSnMaster.io.chi.rxrsp.bits     := rspQ.io.deq.bits
-    localRnSlave.io.chi.txrsp.bits      := rspQ.io.deq.bits
-    when(fromSnNode(rspQ.io.deq.bits.SrcID)) { rspQ.io.deq.ready := localSnMaster.io.chi.rxrsp.ready }.otherwise { rspQ.io.deq.ready := localRnSlave.io.chi.txrsp.ready }
-    // tx dat
-    localSnMaster.io.chi.rxdat.valid    := datQ.io.deq.valid & fromSnNode(datQ.io.deq.bits.SrcID)
-    localRnSlave.io.chi.txdat.valid     := datQ.io.deq.valid & !fromSnNode(datQ.io.deq.bits.SrcID)
-    localSnMaster.io.chi.rxdat.bits     := datQ.io.deq.bits
-    localRnSlave.io.chi.txdat.bits      := datQ.io.deq.bits
-    when(fromSnNode(datQ.io.deq.bits.SrcID)) { datQ.io.deq.ready := localSnMaster.io.chi.rxdat.ready }.otherwise { datQ.io.deq.ready := localRnSlave.io.chi.txdat.ready }
-    // rx ereq & snp
-    localSnMaster.io.chi.txreq          <> io.toLocal.rx.req.get
-    localRnSlave.io.chi.rxsnp           <> io.toLocal.rx.snoop.get
-    localSnMaster.io.chi.rxsnp          <> DontCare
-    // rx rsp & dat
-    fastArbDec(Seq(localSnMaster.io.chi.txrsp, localRnSlave.io.chi.rxrsp)) <> io.toLocal.rx.resp.get
-    fastArbDec(Seq(localSnMaster.io.chi.txdat, localRnSlave.io.chi.rxdat)) <> io.toLocal.rx.data.get
+  /*
+   * Connect LOCAL RING CHI IO
+   */
+  localSnMaster.io.chi                    <> DontCare
+  localRnSlave.io.chi                     <> DontCare
 
-    /*
-     * Connect CSN CHI IO
-     */
-    if(hasCSNIntf) {
-        // tx
-        io.toCSNOpt.get.hn.tx.req.get   <> csnRnSlaveOpt.get.io.chi.txreq
-        io.toCSNOpt.get.hn.tx.resp.get  <> csnRnSlaveOpt.get.io.chi.txrsp
-        io.toCSNOpt.get.hn.tx.data.get  <> csnRnSlaveOpt.get.io.chi.txdat
-        // rx
-        csnRnSlaveOpt.get.io.chi.rxsnp  <> io.toCSNOpt.get.hn.rx.snoop.get
-        csnRnSlaveOpt.get.io.chi.rxrsp  <> io.toCSNOpt.get.hn.rx.resp.get
-        csnRnSlaveOpt.get.io.chi.rxdat  <> io.toCSNOpt.get.hn.rx.data.get
-        // tx
-        csnRnMasterOpt.get.io.chi.txreq <> io.toCSNOpt.get.rn.rx.req.get
-        csnRnMasterOpt.get.io.chi.txrsp <> io.toCSNOpt.get.rn.rx.resp.get
-        csnRnMasterOpt.get.io.chi.txdat <> io.toCSNOpt.get.rn.rx.data.get
-        // rx
-        io.toCSNOpt.get.rn.tx.snoop.get <> csnRnMasterOpt.get.io.chi.rxsnp
-        io.toCSNOpt.get.rn.tx.resp.get  <> csnRnMasterOpt.get.io.chi.rxrsp
-        io.toCSNOpt.get.rn.tx.data.get  <> csnRnMasterOpt.get.io.chi.rxdat
-    }
+  // rx req
+  io.toLocal.rx.req.get                   <> localRnSlave.io.chi.rx.req.get
+  
+  // rx rsp
+  localSnMaster.io.chi.rx.resp.get.valid  := io.toLocal.rx.resp.get.valid & fromSnNode(io.toLocal.rx.resp.get.bits.asTypeOf(new RespFlit()).SrcID)
+  localRnSlave.io.chi.rx.resp.get.valid   := io.toLocal.rx.resp.get.valid & fromCcNode(io.toLocal.rx.resp.get.bits.asTypeOf(new RespFlit()).SrcID)
+  localSnMaster.io.chi.rx.resp.get.bits   := io.toLocal.rx.resp.get.bits
+  localRnSlave.io.chi.rx.resp.get.bits    := io.toLocal.rx.resp.get.bits
+  io.toLocal.rx.resp.get.ready            := (localSnMaster.io.chi.rx.resp.get.ready & fromSnNode(io.toLocal.rx.resp.get.bits.asTypeOf(new RespFlit()).SrcID)) |
+                                             (localRnSlave.io.chi.rx.resp.get.ready  & fromCcNode(io.toLocal.rx.resp.get.bits.asTypeOf(new RespFlit()).SrcID))
+  // rx data
+  // TODO: can be optimize by data directly send to data buffer
+  localSnMaster.io.chi.rx.data.get.valid  := io.toLocal.rx.data.get.valid & fromSnNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)
+  localRnSlave.io.chi.rx.data.get.valid   := io.toLocal.rx.data.get.valid & fromCcNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)
+  localSnMaster.io.chi.rx.data.get.bits   := io.toLocal.rx.data.get.bits
+  localRnSlave.io.chi.rx.data.get.bits    := io.toLocal.rx.data.get.bits
+  io.toLocal.rx.data.get.ready            := (localSnMaster.io.chi.rx.data.get.ready & fromSnNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)) |
+                                             (localRnSlave.io.chi.rx.data.get.ready & fromCcNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID))
 
-    /*
-     * Connect RNs <-> Xbar
-     */
+  // tx req
+  io.toLocal.tx.req.get                   <> localSnMaster.io.chi.tx.req.get
 
-    intfs.zipWithIndex.foreach {
-        case(intf, i) =>
-            intf.io.hnfID                           := io.hnfID
-            // slice ctrl signals
-            if (intf.io.req2SliceOpt.nonEmpty) {
-                xbar.io.req2Slice.in(i)             <> intf.io.req2SliceOpt.get
-            } else {
-                xbar.io.req2Slice.in(i)             <> DontCare
-            }
-            if (intf.io.reqAck2NodeOpt.nonEmpty) {
-                xbar.io.reqAck2Node.out(i)          <> intf.io.reqAck2NodeOpt.get
-            } else {
-                xbar.io.reqAck2Node.out(i)          <> DontCare
-            }
-            if (intf.io.resp2NodeOpt.nonEmpty) {
-                xbar.io.resp2Node.out(i)            <> intf.io.resp2NodeOpt.get
-            } else {
-                xbar.io.resp2Node.out(i)            <> DontCare
-            }
-            xbar.io.req2Node.out(i)                 <> intf.io.req2Node
-            xbar.io.resp2Slice.in(i)                <> intf.io.resp2Slice
-            // slice DataBuffer signals
-            if (intf.io.dbSigs.dbRCReqOpt.nonEmpty) {
-                xbar.io.dbSigs.in0(i)               <> intf.io.dbSigs.dbRCReqOpt.get
-            } else {
-                xbar.io.dbSigs.in0(i)               <> DontCare
-            }
-            xbar.io.dbSigs.in1(i).wReq              <> intf.io.dbSigs.wReq
-            xbar.io.dbSigs.in1(i).wResp             <> intf.io.dbSigs.wResp
-            xbar.io.dbSigs.in1(i).dataFDB           <> intf.io.dbSigs.dataFDB
-            xbar.io.dbSigs.in1(i).dataTDB           <> intf.io.dbSigs.dataTDB
-    }
+  // tx snoop
+  io.toLocal.tx.snoop.get                 <> localRnSlave.io.chi.tx.snoop.get
 
-    /*
-     * Connect EXUs <-> Xbar
-     */
-    exus.zipWithIndex.foreach {
-        case (exu, i) =>
-            exu.io.hnfID                    := io.hnfID
-            // slice ctrl signals
-            xbar.io.req2Slice.out(i)        <> exu.io.req2Slice
-            xbar.io.reqAck2Node.in(i)       <> exu.io.reqAck2Node
-            xbar.io.resp2Node.in(i)         <> exu.io.resp2Node
-            xbar.io.req2Node.in(i)          <> exu.io.req2Node
-            xbar.io.resp2Slice.out(i)       <> exu.io.resp2Slice
-            // slice DataBuffer signals
-            xbar.io.dbSigs.in0(i+nrIntf)    <> exu.io.dbRCReq
-    }
+  // tx resp
+  io.toLocal.tx.resp.get                  <> localRnSlave.io.chi.tx.resp.get
 
-    /*
-     * Connect DataBuffer
-     */
-    databuffer.io <> xbar.io.dbSigs.out(0)
+  // tx data
+  io.toLocal.tx.data.get.valid            := localSnMaster.io.chi.tx.data.get.valid | localRnSlave.io.chi.tx.data.get.valid
+  io.toLocal.tx.data.get.bits             := Mux(localSnMaster.io.chi.tx.data.get.valid, localSnMaster.io.chi.tx.data.get.bits, localRnSlave.io.chi.tx.data.get.bits)
+  localSnMaster.io.chi.tx.data.get.ready  := io.toLocal.tx.data.get.ready
+  localRnSlave.io.chi.tx.data.get.ready   := io.toLocal.tx.data.get.ready & !localSnMaster.io.chi.tx.data.get.valid
+
+
+  /*
+   * Connect CSN CHI IO
+   */
+  if(hasCSN) {
+    io.toCSNOpt.get.hn <> csnRnSlaveOpt.get.io.chi
+    io.toCSNOpt.get.rn <> csnRnMasterOpt.get.io.chi
+  }
+
+  // TODO: Xbar -> Ring
+
+  /*
+   * Connect Intf <-> Xbar
+   */
+  intfs.zipWithIndex.foreach {
+    case(intf, i) =>
+      intf.io.hnfID                           := io.hnfID
+      intf.io.pcuID                           := io.pcuID
+      intf.io.fIDVec                          := io.dcuNodeIDVec
+      // EXU ctrl signals
+      if (intf.io.req2ExuOpt.nonEmpty) {
+          xbar.io.req2Exu.in(i)               <> intf.io.req2ExuOpt.get
+      } else {
+          xbar.io.req2Exu.in(i)               <> DontCare
+      }
+      if (intf.io.reqAck2IntfOpt.nonEmpty) {
+          xbar.io.reqAck2Intf.out(i)          <> intf.io.reqAck2IntfOpt.get
+      } else {
+          xbar.io.reqAck2Intf.out(i)          <> DontCare
+      }
+      if (intf.io.resp2IntfOpt.nonEmpty) {
+          xbar.io.resp2Intf.out(i)            <> intf.io.resp2IntfOpt.get
+      } else {
+          xbar.io.resp2Intf.out(i)            <> DontCare
+      }
+      xbar.io.req2Intf.out(i)                 <> intf.io.req2Intf
+      xbar.io.resp2Exu.in(i)                  <> intf.io.resp2Exu
+      // Intf DataBuffer signals
+      if (intf.io.dbSigs.dbRCReqOpt.nonEmpty) {
+          xbar.io.dbSigs.in0(i)               <> intf.io.dbSigs.dbRCReqOpt.get
+      } else {
+          xbar.io.dbSigs.in0(i)               <> DontCare
+      }
+      xbar.io.dbSigs.in1(i).getDBID           <> intf.io.dbSigs.getDBID
+      xbar.io.dbSigs.in1(i).dbidResp          <> intf.io.dbSigs.dbidResp
+      xbar.io.dbSigs.in1(i).dataFDB           <> intf.io.dbSigs.dataFDB
+      xbar.io.dbSigs.in1(i).dataTDB           <> intf.io.dbSigs.dataTDB
+  }
+
+  /*
+   * Connect EXUs <-> Xbar
+   */
+  exus.zipWithIndex.foreach {
+    case (exu, i) =>
+      exu.io.dcuID                    := i.U
+      exu.io.pcuID                    := io.pcuID
+      // TODO: Lower Power Ctrl
+      exu.io.valid                    := true.B
+      // slice ctrl signals
+      xbar.io.req2Exu.out(i)          <> exu.io.req2Exu
+      xbar.io.reqAck2Intf.in(i)       <> exu.io.reqAck2Intf
+      xbar.io.resp2Intf.in(i)         <> exu.io.resp2Intf
+      xbar.io.req2Intf.in(i)          <> exu.io.req2Intf
+      xbar.io.resp2Exu.out(i)         <> exu.io.resp2Exu
+      // slice DataBuffer signals
+      xbar.io.dbSigs.in0(i+nrIntf)    <> exu.io.dbRCReq
+  }
+
+  /*
+   * Connect DataBuffer <-> Xbar
+   */
+  databuffer.io <> xbar.io.dbSigs.out(0)
+
 }

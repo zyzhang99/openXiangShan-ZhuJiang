@@ -63,29 +63,6 @@ object DmaTop extends App {
   ))
 }
 
-object DistributedAclintTop extends App {
-  val (config, firrtlOpts) = ZhujiangTopParser(args)
-  (new ChiselStage).execute(firrtlOpts, firtoolOpts ++ Seq(
-    ChiselGeneratorAnnotation(() => new DistributedAclint(TilelinkParams(addrBits = 11, sourceBits = 5, dataBits = 64))(config))
-  ))
-}
-
-object ClusterPLLTop extends App {
-  val (config, firrtlOpts) = ZhujiangTopParser(args)
-  (new ChiselStage).execute(firrtlOpts, firtoolOpts ++ Seq(
-    ChiselGeneratorAnnotation(() => new ClusterPLL(TilelinkParams(addrBits = 11, sourceBits = 5, dataBits = 64))(config))
-  ))
-}
-
-object ClusterHubTop extends App {
-  val (config, firrtlOpts) = ZhujiangTopParser(args)
-  val icnNode = Node(nodeType = NodeType.CC, outstanding = 8, cpuNum = 2)
-  val cioParams = TilelinkParams(addrBits = 48, sourceBits = 1, dataBits = 64)
-  (new ChiselStage).execute(firrtlOpts, firtoolOpts ++ Seq(
-    ChiselGeneratorAnnotation(() => new ClusterInterconnectComplex(icnNode, cioParams)(config))
-  ))
-}
-
 object MemCxTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
   val cfgNode = Node(nodeType = NodeType.HI)

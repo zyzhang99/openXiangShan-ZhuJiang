@@ -47,7 +47,7 @@ abstract class BaseCtrlMachine[
 
   val allDone = payload.state.u.completed && payload.state.d.completed
   val valid = RegInit(false.B)
-  val waiting = RegInit(0.U.asTypeOf(io.waitNum))
+  val waiting = RegInit(0.U(log2Ceil(outstanding).W))
   private val payloadEnqNext = WireInit(payload)
 
   valid := Mux(valid, !allDone, icn.rx.req.fire)
@@ -67,8 +67,11 @@ abstract class BaseCtrlMachine[
   private val wakeupValid = wakeupVec.orR
   private val wakeupValidReg = RegNext(wakeupValid, false.B)
   private val wakeupNumReg = RegEnable(PopCount(wakeupVec), wakeupValid)
+  private val waitNumSetEn = RegNext(icn.rx.req.fire, false.B)
   when(icn.rx.req.fire) {
-    waiting := io.waitNum
+    waiting := Fill(log2Ceil(outstanding), true.B) // to optimize waiting num calculation timing
+  }.elsewhen(waitNumSetEn){
+    waiting := io.waitNum // set waiting num at next cycle of enqueue
   }.elsewhen(wakeupValidReg) {
     assert(wakeupNumReg === 1.U)
     waiting := waiting - 1.U
@@ -113,24 +116,27 @@ abstract class BaseCtrlMachine[
   private val dwt = payload.info.dwt.getOrElse(false.B)
   private val icnReadReceipt = payload.state.icnReadReceipt
   private val icnDBID = payload.state.icnDBID
-  private val icnComp = Mux(dwt, payload.state.icnComp && payload.state.u.wdata, payload.state.icnComp)
+  private val icnComp = Mux(dwt, payload.state.u.wdata & payload.state.icnComp, payload.state.icnComp)
+  private val icnCompCmo = payload.state.icnCompCmo
   private val icnCompDBID = icnDBID && icnComp
-  icn.tx.resp.valid := valid & (icnReadReceipt || icnDBID || icnComp)
+  icn.tx.resp.valid := valid & (icnReadReceipt || icnDBID || icnComp || icnCompCmo)
   icn.tx.resp.bits := DontCare
   icn.tx.resp.bits.Opcode := Mux(icnCompDBID, RspOpcode.CompDBIDResp, MuxCase(0.U, Seq(
     icnReadReceipt -> RspOpcode.ReadReceipt,
     icnDBID -> RspOpcode.DBIDResp,
-    icnComp -> RspOpcode.Comp
+    icnComp -> RspOpcode.Comp,
+    icnCompCmo -> RspOpcode.CompCMO
   )))
   icn.tx.resp.bits.DBID := io.idx
   icn.tx.resp.bits.TxnID := Mux(icnDBID && dwt, payload.info.returnTxnId.getOrElse(0.U), payload.info.txnId)
   icn.tx.resp.bits.SrcID := 0.U
   icn.tx.resp.bits.TgtID := Mux(icnDBID && dwt, payload.info.returnNid.getOrElse(0.U), payload.info.srcId)
-  icn.tx.resp.bits.Resp := Mux(icnDBID || icnComp, "b000".U, "b010".U)
+  icn.tx.resp.bits.Resp := Mux(icnDBID || icnComp || icnCompCmo, "b000".U, "b010".U)
   when(icn.tx.resp.fire) {
     plmnu.receiptResp := icn.tx.resp.bits.Opcode === RspOpcode.ReadReceipt || plu.receiptResp
     plmnu.dbidResp := icn.tx.resp.bits.Opcode === RspOpcode.DBIDResp || icn.tx.resp.bits.Opcode === RspOpcode.CompDBIDResp || plu.dbidResp
     plmnu.comp := icn.tx.resp.bits.Opcode === RspOpcode.Comp || icn.tx.resp.bits.Opcode === RspOpcode.CompDBIDResp || plu.comp
+    plmnu.compCmo := icn.tx.resp.bits.Opcode === RspOpcode.CompCMO || plu.compCmo
   }
 
   private val busDataBytes = slvBusDataBits / 8

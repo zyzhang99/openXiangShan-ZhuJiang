@@ -4,15 +4,16 @@ import zhujiang.chi._
 import xijiang.Node
 import dongjiang._
 import dongjiang.chi._
-import dongjiang.chi.CHIOp.REQ._
-import dongjiang.chi.CHIOp.RSP._
-import dongjiang.chi.CHIOp.DAT._
+import zhujiang.chi.ReqOpcode._
+import zhujiang.chi.RspOpcode._
+import zhujiang.chi.DatOpcode._
+import zhujiang.chi._
 import chisel3._
 import chisel3.experimental.hierarchy.{instantiable, public}
 import chisel3.util._
 import org.chipsalliance.cde.config._
 import xs.utils.perf.{DebugOptions, DebugOptionsKey}
-import xijiang.router.base.IcnBundle
+import xijiang.router.base.DeviceIcnBundle
 import xs.utils.sram._
 import dongjiang.utils.FastArb._
 
@@ -24,7 +25,6 @@ object DCURState {
   val width             = 2
   val Free              = "b00".U
   val ReadSram          = "b01".U
-  val Reading           = "b10".U
 }
 
 
@@ -32,8 +32,10 @@ class DCUREntry(implicit p: Parameters) extends DJBundle {
   val state             = UInt(DCURState.width.W)
   val dsIndex           = UInt(dsIndexBits.W)
   val dsBank            = UInt(dsBankBits.W)
-  val srcID             = UInt(chiNodeIdBits.W)
-  val txnID             = UInt(djparam.chiTxnidBits.W)
+  val srcID             = UInt(fullNodeIdBits.W)
+  val txnID             = UInt(chiTxnIdBits.W)
+  val returnNID         = UInt(fullNodeIdBits.W)
+  val returnTxnID       = UInt(chiTxnIdBits.W)
   val resp              = UInt(ChiResp.width.W)
 }
 
@@ -50,9 +52,8 @@ object DCUWState {
   val Free              = "b000".U
   val SendDBIDResp      = "b001".U
   val WaitData          = "b010".U
-  val WriteSram         = "b011".U // Send Write Req To DataStorage And Send Comp To Src
-  val Writting          = "b100".U // Write Data To DataStorage
-  val SendComp          = "b101".U
+  val WriteSram         = "b011".U
+  val SendComp          = "b100".U
 }
 
 class DCUWEntry(implicit p: Parameters) extends DJBundle {
@@ -61,9 +62,9 @@ class DCUWEntry(implicit p: Parameters) extends DJBundle {
   val data              = Vec(nrBeat, Valid(UInt(beatBits.W)))
   val dsIndex           = UInt(dsIndexBits.W)
   val dsBank            = UInt(dsBankBits.W)
-  val srcID             = UInt(chiNodeIdBits.W)
-  val txnID             = UInt(djparam.chiTxnidBits.W)
-  val ddrDBID           = UInt(djparam.chiDBIDBits.W)
+  val srcID             = UInt(fullNodeIdBits.W)
+  val txnID             = UInt(chiTxnIdBits.W)
+  val returnTxnID       = UInt(chiTxnIdBits.W)
 
   def canWrite          = replRState === DCURState.Free
   def isLast            = PopCount(data.map(_.valid)) === (nrBeat - 1).U
@@ -77,11 +78,12 @@ class DCUWEntry(implicit p: Parameters) extends DJBundle {
  * DCUs do not have sorting capabilities and must use the DWT transfer structure to sort by using Comp
  */
 @instantiable
-class DataCtrlUnit(node: Node, nrIntf: Int = 1, hasReset: Boolean = true)(implicit p: Parameters) extends DJRawModule
+class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
   with ImplicitClock with ImplicitReset {
   // ------------------------------------------ IO declaration --------------------------------------------- //
   @public val io = IO(new Bundle {
-    val sn = Vec(nrIntf, Flipped(new IcnBundle(node, hasReset)))
+    val friendsNodeIDVec = Input(Vec(nodes.length, Vec(nrFriendsNodeMax, UInt(fullNodeIdBits.W)))) // RN/HN Friend Node ID Vec
+    val icns = MixedVec(nodes.map(n => new DeviceIcnBundle(n)))
   })
   @public val reset = IO(Input(AsyncReset()))
   @public val clock = IO(Input(Clock()))
@@ -92,22 +94,56 @@ class DataCtrlUnit(node: Node, nrIntf: Int = 1, hasReset: Boolean = true)(implic
     dontTouch(io)
   }
 
-  require(node.splitFlit)
-  require(1 <= nrIntf & nrIntf <= 2)
+  val nrIcn = nodes.length
+
+  require(1 <= nodes.length & nodes.length <= 2)
 
   io <> DontCare
 
 // ----------------------------------------- Reg and Wire declaration ------------------------------------ //
   // CHI
-  val txReq                 = Wire(new DecoupledIO(new ReqFlit))
-  val txDat                 = Wire(new DecoupledIO(new DataFlit))
-  val rxRsp                 = WireInit(0.U.asTypeOf(Decoupled(new RespFlit)))
-  val rxDat                 = WireInit(0.U.asTypeOf(Decoupled(new DataFlit)))
-  // TODO
-  io.sn(0).tx.req.get       <> txReq
-  io.sn(0).tx.data.get      <> txDat
-  io.sn(0).rx.resp.get      <> rxRsp
-  io.sn(0).rx.data.get      <> rxDat
+  val rxReq     = Wire(new DecoupledIO(new ReqFlit))
+  val rxDat     = Wire(new DecoupledIO(new DataFlit))
+  val txRsp     = WireInit(0.U.asTypeOf(Decoupled(new RespFlit)))
+  val txDat     = WireInit(0.U.asTypeOf(Decoupled(new DataFlit)))
+
+  val rxReqVec  = Wire(Vec(nrIcn, new DecoupledIO(new ReqFlit)))
+  val rxDatVec  = Wire(Vec(nrIcn, new DecoupledIO(new DataFlit)))
+  val txRspVec  = Wire(Vec(nrIcn, new DecoupledIO(new RespFlit)))
+  val txDatVec  = Wire(Vec(nrIcn, new DecoupledIO(new DataFlit)))
+
+  io.icns.zip(rxReqVec).foreach { case(a, b) => a.rx.req.get  <> b }
+  io.icns.zip(rxDatVec).foreach { case(a, b) => a.rx.data.get <> b }
+  io.icns.zip(txRspVec).foreach { case(a, b) => a.tx.resp.get <> b}
+  io.icns.zip(txDatVec).foreach { case(a, b) => a.tx.data.get <> b}
+
+  rxReq <> fastArbDec(rxReqVec)
+  rxDat <> fastArbDec(rxDatVec)
+
+  val txDatDirVec = Wire(Vec(nrIcn, Bool()))
+  val txRspDirVec = Wire(Vec(nrIcn, Bool()))
+  txDatDirVec     := getDCUDirectByTgtID(txDat.bits.TgtID, io.friendsNodeIDVec)
+  txRspDirVec     := getDCUDirectByTgtID(txRsp.bits.TgtID, io.friendsNodeIDVec)
+
+  // txDat
+  txDatVec.zipWithIndex.foreach {
+    case(t, i) =>
+      t.valid     := txDat.valid & txDatDirVec(i)
+      t.bits      := txDat.bits
+  }
+  txDat.ready     := txDatVec(OHToUInt(txDatDirVec)).ready
+  assert(PopCount(txDatDirVec) <= 1.U)
+  assert(PopCount(txDatDirVec) === 1.U | !txDat.valid)
+
+  // txRsp
+  txRspVec.zipWithIndex.foreach {
+    case(t, i) =>
+      t.valid     := txRsp.valid & txRspDirVec(i)
+      t.bits      := txRsp.bits
+  }
+  txRsp.ready     := txRspVec(OHToUInt(txRspDirVec)).ready
+  assert(PopCount(txRspDirVec) <= 1.U)
+  assert(PopCount(txRspDirVec) === 1.U | !txRsp.valid)
 
 
   // ReqBuf
@@ -120,7 +156,6 @@ class DataCtrlUnit(node: Node, nrIntf: Int = 1, hasReset: Boolean = true)(implic
 
   // DataStorage
   val ds                    = Seq.fill(djparam.nrDSBank) { Module(new DataStorage(sets = nrDSEntry)) }
-  ds.zipWithIndex.foreach { case(d, i) => d.io.id := i.U }
 
   // ChiRespQueue
   val rRespReg              = RegInit(0.U.asTypeOf(Valid(new DataFlit)))
@@ -141,63 +176,70 @@ class DataCtrlUnit(node: Node, nrIntf: Int = 1, hasReset: Boolean = true)(implic
   val rBufFreeVec           = rBufRegVec.map(_.state === DCURState.Free)
   val selRecWID             = PriorityEncoder(wBufFreeVec)
   val selRecRID             = PriorityEncoder(rBufFreeVec)
-  val reqIsW                = isWriteX(txReq.bits.Opcode)
-  val reqIsRepl             = isReplace(txReq.bits.Opcode)
+  val reqIsW                = isWriteX(rxReq.bits.Opcode)
+  val reqIsRepl             = isReplace(rxReq.bits.Opcode)
   when(reqIsW | reqIsRepl) {
-    txReq.ready             := wBufFreeVec.reduce(_ | _)
+    rxReq.ready             := wBufFreeVec.reduce(_ | _)
   }.otherwise {
-    txReq.ready             := rBufFreeVec.reduce(_ | _)
+    rxReq.ready             := rBufFreeVec.reduce(_ | _)
   }
 
 
   /*
    * Send DBID Or Comp To Src
    */
-  val wBufSCompVec          = wBufRegVec.map { case w => w.state === DCUWState.Writting | w.state === DCUWState.SendComp}
+  val wBufSCompVec          = wBufRegVec.map(_.state === DCUWState.SendComp)
   val wBufSDBIDVec          = wBufRegVec.map(_.state === DCUWState.SendDBIDResp)
   val selSCompID            = PriorityEncoder(wBufSCompVec)
   val selSDBID              = PriorityEncoder(wBufSDBIDVec)
 
-  rxRsp.valid               := wBufSDBIDVec.reduce(_ | _) | wBufSCompVec.reduce(_ | _)
-  rxRsp.bits.Opcode         := Mux(wBufSCompVec.reduce(_ | _), Comp,                         DBIDResp)
-  rxRsp.bits.DBID           := Mux(wBufSCompVec.reduce(_ | _), selSCompID,                   selSDBID)
-  rxRsp.bits.TgtID          := Mux(wBufSCompVec.reduce(_ | _), wBufRegVec(selSCompID).srcID, wBufRegVec(selSDBID).srcID)
-  rxRsp.bits.TxnID          := Mux(wBufSCompVec.reduce(_ | _), wBufRegVec(selSCompID).txnID, wBufRegVec(selSDBID).txnID)
+  txRsp.valid               := wBufSDBIDVec.reduce(_ | _) | wBufSCompVec.reduce(_ | _)
+  txRsp.bits.Opcode         := Mux(wBufSCompVec.reduce(_ | _), Comp,                         DBIDResp)
+  txRsp.bits.DBID           := Mux(wBufSCompVec.reduce(_ | _), selSCompID,                   selSDBID)
+  txRsp.bits.TgtID          := Mux(wBufSCompVec.reduce(_ | _), wBufRegVec(selSCompID).srcID, wBufRegVec(selSDBID).srcID)
+  txRsp.bits.TxnID          := Mux(wBufSCompVec.reduce(_ | _), wBufRegVec(selSCompID).txnID, wBufRegVec(selSDBID).txnID)
 
 
   /*
-      * Select Buf Send Early Req To SRAM
-      */
-  sramRReadyVec             := ds.map(_.io.earlyRReq.ready)
-  sramWReadyVec             := ds.map(_.io.earlyWReq.ready)
+    * Select Buf Send Req To SRAM
+    */
+  sramRReadyVec             := ds.map(_.io.read.ready)
+  sramWReadyVec             := ds.map(_.io.write.ready)
 
   val willSendRVec          = rBufRegVec.map { case r => r.state === DCURState.ReadSram      & sramRReadyVec(r.dsBank) & (!rRespReg.valid | rRespCanGo) }
   val willSendReplVec       = wBufRegVec.map { case r => r.replRState === DCURState.ReadSram & sramRReadyVec(r.dsBank) & (!rRespReg.valid | rRespCanGo) & !willSendRVec.reduce(_ | _) }
-  val willSendWVec          = wBufRegVec.map { case w => w.state === DCUWState.WriteSram     & w.canWrite & sramWReadyVec(w.dsBank) }
+  val willSendWVec          = wBufRegVec.map { case w => w.state === DCUWState.WriteSram     & sramWReadyVec(w.dsBank) & w.canWrite}
 
-  val earlyWID              = PriorityEncoder(willSendWVec)
-  val earlyRID              = PriorityEncoder(willSendRVec)
-  val earlyReplID           = PriorityEncoder(willSendReplVec)
-  val earlyRepl             = !willSendRVec.reduce(_ | _) & willSendReplVec.reduce(_ | _)
+  val sramWID              = PriorityEncoder(willSendWVec)
+  val sramRID              = PriorityEncoder(willSendRVec)
+  val sramReplID           = PriorityEncoder(willSendReplVec)
+  val sramRepl             = !willSendRVec.reduce(_ | _) & willSendReplVec.reduce(_ | _)
 
   ds.zipWithIndex.foreach {
     case(d, i) =>
-      d.io.earlyRReq.valid := (willSendRVec.reduce(_ | _) | willSendReplVec.reduce(_ | _)) & rBufRegVec(earlyRID).dsBank === i.U
-      d.io.earlyWReq.valid := willSendWVec.reduce(_ | _)                                   & wBufRegVec(earlyWID).dsBank === i.U
+      d.io.read.valid       := rBufRegVec(sramRID).dsBank === i.U & (willSendRVec.reduce(_ | _) | willSendReplVec.reduce(_ | _))
+      d.io.write.valid      := wBufRegVec(sramWID).dsBank === i.U &  willSendWVec.reduce(_ | _)
+      d.io.read.bits        := rBufRegVec(sramRID).dsIndex
+      d.io.write.bits.index := wBufRegVec(sramWID).dsIndex
+      d.io.write.bits.data  := Cat(wBufRegVec(sramWID).data.map(_.bits).reverse)
+      assert(wBufRegVec(sramWID).data.map(_.valid).reduce(_ & _) | !d.io.write.valid)
   }
 
 
   /*
     * Get Read CHI Resp
     */
-  val earlyRValid           = ds.map(_.io.earlyRReq.fire).reduce(_ | _)
-  rRespReg.valid            := Mux(earlyRValid, true.B, rRespReg.valid & !rRespCanGo)
+  val sramRFire             = ds.map(_.io.read.fire).reduce(_ | _)
+  val sramWFire             = ds.map(_.io.write.fire).reduce(_ | _)
+  rRespReg.valid            := Mux(sramRFire, true.B, rRespReg.valid & !rRespCanGo)
   rRespCanGo                := rRespQ.io.enq.ready
-  when(earlyRValid & rRespCanGo) {
-    rRespReg.bits.Opcode    := Mux(earlyRepl, CHIOp.DAT.NonCopyBackWrData,      CHIOp.DAT.CompData)
-    rRespReg.bits.TgtID     := Mux(earlyRepl, ddrcNodeId.U,                     rBufRegVec(earlyRID).srcID)
-    rRespReg.bits.TxnID     := Mux(earlyRepl, wBufRegVec(earlyReplID).ddrDBID,  rBufRegVec(earlyRID).txnID)
-    rRespReg.bits.Resp      := Mux(earlyRepl, 0.U,                              rBufRegVec(earlyRID).resp)
+  when(sramRFire & rRespCanGo) {
+    rRespReg.bits.Opcode    := Mux(sramRepl, NonCopyBackWriteData,                CompData)
+    rRespReg.bits.TgtID     := Mux(sramRepl, ddrcNodeId.U,                        rBufRegVec(sramRID).returnNID)
+    rRespReg.bits.TxnID     := Mux(sramRepl, wBufRegVec(sramReplID).returnTxnID,  rBufRegVec(sramRID).returnTxnID)
+    rRespReg.bits.Resp      := Mux(sramRepl, 0.U,                                 rBufRegVec(sramRID).resp)
+    rRespReg.bits.HomeNID   := Mux(sramRepl, 0.U,                                 rBufRegVec(sramRID).srcID)
+    rRespReg.bits.DBID      := Mux(sramRepl, 0.U,                                 rBufRegVec(sramRID).txnID)
   }
 
 
@@ -208,25 +250,24 @@ class DataCtrlUnit(node: Node, nrIntf: Int = 1, hasReset: Boolean = true)(implic
     case (r, i) =>
       switch(r.state) {
         is(DCURState.Free) {
-          val hit       = txReq.fire & !reqIsW & !reqIsRepl & selRecRID === i.U
+          val hit       = rxReq.fire & !reqIsW & !reqIsRepl & selRecRID === i.U
           when(hit) {
             r.state     := DCURState.ReadSram
-            r.dsIndex   := parseDCUAddress(txReq.bits.Addr)._1
-            r.dsBank    := parseDCUAddress(txReq.bits.Addr)._2
-            r.srcID     := txReq.bits.SrcID
-            r.txnID     := txReq.bits.TxnID
-            r.resp      := txReq.bits.MemAttr(ChiResp.width - 1, 0)
+            r.dsIndex   := parseDCUAddr(rxReq.bits.Addr)._1
+            r.dsBank    := parseDCUAddr(rxReq.bits.Addr)._2
+            r.srcID     := rxReq.bits.SrcID
+            r.txnID     := rxReq.bits.TxnID
+            r.returnNID := rxReq.bits.ReturnNID
+            r.returnTxnID := rxReq.bits.ReturnTxnID
+            r.resp      := rxReq.bits.MemAttr(ChiResp.width - 1, 0)
           }
         }
         is(DCURState.ReadSram) {
-          val hit       = ds.map(_.io.earlyRReq.fire).reduce(_ | _) & earlyRID === i.U & !earlyRepl
+          val hit       = sramRFire & sramRID === i.U & !sramRepl
           when(hit) {
-              r.state   := DCURState.Reading
+            r           := 0.U.asTypeOf(r)
+            r.state     := DCURState.Free
           }
-        }
-        is(DCURState.Reading) {
-          r             := 0.U.asTypeOf(r)
-          r.state       := DCURState.Free
         }
       }
   }
@@ -239,46 +280,37 @@ class DataCtrlUnit(node: Node, nrIntf: Int = 1, hasReset: Boolean = true)(implic
     case(w, i) =>
       switch(w.state) {
         is(DCUWState.Free) {
-          val hit       = txReq.fire & (reqIsW | reqIsRepl) & selRecWID === i.U
+          val hit       = rxReq.fire & (reqIsW | reqIsRepl) & selRecWID === i.U
           when(hit) {
             w.state     := DCUWState.SendDBIDResp
-            w.dsIndex   := parseDCUAddress(txReq.bits.Addr)._1
-            w.dsBank    := parseDCUAddress(txReq.bits.Addr)._2
-            w.srcID     := txReq.bits.SrcID
-            w.txnID     := txReq.bits.TxnID
+            w.dsIndex   := parseDCUAddr(rxReq.bits.Addr)._1
+            w.dsBank    := parseDCUAddr(rxReq.bits.Addr)._2
+            w.srcID     := rxReq.bits.SrcID
+            w.txnID     := rxReq.bits.TxnID
           }
         }
         is(DCUWState.SendDBIDResp) {
-          val hit       = rxRsp.fire & rxRsp.bits.Opcode === DBIDResp & selSDBID === i.U
+          val hit       = txRsp.fire & txRsp.bits.Opcode === DBIDResp & selSDBID === i.U
           when(hit) {
             w.state     := DCUWState.WaitData
           }
         }
         is(DCUWState.WaitData) {
-          val hit       = txDat.fire & txDat.bits.TxnID === i.U
+          val hit       = rxDat.fire & rxDat.bits.TxnID === i.U
           when(hit) {
             w.state     := Mux(hit & w.isLast, DCUWState.WriteSram, w.state)
-            w.data(toBeatNum(txDat.bits.DataID)).valid  := true.B
-            w.data(toBeatNum(txDat.bits.DataID)).bits   := txDat.bits.Data
+            w.data(toBeatNum(rxDat.bits.DataID)).valid  := true.B
+            w.data(toBeatNum(rxDat.bits.DataID)).bits   := rxDat.bits.Data
           }
         }
         is(DCUWState.WriteSram) {
-          val hit       = ds.map(_.io.earlyWReq.fire).reduce(_ | _) & earlyWID === i.U
+          val hit       = sramWFire & sramWID === i.U
           when(hit) {
-            w.state     := DCUWState.Writting
-          }
-        }
-        is(DCUWState.Writting) {
-          val hit       = rxRsp.fire & rxRsp.bits.Opcode === Comp & selSCompID === i.U
-          when(hit) {
-            w           := 0.U.asTypeOf(w)
-            w.state     := DCUWState.Free
-          }.otherwise {
             w.state     := DCUWState.SendComp
           }
         }
         is(DCUWState.SendComp) {
-          val hit       = rxRsp.fire & rxRsp.bits.Opcode === Comp & selSCompID === i.U
+          val hit       = txRsp.fire & txRsp.bits.Opcode === Comp & selSCompID === i.U
           when(hit) {
             w           := 0.U.asTypeOf(w)
             w.state     := DCUWState.Free
@@ -286,7 +318,7 @@ class DataCtrlUnit(node: Node, nrIntf: Int = 1, hasReset: Boolean = true)(implic
         }
       }
   }
-  txDat.ready := true.B
+  rxDat.ready := true.B
 
 
   /*
@@ -296,64 +328,32 @@ class DataCtrlUnit(node: Node, nrIntf: Int = 1, hasReset: Boolean = true)(implic
     case (r, i) =>
       switch(r.replRState) {
         is(DCURState.Free) {
-          val hit         = txReq.fire & reqIsRepl & selRecWID === i.U
+          val hit         = rxReq.fire & reqIsRepl & selRecWID === i.U
           when(hit) {
             r.replRState  := DCURState.ReadSram
-            r.ddrDBID     := txReq.bits.ReturnTxnID
+            r.returnTxnID := rxReq.bits.ReturnTxnID
           }
         }
         is(DCURState.ReadSram) {
-          val hit         = ds.map(_.io.earlyRReq.fire).reduce(_ | _) & earlyReplID === i.U & earlyRepl
+          val hit         = sramRFire & sramRID === i.U & sramRepl
           when(hit) {
-            r.replRState  := DCURState.Reading
+            r             := 0.U.asTypeOf(r)
+            r.state       := DCURState.Free
           }
         }
-        is(DCURState.Reading) {
-          r.ddrDBID       := 0.U
-          r.replRState    := DCURState.Free
-        }
       }
   }
 
 
-
 // ---------------------------------------------------------------------------------------------------------------------- //
-// ------------------------------------------- S1: Send Req To DataStorage ---------------------------------------------- //
+// ------------------------------------- S1: Receive SRAM Resp and Send RxDat ------------------------------------------- //
 // ---------------------------------------------------------------------------------------------------------------------- //
-  /*
-    * Send Write / Read Req
-    */
-  val sendWReqID = PriorityEncoder(wBufRegVec.map(_.state === DCUWState.Writting))
-  val sendRReqID = PriorityEncoder(rBufRegVec.map(_.state === DCURState.Reading))
-  ds.foreach(_.io.read  := DontCare)
-  ds.foreach(_.io.write := DontCare)
-  ds.zipWithIndex.foreach {
-    case (d, i) =>
-      val wHit = wBufRegVec(sendWReqID).state === DCUWState.Writting & wBufRegVec(sendWReqID).dsBank === i.U
-      val rHit = rBufRegVec(sendRReqID).state === DCURState.Reading & rBufRegVec(sendRReqID).dsBank === i.U
-      when(wHit) {
-        d.io.write.index := wBufRegVec(sendWReqID).dsIndex
-        d.io.write.data  := Cat(wBufRegVec(sendWReqID).data.map(_.bits).reverse)
-        assert(wBufRegVec(sendWReqID).data.map(_.valid).reduce(_ & _))
-      }.elsewhen(rHit) {
-        d.io.read        := rBufRegVec(sendRReqID).dsIndex
-      }
-      assert(!(wHit & rHit))
-  }
-  assert(PopCount(rBufRegVec.map(_.state === DCURState.Reading))  <= 1.U)
-  assert(PopCount(wBufRegVec.map(_.state === DCUWState.Writting)) <= 1.U)
-
-
   /*
     * Get Read CHI Resp
     */
   rRespQ.io.enq.valid := rRespReg.valid
   rRespQ.io.enq.bits  := rRespReg.bits
 
-
-// ---------------------------------------------------------------------------------------------------------------------- //
-// ------------------------------------- S2: Receive SRAM Resp and Send RxDat ------------------------------------------- //
-// ---------------------------------------------------------------------------------------------------------------------- //
   /*
     * Receive SRAM Resp
     */
@@ -368,25 +368,25 @@ class DataCtrlUnit(node: Node, nrIntf: Int = 1, hasReset: Boolean = true)(implic
   /*
     * Send Resp To CHI RxDat
     */
-  sendBeatNumReg      := sendBeatNumReg + rxDat.fire.asUInt
-  rxDat.valid         := rRespQ.io.deq.valid & rDatQ.io.deq.valid
-  rxDat.bits          := rRespQ.io.deq.bits
-  rxDat.bits.Data     := rDatQ.io.deq.bits(sendBeatNumReg)
-  rxDat.bits.DataID   := toDataID(sendBeatNumReg)
+  sendBeatNumReg      := sendBeatNumReg + txDat.fire.asUInt
+  txDat.valid         := rRespQ.io.deq.valid & rDatQ.io.deq.valid
+  txDat.bits          := rRespQ.io.deq.bits
+  txDat.bits.Data     := rDatQ.io.deq.bits(sendBeatNumReg)
+  txDat.bits.DataID   := toDataID(sendBeatNumReg)
 
-  rRespQ.io.deq.ready := sendBeatNumReg === (nrBeat - 1).U & rxDat.fire
-  rDatQ.io.deq.ready  := sendBeatNumReg === (nrBeat - 1).U & rxDat.fire
+  rRespQ.io.deq.ready := sendBeatNumReg === (nrBeat - 1).U & txDat.fire
+  rDatQ.io.deq.ready  := sendBeatNumReg === (nrBeat - 1).U & txDat.fire
 
 
 
 // ------------------------------------------------------------ Assertion ----------------------------------------------- //
 
-  assert(Mux(txReq.valid, txReq.bits.Addr(addressBits - 1, addressBits - sTagBits) === 0.U, true.B))
+  assert(Mux(rxReq.valid, rxReq.bits.Addr(fullAddrBits - 1, fullAddrBits - sTagBits) === 0.U, true.B))
 
-  assert(Mux(txReq.valid, txReq.bits.Size === log2Ceil(djparam.blockBytes).U, true.B))
+  assert(Mux(rxReq.valid, rxReq.bits.Size === log2Ceil(djparam.blockBytes).U, true.B))
 
   assert(Mux(rDatQ.io.enq.valid, rDatQ.io.enq.ready, true.B))
 
-  assert(Mux(txReq.valid, txReq.bits.Opcode === ReadNoSnp | txReq.bits.Opcode === WriteNoSnpFull | txReq.bits.Opcode === Replace, true.B))
+  assert(Mux(rxReq.valid, rxReq.bits.Opcode === ReadNoSnp | rxReq.bits.Opcode === WriteNoSnpFull | rxReq.bits.Opcode === Replace, true.B))
 
 }

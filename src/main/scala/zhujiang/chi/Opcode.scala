@@ -90,6 +90,15 @@ object ReqOpcode {
   val WriteNoSnpPtlCleanInvPoPA = 0x70.U(width.W)
   val WriteNoSnpFullCleanInvPoPA = 0x71.U(width.W)
   val WriteBackFullCleanInvPoPA = 0x79.U(width.W)
+
+  // Self Define
+  val Replace = 0x7A.U(width.W)
+
+  def isReadX   (x: UInt): Bool = (ReadShared <= x & x <= ReadNoSnp) | x === ReadUnique | x === ReadNoSnpSep |
+                                  (ReadOnceCleanInvalid <= x & x <= ReadNotSharedDirty) | x === ReadPreferUnique
+  def isWriteX  (x: UInt): Bool = (WriteEvictFull <= x & x <= WriteUniquePtlStash) | (WriteEvictOrEvict <= x & x <= WriteNoSnpZero) |
+                                  (WriteNoSnpDef <= x & x <= WriteBackFullCleanInvPoPA)
+  def isReplace (x: UInt): Bool = x === Replace
 }
 
 object RspOpcode {
@@ -112,6 +121,8 @@ object RspOpcode {
 
   val CompStashDone = 0x11.U(width.W)
   val CompCMO = 0x14.U(width.W)
+
+  def isSnpRespX(opcode: UInt): Bool = opcode === SnpResp || opcode === SnpRespFwded
 }
 
 object DatOpcode {
@@ -126,6 +137,8 @@ object DatOpcode {
   val WriteDataCancel = 0x07.U(width.W)
   val DataSepResp = 0x0B.U(width.W)
   val NCBWrDataCompAck = 0x0C.U(width.W)
+
+  def isSnpRespDataX(opcode: UInt): Bool = opcode === SnpRespData || opcode === SnpRespDataPtl || opcode === SnpRespDataFwded
 }
 
 object SnpOpcode {
@@ -153,4 +166,45 @@ object SnpOpcode {
   val SnpPreferUnique = 0x15.U(width.W)
   val SnpPreferUniqueFwd = 0x16.U(width.W)
   val SnpUniqueFwd = 0x17.U(width.W)
+
+  // Self define, only use in DongJiang internal
+  val SnpUniqueEvict = 0x18.U(width.W)
+
+  def isSnpXFwd        (x: UInt): Bool = x >= SnpSharedFwd & x =/= SnpPreferUnique
+  def isSnpToInvalid   (x: UInt): Bool = x === SnpUnique | x === SnpUniqueFwd | x === SnpMakeInvalid | x === SnpUniqueEvict
+  def isSnpToShare     (x: UInt): Bool = x === SnpNotSharedDirty | x === SnpNotSharedDirtyFwd
+  def isLegalSnpOpInPCU(x: UInt): Bool = isSnpToShare(x) | isSnpToInvalid(x)
+
+  def getSnpOp(x: UInt): UInt = {
+    val snpOp = WireInit(0.U(width.W))
+    switch(x) {
+      is(ReqOpcode.ReadNotSharedDirty) { snpOp := SnpNotSharedDirty }
+      is(ReqOpcode.ReadUnique)         { snpOp := SnpUnique }
+      is(ReqOpcode.MakeUnique)         { snpOp := SnpMakeInvalid }
+    }
+    snpOp
+  }
+
+  def getSnpFwdOp(x: UInt): UInt = {
+    val snpOp = WireInit(0.U(width.W))
+    switch(x) {
+      is(ReqOpcode.ReadNotSharedDirty) { snpOp := SnpNotSharedDirtyFwd }
+      is(ReqOpcode.ReadUnique)         { snpOp := SnpUniqueFwd }
+      is(ReqOpcode.MakeUnique)         { snpOp := 0x1F.U }
+    }
+    snpOp
+  }
+
+  def getNoFwdSnpOp(x: UInt): UInt = {
+    val snpOp = WireInit(0.U(width.W))
+    when(isSnpXFwd(x)) {
+      switch(x) {
+        is(SnpNotSharedDirtyFwd) { snpOp := SnpNotSharedDirty}
+        is(SnpUniqueFwd)         { snpOp := SnpUnique }
+      }
+    }.otherwise {
+      snpOp := x
+    }
+    snpOp
+  }
 }

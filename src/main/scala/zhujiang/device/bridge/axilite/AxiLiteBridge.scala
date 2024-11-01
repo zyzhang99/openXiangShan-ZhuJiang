@@ -67,8 +67,9 @@ class AxiLiteBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Pa
   private val shouldBeWaited = cms.map(cm => cm.io.info.valid && !cm.io.wakeupOut.valid)
   private val cmAddrSeq = cms.map(cm => cm.io.info.bits.addr)
   private val req = icn.rx.req.get.bits.asTypeOf(new ReqFlit)
-  private val reqTagMatchVec = shouldBeWaited.zip(cmAddrSeq).map(elm => elm._1 && compareTag(elm._2, req.Addr))
-  private val waitNum = PopCount(reqTagMatchVec)
+  private val reqTagMatchVec = VecInit(shouldBeWaited.zip(cmAddrSeq).map(elm => elm._1 && compareTag(elm._2, req.Addr)))
+  private val reqTagMatchVecReg = RegEnable(reqTagMatchVec, icn.rx.req.get.fire)
+  private val waitNum = PopCount(reqTagMatchVecReg)
 
   private val busyEntries = cms.map(_.io.info.valid)
   private val enqCtrl = PickOneLow(busyEntries)

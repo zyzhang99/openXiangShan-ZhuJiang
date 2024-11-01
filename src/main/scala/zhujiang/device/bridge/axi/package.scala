@@ -28,7 +28,7 @@ package object axi {
     def completed: Bool = this.asUInt.andR
     def decode(req: ReqFlit, check: Bool): Unit = {
       when(check) {
-        assert(req.Opcode === ReqOpcode.ReadNoSnp || req.Opcode === ReqOpcode.WriteNoSnpPtl)
+        assert(req.Opcode === ReqOpcode.ReadNoSnp || req.Opcode === ReqOpcode.WriteNoSnpPtl || req.Opcode === ReqOpcode.WriteNoSnpFullCleanInv)
         assert(req.Size <= 6.U)
       }
       when(req.Opcode === ReqOpcode.ReadNoSnp) {
@@ -53,7 +53,7 @@ package object axi {
     def needIssue: Bool = icnReadReceipt || icnDBID || icnComp || axiWaddr || axiRaddr || axiWdata
   }
 
-  class AxiCtrlInfo(implicit p: Parameters) extends IcnIoDevCtrlInfoCommon(ioDataBits = 0, withData = false, dxt = true) {
+  class AxiCtrlInfo(implicit p: Parameters) extends IcnIoDevCtrlInfoCommon(ioDataBits = 0, withData = false, mem = true) {
     val isSnooped = Bool()
   }
 
