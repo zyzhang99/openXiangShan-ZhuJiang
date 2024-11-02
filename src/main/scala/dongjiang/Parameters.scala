@@ -305,8 +305,8 @@ trait HasDJParam extends HasParseZJParam {
 
   def getFullAddr(x: UInt, dcuBankID: UInt, pcuBankID: UInt): UInt = {
     require(x.getWidth == useAddrBits)
+    require(dcuBankID.getWidth == dcuBankBits)
     require(pcuBankID.getWidth == pcuBankBits)
-    require(pcuBankID.getWidth == dcuBankBits)
     val offset    = 0.U(offsetBits.W)
     val addr0     = x(bankOff - offsetBits - 1, 0)
     val addr1     = x(useAddrBits - 1, bankOff - offsetBits)
