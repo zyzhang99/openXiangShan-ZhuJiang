@@ -67,6 +67,19 @@ class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[
     dontTouch(io)
   }
 
+  print(
+    s"""
+       |DongJiang PCU Message: {
+       |  Support Protocol: CHI-G
+       |  selfSets: ${djparam.selfSets}
+       |  sfWays: ${djparam.sfDirWays}
+       |  sfSets: ${djparam.sfDirSets}
+       |  nrDirBank: ${djparam.nrDirBank}
+       |  directory: setup = ${djparam.dirSetup} latency = ${djparam.dirSetup} extraHold = ${djparam.dirSetup}
+       |  replacementPolicy: ${djparam.selfReplacementPolicy}
+       |}
+       |""".stripMargin)
+
 // ------------------------------------------ Modules declaration ----------------------------------------------//
   // interfaces
   val localRnSlave    = Module(new RnSlaveIntf(djparam.localRnSlaveIntf, localHf))

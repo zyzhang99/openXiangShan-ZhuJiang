@@ -23,8 +23,24 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
     val mshrResp      = Vec(2, Flipped(Valid(new MSHRRespDirBundle())))
   })
 
-// -------------------------- Modules declaration ------------------------//
-  val selfs = Seq.fill(djparam.nrDirBank) { Module(new DirectoryBase( tagBits     = sTagBits,
+  print(
+    s"""
+       |DongJiang Drectory Message: {
+       |  Self:
+       |  tagBits: ${sTagBits}
+       |  setBits: ${sSetBits}
+       |  bankBits: ${dirBankBits}
+       |  SF:
+       |  tagBits: ${sfTagBits}
+       |  setBits: ${sfSetBits}
+       |  bankBits: ${dirBankBits}
+       |}
+       |""".stripMargin)
+
+
+  // -------------------------- Modules declaration ------------------------//
+  val selfs = Seq.fill(djparam.nrDirBank) { Module(new DirectoryBase( dirType     = "self",
+                                                                      tagBits     = sTagBits,
                                                                       sets        = djparam.selfSets / djparam.nrDirBank,
                                                                       ways        = djparam.selfWays,
                                                                       nrMetas     = 1,
@@ -36,7 +52,8 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
 
   selfs.zipWithIndex.foreach { case(s, i) => s.io.dirBank := i.U }
 
-  val sfs   = Seq.fill(djparam.nrDirBank) { Module(new DirectoryBase( tagBits     = sfTagBits,
+  val sfs   = Seq.fill(djparam.nrDirBank) { Module(new DirectoryBase( dirType     = "sf",
+                                                                      tagBits     = sfTagBits,
                                                                       sets        = djparam.sfDirSets / djparam.nrDirBank,
                                                                       ways        = djparam.sfDirWays,
                                                                       nrMetas     = nrCcNode,
