@@ -48,6 +48,7 @@ class FlitMonitor()(implicit val p: Parameters) extends BlackBox with HasBlackBo
        |  wire [15:0] nt;
        |  assign nid = {${16 - niw}'h0, nodeId};
        |  assign nt = {${16 - NodeType.width - 1}'h0, nodeType};
+       |  initial fault = 0;
        |  always @(posedge clock) begin
        |    if(valid) tfb_flit_monitor(nid, nt, inject, flitType, flit, fault);
        |  end
