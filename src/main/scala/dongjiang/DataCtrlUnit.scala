@@ -370,7 +370,7 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
     */
   sendBeatNumReg      := sendBeatNumReg + txDat.fire.asUInt
   txDat.valid         := rRespQ.io.deq.valid & rDatQ.io.deq.valid
-  txDat.bits          := rRespQ.io.deq.bits
+  txDat.bits          := Mux(txDat.valid, rRespQ.io.deq.bits, 0.U.asTypeOf(txDat.bits))
   txDat.bits.Data     := rDatQ.io.deq.bits(sendBeatNumReg)
   txDat.bits.DataID   := toDataID(sendBeatNumReg)
 
