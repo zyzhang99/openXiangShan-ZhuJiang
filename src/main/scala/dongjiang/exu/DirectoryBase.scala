@@ -19,6 +19,7 @@ class DirEntry(tagBits: Int, nrMetas: Int = 1)(implicit p: Parameters) extends D
 }
 
 class DirectoryBase(
+                      dirType:    String,
                       tagBits:    Int,
                       sets:       Int,
                       ways:       Int,
@@ -32,13 +33,15 @@ class DirectoryBase(
   (implicit p: Parameters) extends DJModule {
 
   require(nrWayBank < ways)
+  require(dirType == "self" | dirType == "sf")
 
-  val isSelf      = nrMetas == 1
   val repl        = ReplacementPolicy.fromString(replPolicy, ways)
   val useRepl     = replPolicy != "random"
   val replWayBits = if(useRepl) repl.nBits else 0
   val setBits     = log2Ceil(sets)
   val wayBits     = log2Ceil(ways)
+
+  print(s"DirectoryBase: dirType[${dirType}]\n")
 
 // --------------------- IO declaration ------------------------//
   val io = IO(new Bundle {
@@ -127,7 +130,7 @@ class DirectoryBase(
   /*
    * Parse Req Addr
    */
-  if(isSelf){
+  if(dirType == "self"){
     rTag_s1 := dirRead.bits.sTag;   rSet_s1 := dirRead.bits.sSet;   rDirBank_s1 := dirRead.bits.dirBank
     wTag_s1 := dirWrite.bits.sTag;  wSet_s1 := dirWrite.bits.sSet;  wDirBank_s1 := dirWrite.bits.dirBank
   } else {
@@ -246,8 +249,8 @@ class DirectoryBase(
   mshrMes_s2.zip(io.mshrResp.addrs).foreach {
     case (a, b) =>
       a.valid     := b.valid
-      if(isSelf)  a.bits := parseSelfAddr(b.bits)._1
-      else        a.bits := parseSFAddr(b.bits)._1
+      if(dirType == "self") a.bits := parseSelfAddr(b.bits)._1
+      else                  a.bits := parseSFAddr(b.bits)._1
   }
   addr_s2         := io.mshrResp.addrs(rCtrl_s2_g.mshrWay).bits
   assert(Mux(valid_s2, io.mshrResp.addrs(rCtrl_s2_g.mshrWay).valid, true.B))
@@ -266,8 +269,8 @@ class DirectoryBase(
   pipeId_s3_g     := rCtrl_s2_g.pipeID
   mshrMes_s3_g.zip(mshrMes_s2).foreach { case(a, b) => a := b }
 
-  if(isSelf) { tag_s3 := parseSelfAddr(addr_s3_g)._1; set_s3 := parseSelfAddr(addr_s3_g)._2 }
-  else       { tag_s3 := parseSFAddr(addr_s3_g)._1;   set_s3 := parseSFAddr(addr_s3_g)._2 }
+  if(dirType == "self") { tag_s3 := parseSelfAddr(addr_s3_g)._1; set_s3 := parseSelfAddr(addr_s3_g)._2 }
+  else                  { tag_s3 := parseSFAddr(addr_s3_g)._1;   set_s3 := parseSFAddr(addr_s3_g)._2 }
 
 
   /*

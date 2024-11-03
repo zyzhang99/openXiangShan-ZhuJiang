@@ -23,8 +23,24 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
     val mshrResp      = Vec(2, Flipped(Valid(new MSHRRespDirBundle())))
   })
 
-// -------------------------- Modules declaration ------------------------//
-  val selfs = Seq.fill(djparam.nrDirBank) { Module(new DirectoryBase( tagBits     = sTagBits,
+  print(
+    s"""
+       |DongJiang Drectory Message: {
+       |  Self:
+       |  tagBits: ${sTagBits}
+       |  setBits: ${sSetBits}
+       |  bankBits: ${dirBankBits}
+       |  SF:
+       |  tagBits: ${sfTagBits}
+       |  setBits: ${sfSetBits}
+       |  bankBits: ${dirBankBits}
+       |}
+       |""".stripMargin)
+
+
+  // -------------------------- Modules declaration ------------------------//
+  val selfs = Seq.fill(djparam.nrDirBank) { Module(new DirectoryBase( dirType     = "self",
+                                                                      tagBits     = sTagBits,
                                                                       sets        = djparam.selfSets / djparam.nrDirBank,
                                                                       ways        = djparam.selfWays,
                                                                       nrMetas     = 1,
@@ -36,7 +52,8 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
 
   selfs.zipWithIndex.foreach { case(s, i) => s.io.dirBank := i.U }
 
-  val sfs   = Seq.fill(djparam.nrDirBank) { Module(new DirectoryBase( tagBits     = sfTagBits,
+  val sfs   = Seq.fill(djparam.nrDirBank) { Module(new DirectoryBase( dirType     = "sf",
+                                                                      tagBits     = sfTagBits,
                                                                       sets        = djparam.sfDirSets / djparam.nrDirBank,
                                                                       ways        = djparam.sfDirWays,
                                                                       nrMetas     = nrCcNode,
@@ -91,8 +108,11 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
       s.io.dirWrite.valid     := wSHit0 | wSHit1
       s.io.dirWrite.bits      := Mux(wSHit0, io.dirWrite(0).s.bits, io.dirWrite(1).s.bits)
       selfWReadyVec(0)(i)     := wSHit0 & s.io.dirWrite.ready
-      selfWReadyVec(1)(i)     := wSHit1 & s.io.dirWrite.ready
-      assert(!(wSHit0 & wSHit1))
+      selfWReadyVec(1)(i)     := wSHit1 & s.io.dirWrite.ready & !wSHit0
+      // assert
+      val wSFire0 = io.dirWrite(0).s.fire & io.dirWrite(0).s.bits.dirBank === i.U
+      val wSFire1 = io.dirWrite(1).s.fire & io.dirWrite(1).s.bits.dirBank === i.U
+      assert(!(wSFire0 & wSFire1))
   }
   io.dirWrite.map(_.s.ready).zip(selfWReadyVec).foreach { case(a, b) => a := b.reduce(_ | _); assert(PopCount(b) <= 1.U) }
 
@@ -108,8 +128,11 @@ class DirectoryWrapper()(implicit p: Parameters) extends DJModule {
       sf.io.dirWrite.valid    := wSFHit0 | wSFHit1
       sf.io.dirWrite.bits     := Mux(wSFHit0, io.dirWrite(0).sf.bits, io.dirWrite(1).sf.bits)
       sfWReadyVec(0)(i)       := wSFHit0 & sf.io.dirWrite.ready
-      sfWReadyVec(1)(i)       := wSFHit1 & sf.io.dirWrite.ready
-      assert(!(wSFHit0 & wSFHit1))
+      sfWReadyVec(1)(i)       := wSFHit1 & sf.io.dirWrite.ready & !wSFHit0
+      // assert
+      val wSfFire0 = io.dirWrite(0).sf.fire & io.dirWrite(0).sf.bits.dirBank === i.U
+      val wSfFire1 = io.dirWrite(1).sf.fire & io.dirWrite(1).sf.bits.dirBank === i.U
+      assert(!(wSfFire0 & wSfFire1))
   }
   io.dirWrite.map(_.sf.ready).zip(sfWReadyVec).foreach { case(a, b) => a := b.reduce(_ | _); assert(PopCount(b) <= 1.U) }
 
