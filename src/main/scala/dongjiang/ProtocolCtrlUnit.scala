@@ -75,7 +75,7 @@ class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[
        |  sfWays: ${djparam.sfDirWays}
        |  sfSets: ${djparam.sfDirSets}
        |  nrDirBank: ${djparam.nrDirBank}
-       |  directory: setup = ${djparam.dirSetup} latency = ${djparam.dirSetup} extraHold = ${djparam.dirSetup}
+       |  directory: setup = ${djparam.dirSetup} latency = ${djparam.dirLatency} extraHold = ${djparam.dirExtraHold}
        |  replacementPolicy: ${djparam.selfReplacementPolicy}
        |}
        |""".stripMargin)
