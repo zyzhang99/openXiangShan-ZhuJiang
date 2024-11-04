@@ -153,7 +153,7 @@ class DirectoryBase(
    * Get Req Form MSHR or ProcessPipe_S3 EXU
    */
   val wMetaCango      = !updReplByHit & replWReady
-  val rMetaCango      = (!dirWrite.valid | !wMetaCango) & replRReady
+  val rMetaCango      = !dirWrite.valid & replRReady
   dirWrite.ready      := metaArrays.map(_.io.req.ready).reduce(_ & _) & wMetaCango
   dirRead.ready       := metaArrays.map(_.io.req.ready).reduce(_ & _) & rMetaCango
 
