@@ -35,12 +35,12 @@ case class DJParam(
                   beatBytes:          Int = 32,
                   addressBits:        Int = 48,
                   // ------------------------- Interface Mes -------------------- //
-                  localRnSlaveIntf:   InterfaceParam =              InterfaceParam( name = "RnSalve_LOCAL",  intfID = IncoID.LOCALSLV, isRn = true,   isSlave = true,   nrEntry = 32, nrEvictEntry = 8),
-                  localSnMasterIntf:  InterfaceParam =              InterfaceParam( name = "SnMaster_LOCAL", intfID = IncoID.LOCALMST, isRn = false,  isSlave = false,  nrEntry = 32),
+                  localRnSlaveIntf:   InterfaceParam = InterfaceParam( name = "RnSalve_LOCAL",  intfID = IncoID.LOCALSLV, isRn = true,   isSlave = true,   nrEntry = 32, nrEvictEntry = 8),
+                  localSnMasterIntf:  InterfaceParam = InterfaceParam( name = "SnMaster_LOCAL", intfID = IncoID.LOCALMST, isRn = false,  isSlave = false,  nrEntry = 32),
                   csnRnSlaveIntf:     Option[InterfaceParam] = None,
                   csnRnMasterIntf:    Option[InterfaceParam] = None,
                   openDCT:            Boolean = false,
-                  openDMT:            Boolean = false,
+                  openDMT:            Boolean = true,
                   // ------------------------ DCU Base Mes Per Bank ------------------ //
                   nrDSBank:           Int = 4,
                   nrDCUWBuf:          Int = 16,
@@ -194,7 +194,7 @@ trait HasParseZJParam extends HasZJParams {
     val directVec = Wire(Vec(friendsVec.length, Bool()))
     friendsVec.zipWithIndex.foreach {
       case(f, i) =>
-        directVec(i) := f.map(_ === x).reduce(_ | _)
+        directVec(i) := f.map { case id => id === x | (id + 1.U) === x }.reduce(_ | _)
         assert(PopCount(f.map(_ === x)) <= 1.U)
     }
     directVec

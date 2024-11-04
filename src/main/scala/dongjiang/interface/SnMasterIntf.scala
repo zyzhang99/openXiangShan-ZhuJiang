@@ -130,7 +130,7 @@ class SMEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle {
   def isRead        = isReadX(chiMes.opcode)
   def isWrite       = isWriteX(chiMes.opcode)
   def isRepl        = isReplace(chiMes.opcode)
-  def mshrIndexTxnID = Cat(entryMes.dcuID, entryMes.mSet, pcuIndex.mshrWay) | (1 << (nodeNidBits - 1)).U
+  def mshrIndexTxnID = Cat(entryMes.dcuID, entryMes.mSet, pcuIndex.mshrWay) | (1 << fullNodeIdBits).U
   def fullAddr (p: UInt) = entryMes.fullAddr(entryMes.dcuID, p)
 
 
@@ -267,9 +267,9 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
           val reqHit    = io.req2Intf.fire & isReadX(io.req2Intf.bits.chiMes.opcode) & entryGetReqID === i.U; assert(!reqHit | io.req2Intf.bits.chiMes.opcode === ReadNoSnp)
           val writeHit  = io.req2Intf.fire & isWriteX(io.req2Intf.bits.chiMes.opcode) & entryGetReqID === i.U; assert(!writeHit | io.req2Intf.bits.chiMes.opcode === WriteNoSnpFull)
           val replHit   = io.req2Intf.fire & isReplace(io.req2Intf.bits.chiMes.opcode) & entryGetReqID === i.U; assert(!replHit | io.req2Intf.bits.chiMes.opcode === Replace)
-          entry.state     := Mux(reqHit, SMState.GetDBID,
-                            Mux(writeHit, SMState.Req2Node,
-                              Mux(replHit, SMState.Req2Node, entry.state)))
+          entry.state     := Mux(reqHit, Mux(io.req2Intf.bits.pcuMes.doDMT, SMState.Req2Node, SMState.GetDBID),
+                              Mux(writeHit, SMState.Req2Node,
+                                Mux(replHit, SMState.Req2Node, entry.state)))
         }
         // State: GetDBID
         is(SMState.GetDBID) {
@@ -285,7 +285,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
         // State: Req2Node
         is(SMState.Req2Node) {
           val hit       = txReq.fire & entryReq2NodeID === i.U
-          entry.state   := Mux(hit, Mux(entry.isRead, SMState.WaitNodeData, SMState.WaitNodeDBID), entry.state)
+          entry.state   := Mux(hit, Mux(entry.isRead, Mux(entry.entryMes.doDMT, SMState.Resp2Exu, SMState.WaitNodeData), SMState.WaitNodeDBID), entry.state)
         }
         // State: WaitNodeResp
         is(SMState.WaitNodeData) {
