@@ -128,7 +128,7 @@ class Zhujiang(implicit p: Parameters) extends ZJModule {
           if (k < dcuIcnSeq(i)._2.map(_.node.friends.map(_.nodeId.U))(j).length) {
             v := dcuIcnSeq(i)._2.map(_.node.friends.map(_.nodeId.U))(j)(k)
           } else {
-            v := (pow(2, nodeNidBits).toInt - 1).U
+            v := (pow(2, niw).toInt - 1).U
           }
       }
     }
