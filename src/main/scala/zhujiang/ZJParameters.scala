@@ -205,7 +205,6 @@ case class ZJParameters(
   clusterIdBits: Int = 8,
   bankOff: Int = 12,
   cpuSpaceBits: Int = 20,
-  cpuDevSpaceBits: Int = 8,
   cpuAsync: Boolean = true,
   snoopEjectBufDepth: Int = 8,
   reqEjectBufDepth: Int = 8,
@@ -254,7 +253,7 @@ case class ZJParameters(
     selfSets = cacheSizeInMiB * 1024 * 1024 / cacheWays / bank / cachelineBytes,
     sfDirWays = snoopFilterWays,
     sfDirSets = clusterTotalCacheSizeInKiB * 1024 * 2 / snoopFilterWays / bank / cachelineBytes,
-    nrDirBank = 1
+    nrDirBank = 2
   )
 }
 
