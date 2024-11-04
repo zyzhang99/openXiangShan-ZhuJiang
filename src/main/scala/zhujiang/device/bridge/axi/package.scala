@@ -1,6 +1,7 @@
 package zhujiang.device.bridge
 
 import chisel3._
+import chisel3.util.Cat
 import org.chipsalliance.cde.config.Parameters
 import zhujiang.chi.{ReqFlit, ReqOpcode}
 
@@ -28,7 +29,9 @@ package object axi {
     def completed: Bool = this.asUInt.andR
     def decode(req: ReqFlit, check: Bool): Unit = {
       when(check) {
-        assert(req.Opcode === ReqOpcode.ReadNoSnp || req.Opcode === ReqOpcode.WriteNoSnpPtl || req.Opcode === ReqOpcode.WriteNoSnpFullCleanInv)
+        val legalCode = Seq(ReqOpcode.ReadNoSnp, ReqOpcode.WriteNoSnpPtl, ReqOpcode.WriteNoSnpFull, ReqOpcode.WriteNoSnpFullCleanInv)
+        val legal = Cat(legalCode.map(_ === req.Opcode)).orR
+        assert(legal)
         assert(req.Size <= 6.U)
       }
       when(req.Opcode === ReqOpcode.ReadNoSnp) {
