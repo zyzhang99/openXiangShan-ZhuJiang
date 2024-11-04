@@ -210,9 +210,9 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
   val willSendReplVec       = wBufRegVec.map { case r => r.replRState === DCURState.ReadSram & sramRReadyVec(r.dsBank) & (!rRespReg.valid | rRespCanGo) & !willSendRVec.reduce(_ | _) }
   val willSendWVec          = wBufRegVec.map { case w => w.state === DCUWState.WriteSram     & sramWReadyVec(w.dsBank) & w.canWrite}
 
-  val sramWID              = PriorityEncoder(willSendWVec)
-  val sramRID              = PriorityEncoder(willSendRVec)
-  val sramReplID           = PriorityEncoder(willSendReplVec)
+  val sramWID              = PriorityEncoder(willSendWVec) // TODO: dont use PriorityEncoder
+  val sramRID              = PriorityEncoder(willSendRVec) // TODO: dont use PriorityEncoder
+  val sramReplID           = PriorityEncoder(willSendReplVec) // TODO: dont use PriorityEncoder
   val sramRepl             = !willSendRVec.reduce(_ | _) & willSendReplVec.reduce(_ | _)
 
   ds.zipWithIndex.foreach {
