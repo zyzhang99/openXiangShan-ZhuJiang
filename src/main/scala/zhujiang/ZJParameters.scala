@@ -253,7 +253,9 @@ case class ZJParameters(
     selfSets = cacheSizeInMiB * 1024 * 1024 / cacheWays / bank / cachelineBytes,
     sfDirWays = snoopFilterWays,
     sfDirSets = clusterTotalCacheSizeInKiB * 1024 * 2 / snoopFilterWays / bank / cachelineBytes,
-    nrDirBank = 2
+    nrDirBank = 2,
+    openDCT = true,
+    openDMT = true
   )
 }
 
