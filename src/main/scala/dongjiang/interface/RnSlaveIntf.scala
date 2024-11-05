@@ -614,7 +614,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
    */
   rspIsDMTComp              := rxRsp.bits.TxnID(chiTxnIdBits - 1).asBool; assert(Mux(rxRsp.valid & rspIsDMTComp, rxRsp.bits.Opcode === CompAck, true.B))
   dmtCompVal                := rxRsp.valid & rspIsDMTComp
-  rxRsp.ready               := Mux(rspIsDMTComp, io.resp2Intf.ready, true.B)
+  rxRsp.ready               := Mux(rspIsDMTComp, io.resp2Exu.ready, true.B)
   rxDat.ready               := io.dbSigs.dataTDB.ready
 
 
@@ -718,5 +718,6 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
     assert(parseFullAddr(rxReq.bits.Addr)._4 === io.pcuID)
     assert(parseFullAddr(rxReq.bits.Addr)._5 === 0.U)
     assert(rxReq.bits.TgtID === io.hnfID)
+    assert(Mux(isReadX(rxReq.bits.Opcode), rxReq.bits.ExpCompAck, true.B))
   }
 }
