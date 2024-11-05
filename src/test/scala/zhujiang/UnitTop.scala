@@ -8,10 +8,7 @@ import zhujiang.device.bridge.axi.AxiBridge
 import zhujiang.device.bridge.axilite.AxiLiteBridge
 import zhujiang.device.bridge.chi.ChiSnBridge
 import zhujiang.device.bridge.tlul.TLULBridge
-import zhujiang.device.cluster.peripheral.{ClusterPLL, DistributedAclint}
 import zhujiang.device.dma.Axi2Chi
-import zhujiang.device.cluster.ClusterInterconnectComplex
-import zhujiang.tilelink.TilelinkParams
 import zhujiang.device.ddr.MemoryComplex
 
 object UnitTop {
