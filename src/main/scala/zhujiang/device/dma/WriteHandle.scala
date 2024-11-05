@@ -16,9 +16,8 @@ object WRState {
   val SendWrReq    = "b001".U
   val WaitDBID     = "b010".U
   val SendWrData   = "b011".U
-  val WaitComp     = "b100".U
-  val SendCompAck  = "b101".U
-  val Complete     = "b110".U
+  val SendCompAck  = "b100".U
+  val Complete     = "b101".U
 }
 
 object AWState {
@@ -48,6 +47,9 @@ class WrStateEntry(implicit p: Parameters) extends ZJBundle {
   val state        = UInt(WRState.width.W)
   val tgtID        = UInt(niw.W)
   val sendFull     = Bool()
+  val mmioReq      = Bool()
+  val sendAckOrder = UInt(log2Ceil(zjParams.dmaParams.entrySize).W)
+  val haveRecComp  = Bool()
 }
 
 class WriteHandle(implicit p: Parameters) extends ZJModule{
@@ -168,6 +170,8 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
   val sendReqNum                  = wrStateEntrys.map(w => w.areid === selWrDataEntry && (w.state === WRState.SendWrReq || w.state === WRState.WaitDBID && (w.full && !w.last || !w.full)))
   val shouldSendFull              = mergeMaskReg.andR
 
+  //Compute the count of sending compAck
+  val waitCompEntryVec            = wrStateEntrys.map(w => w.state =/= WRState.Free && !w.mmioReq && !(w.full && w.last))
 
   when(mergeMaskReg(bew - 1) && !lastWrData && judgeSendReq && mergeValid_s2){ 
     wrStateEntrys(endIndex).areid := selWrDataEntry
@@ -175,8 +179,10 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
     wrStateEntrys(endIndex).state := WRState.SendWrReq
     wrStateEntrys(endIndex).full  := Mux(awEntrys(selWrDataEntry).unalign, false.B, true.B)
     wrStateEntrys(endIndex).last  := Mux(awEntrys(selWrDataEntry).unalign, true.B, false.B)
+    wrStateEntrys(endIndex).mmioReq := awEntrys(selWrDataEntry).addr(raw - 1)
     wrStateEntrys(endIndex).sendReqOrder := PopCount(sendReqNum) - (io.chi_rxrsp.fire && 
     (io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp || io.chi_rxrsp.bits.Opcode === RspOpcode.DBIDResp)).asUInt
+    wrStateEntrys(endIndex).sendAckOrder := PopCount(waitCompEntryVec) - (io.chi_txrsp.fire).asUInt
 
     endIndex := endIndex + 1.U
     judgeSendReq := Mux(awEntrys(selWrDataEntry).unalign, true.B, false.B)
@@ -187,8 +193,10 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
     wrStateEntrys(endIndex).state := Mux(awEntrys(selWrDataEntry).unalign, WRState.SendWrReq, WRState.WaitDBID)
     wrStateEntrys(endIndex).full  := Mux(awEntrys(selWrDataEntry).unalign, false.B, true.B)
     wrStateEntrys(endIndex).last  := true.B
+    wrStateEntrys(endIndex).mmioReq      := awEntrys(selWrDataEntry).addr(raw - 1)
     wrStateEntrys(endIndex).sendReqOrder := PopCount(sendReqNum) - (io.chi_rxrsp.fire && 
     (io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp || io.chi_rxrsp.bits.Opcode === RspOpcode.DBIDResp)).asUInt
+    wrStateEntrys(endIndex).sendAckOrder := PopCount(waitCompEntryVec) - (io.chi_txrsp.fire).asUInt
 
     endIndex := endIndex + 1.U
     judgeSendReq := true.B
@@ -198,8 +206,10 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
     wrStateEntrys(endIndex).state := WRState.SendWrReq
     wrStateEntrys(endIndex).full  := false.B
     wrStateEntrys(endIndex).last  := true.B
+    wrStateEntrys(endIndex).mmioReq      := awEntrys(selWrDataEntry).addr(raw - 1)
     wrStateEntrys(endIndex).sendReqOrder := PopCount(sendReqNum) - (io.chi_rxrsp.fire && 
     (io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp || io.chi_rxrsp.bits.Opcode === RspOpcode.DBIDResp)).asUInt
+    wrStateEntrys(endIndex).sendAckOrder := PopCount(waitCompEntryVec) - (io.chi_txrsp.fire).asUInt
 
     endIndex := endIndex + 1.U
     judgeSendReq := true.B
@@ -209,8 +219,10 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
     wrStateEntrys(endIndex).state := WRState.WaitDBID
     wrStateEntrys(endIndex).full  := true.B
     wrStateEntrys(endIndex).last  := true.B
+    wrStateEntrys(endIndex).mmioReq      := awEntrys(selWrDataEntry).addr(raw - 1)
     wrStateEntrys(endIndex).sendReqOrder := PopCount(sendReqNum) - (io.chi_rxrsp.fire && 
     (io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp || io.chi_rxrsp.bits.Opcode === RspOpcode.DBIDResp)).asUInt
+    wrStateEntrys(endIndex).sendAckOrder := PopCount(waitCompEntryVec) - (io.chi_txrsp.fire).asUInt
 
     endIndex := endIndex + 1.U
     judgeSendReq := true.B
@@ -227,9 +239,9 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
   val txReqFlit         = Wire(new ReqFlit)
   txReqFlit            := 0.U.asTypeOf(txReqFlit)
   val txReqOpcode       = WireInit(0.U(7.W))
-  when(awEntrys(wrStateEntrys(selSendReqEntry).areid).addr(raw - 1) && wrStateEntrys(selSendReqEntry).sendFull){
+  when(wrStateEntrys(selSendReqEntry).mmioReq && wrStateEntrys(selSendReqEntry).sendFull){
     txReqOpcode        := ReqOpcode.WriteNoSnpFull
-  }.elsewhen(awEntrys(wrStateEntrys(selSendReqEntry).areid).addr(raw - 1) && !wrStateEntrys(selSendReqEntry).sendFull){
+  }.elsewhen(wrStateEntrys(selSendReqEntry).mmioReq && !wrStateEntrys(selSendReqEntry).sendFull){
     txReqOpcode        := ReqOpcode.WriteNoSnpPtl
   }.elsewhen(wrStateEntrys(selSendReqEntry).sendFull){
     txReqOpcode        := ReqOpcode.WriteUniqueFull
@@ -245,14 +257,13 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
   txReqFlit.TxnID      := selSendReqEntry
   txReqFlit.Size       := Mux(wrStateEntrys(selSendReqEntry).full, 6.U, 5.U)
 
-  // val txnid            = Wire(UInt(log2Ceil(dmaParams.bufferSize).W))
   val txnid               = io.chi_rxrsp.bits.TxnID(log2Ceil(dmaParams.bufferSize) - 1, 0) + 1.U
-
 
   when(io.chi_rxrsp.fire && wrStateEntrys(rxRspTxnid).full && (io.chi_rxrsp.bits.Opcode === RspOpcode.DBIDResp || io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp)){
     wrStateEntrys(txnid).state := WRState.SendWrData
     wrStateEntrys(txnid).dbid  := io.chi_rxrsp.bits.DBID
     wrStateEntrys(txnid).tgtID := io.chi_rxrsp.bits.SrcID
+    wrStateEntrys(txnid).separate := Mux(io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp, false.B, true.B)
   }
 
   when(wrStateEntrys(startIndex + 1.U).state === WRState.Free && startIndex =/= endIndex && wrStateEntrys(startIndex).state === WRState.Free){
@@ -280,7 +291,7 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
   selSendReg       := selSendDataEntry
 
   when(RegNext(dataSram.io.r.req.fire)){
-    txDatFlit.Opcode := Mux(wrStateEntrys(selSendReg).separate, DatOpcode.NonCopyBackWriteData, DatOpcode.NCBWrDataCompAck)
+    txDatFlit.Opcode := Mux(wrStateEntrys(selSendReg).separate || wrStateEntrys(selSendReg).mmioReq, DatOpcode.NonCopyBackWriteData, DatOpcode.NCBWrDataCompAck)
     txDatFlit.SrcID  := 1.U
     txDatFlit.DataID := Mux(wrStateEntrys(selSendReg).full &&  wrStateEntrys(selSendReg).last, 2.U, 0.U)
     txDatFlit.TxnID  := wrStateEntrys(selSendReg).dbid
@@ -293,7 +304,7 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
   select Entry which is ready to send compack to HN and send CHI_RSP Flit to HN
    */
 
-   val sendCompAckVec      = wrStateEntrys.map(_.state === WRState.SendCompAck)
+   val sendCompAckVec      = wrStateEntrys.map(w => w.state === WRState.SendCompAck && w.haveRecComp && w.sendAckOrder === 0.U)
    val sendCompAckValid    = sendCompAckVec.reduce(_|_)
    val selSendCompAckEntry = PriorityEncoder(sendCompAckVec)
 
@@ -303,6 +314,18 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
     txRspFlit.SrcID    := 1.U
     txRspFlit.TgtID    := wrStateEntrys(selSendCompAckEntry).tgtID
     txRspFlit.TxnID    := wrStateEntrys(selSendCompAckEntry).dbid
+   }
+   wrStateEntrys.foreach{
+    case(a) =>
+      when(a.state =/= WRState.Free && a.sendAckOrder =/= 0.U && io.chi_txrsp.fire){
+        a.sendAckOrder := a.sendAckOrder - 1.U
+      }
+   }
+   wrStateEntrys.zipWithIndex.foreach{
+    case(w, i) =>
+      when(io.chi_rxrsp.fire && io.chi_rxrsp.bits.TxnID === i.U && (io.chi_rxrsp.bits.Opcode === RspOpcode.Comp || io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp)){
+        w.haveRecComp := true.B
+      }
    }
 
   //---------------------------------------------------------------------------------------------------------------------------------//
@@ -347,9 +370,6 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
   wrStateEntrys.zipWithIndex.foreach{
     case(w, i) =>
       switch(w.state){
-        is(WRState.Free){
-          
-        }
         is(WRState.SendWrReq){
           val hit = io.chi_txreq.fire && io.chi_txreq.bits.TxnID === i.U
           val reduceHit = io.chi_rxrsp.fire && (io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp || io.chi_rxrsp.bits.Opcode === RspOpcode.DBIDResp) && (awEntrys(w.areid).nid === 0.U)  && (w.sendReqOrder =/= 0.U)
@@ -376,23 +396,17 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
         is(WRState.SendWrData){
           val hit    = dataSram.io.r.req.fire && dataSram.io.r.req.bits.setIdx === i.U
           when(hit){
-            w.state   := Mux(!w.separate, WRState.Complete, WRState.WaitComp)
-          }
-        }
-        is(WRState.WaitComp){
-          val hit = io.chi_rxrsp.fire && io.chi_rxrsp.bits.Opcode === RspOpcode.Comp && io.chi_rxrsp.bits.TxnID === i.U
-          when(hit){
-            w.state := WRState.SendCompAck
+            w.state   := Mux(!w.separate || w.mmioReq || w.full && w.last, WRState.Complete, WRState.SendCompAck)
           }
         }
         is(WRState.SendCompAck){
-          val hit = io.chi_txrsp.fire && io.chi_txrsp.bits.TxnID === w.dbid //TODO
+          val hit = io.chi_txrsp.fire && io.chi_txrsp.bits.TxnID === w.dbid && w.sendAckOrder === 0.U && w.haveRecComp
           when(hit){
             w := 0.U.asTypeOf(w)
           }
         }
         is(WRState.Complete){
-          val hit = !w.separate &&  io.chi_txdat.fire && io.chi_txdat.bits.TxnID === w.dbid &&
+          val hit = io.chi_txdat.fire && io.chi_txdat.bits.TxnID === w.dbid &&
            (io.chi_txdat.bits.DataID === 0.U && !w.full || w.full && io.chi_txdat.bits.DataID === 0.U && !w.last ||
           io.chi_txdat.bits.DataID === 2.U && w.last && w.full)
           when(hit){
