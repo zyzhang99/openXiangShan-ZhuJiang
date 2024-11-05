@@ -127,13 +127,14 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
    * Get MSHR Mes
    */
   // mshrTableReg
-  val req2ExuMSet = io.req2Exu.bits.pcuMes.mSet
+  val req2ExuMSet     = io.req2Exu.bits.pcuMes.mSet; dontTouch(req2ExuMSet)
+  val req2ExuDirSet   = io.req2Exu.bits.pcuMes.minDirSet; dontTouch(req2ExuDirSet)
   val nodeReqMatchVec = mshrTableReg(req2ExuMSet).map { case m =>
     val hit = Wire(Bool())
     when(m.mshrMes.lockDirSet) {
       // [useAddr] = [mTag] + [mSet]
       // [useAddr] = [minDirTag] + [minDirSet] + [dirBank]
-      hit := m.minDirSet(req2ExuMSet) === io.req2Exu.bits.pcuMes.minDirSet
+      hit := m.minDirSet(req2ExuMSet) === req2ExuDirSet
       require(minDirSetBits > mshrSetBits)
     }.otherwise {
       hit := m.mshrMes.mTag === io.req2Exu.bits.pcuMes.mTag
@@ -142,15 +143,11 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
   }
   val nodeReqInvVec   = mshrTableReg(req2ExuMSet).map(_.isFree)
   val nodeReqInvWay   = PriorityEncoder(nodeReqInvVec)
-  // mshrLockVecReg
-  val lockMatch       = mshrLockVecReg(io.req2Exu.bits.pcuMes.minDirSet)
-
 
   /*
    * Get Block Message
    */
-  val blockByMHSR     = nodeReqMatchVec.reduce(_ | _) | lockMatch
-  val canReceiveNode  = !blockByMHSR & PopCount(nodeReqInvVec) > 0.U
+  val canReceiveNode  = !nodeReqMatchVec.reduce(_ | _) & PopCount(nodeReqInvVec) > 0.U
 
 
   /*
