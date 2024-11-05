@@ -127,5 +127,5 @@ class AxiBridge(node: Node)(implicit p: Parameters) extends ZJModule with HasPer
   XSPerfAccumulate("read_req_cnt", icn.rx.req.get.fire && req.Opcode === ReqOpcode.ReadNoSnp)
   XSPerfAccumulate("write_req_cnt", icn.rx.req.get.fire && (req.Opcode === ReqOpcode.WriteNoSnpPtl || req.Opcode === ReqOpcode.WriteNoSnpFull))
   XSPerfAccumulate("total_mem_req_cnt", icn.rx.req.get.fire)
-  XSPerfAccumulate("total_req_retention_cnt", PopCount(cms.map(_.io.info.valid)))
+  XSPerfAccumulate("total_req_retention_cnt", cms.map(_.io.info.valid).reduce(_||_))
 }
