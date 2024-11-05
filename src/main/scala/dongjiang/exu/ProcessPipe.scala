@@ -14,9 +14,10 @@ import chisel3.util._
 import org.chipsalliance.cde.config._
 import xs.utils.ParallelLookUp
 import xs.utils.perf.{DebugOptions, DebugOptionsKey}
+import xs.utils.perf.HasPerfLogging
 
 
-class ProcessPipe(implicit p: Parameters) extends DJModule {
+class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
 // --------------------- IO declaration ------------------------//
   val io = IO(new Bundle {
     val dcuID       = Input(UInt(dcuBankBits.W))
@@ -54,7 +55,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
   val task_s2             = WireInit(0.U.asTypeOf(Valid(new PipeTaskBundle())))
   // s3 basic signals
   val valid_s3            = Wire(Bool())
-  val canGo_s3            = Wire(Bool());
+  val canGo_s3            = Wire(Bool())
   val dirCanGo_s3         = Wire(Bool())
   val taskNext_s3         = WireInit(0.U.asTypeOf(new PipeTaskBundle()))
   val task_s3_g           = RegInit(0.U.asTypeOf(Valid(new PipeTaskBundle())))
@@ -96,9 +97,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
    */
   val task_s3_dbg_addr = Wire(UInt(fullAddrBits.W))
   task_s3_dbg_addr := task_s3_g.bits.taskMes.fullAddr(io.dcuID, io.pcuID)
-  if (p(DebugOptionsKey).EnableDebug) {
-    dontTouch(task_s3_dbg_addr)
-  }
+  if (p(DebugOptionsKey).EnableDebug) dontTouch(task_s3_dbg_addr)
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //
@@ -196,8 +195,8 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
    * Get Decode Result
    */
   var table = LoaclSnpUniqueEvictDecode.table ++ LoaclDatalessDecode.table ++ LoaclWriteDecode.table
-  if(djparam.openDCT) { table = table ++ LocalReadWithDCTDecode.table }
-  else                { table = table ++ LocalReadDecode.table }
+  if(djparam.openDCT) table = table ++ LocalReadWithDCTDecode.table
+  else table = table ++ LocalReadDecode.table
   table.zipWithIndex.foreach { case(t, i) =>
     val width0 = t._1.getWidth
     val width1 = inst_s3.asUInt.getWidth
@@ -549,4 +548,31 @@ class ProcessPipe(implicit p: Parameters) extends DJModule {
 
   // Other
   assert(!valid_s3 | !todo_s3.asUInt.asBools.zip(done_s3_g.asUInt.asBools).map { case(todo, done) => !todo & done }.reduce(_ | _))
+
+
+
+// -------------------------------------------------- Perf Counter ------------------------------------------------------ //
+  // read
+  XSPerfAccumulate("pcu_pipe_req_read_cnt",       valid_s3 & canGo_s3 & isReadX(task_s3_g.bits.chiMes.opcode) & task_s3_g.bits.chiMes.isReq & !todo_s3_retry)
+  XSPerfAccumulate("pcu_pipe_req_read_hit_cnt",   valid_s3 & canGo_s3 & isReadX(task_s3_g.bits.chiMes.opcode) & task_s3_g.bits.chiMes.isReq & !todo_s3_retry & hnHit)
+  XSPerfAccumulate("pcu_pipe_req_read_miss_cnt",  valid_s3 & canGo_s3 & isReadX(task_s3_g.bits.chiMes.opcode) & task_s3_g.bits.chiMes.isReq & !todo_s3_retry & !hnHit)
+  // write
+  XSPerfAccumulate("pcu_pipe_req_write_cnt",      valid_s3 & canGo_s3 & isWriteX(task_s3_g.bits.chiMes.opcode) & task_s3_g.bits.chiMes.isReq & !todo_s3_retry)
+  XSPerfAccumulate("pcu_pipe_req_write_hit_cnt",  valid_s3 & canGo_s3 & isWriteX(task_s3_g.bits.chiMes.opcode) & task_s3_g.bits.chiMes.isReq & !todo_s3_retry & hnHit)
+  XSPerfAccumulate("pcu_pipe_req_write_miss_cnt", valid_s3 & canGo_s3 & isWriteX(task_s3_g.bits.chiMes.opcode) & task_s3_g.bits.chiMes.isReq & !todo_s3_retry & !hnHit)
+  // evict
+  XSPerfAccumulate("pcu_pipe_req_evict_cnt",      valid_s3 & canGo_s3 & task_s3_g.bits.chiMes.opcode === Evict & task_s3_g.bits.chiMes.isReq & !todo_s3_retry)
+  XSPerfAccumulate("pcu_pipe_req_evict_hit_cnt",  valid_s3 & canGo_s3 & task_s3_g.bits.chiMes.opcode === Evict & task_s3_g.bits.chiMes.isReq & !todo_s3_retry & hnHit)
+  XSPerfAccumulate("pcu_pipe_req_evict_miss_cnt", valid_s3 & canGo_s3 & task_s3_g.bits.chiMes.opcode === Evict & task_s3_g.bits.chiMes.isReq & !todo_s3_retry & !hnHit)
+  // makeUnique
+  XSPerfAccumulate("pcu_pipe_req_makeUnique_cnt",       valid_s3 & canGo_s3 & task_s3_g.bits.chiMes.opcode === MakeUnique & task_s3_g.bits.chiMes.isReq & !todo_s3_retry)
+  XSPerfAccumulate("pcu_pipe_req_makeUnique_hit_cnt",   valid_s3 & canGo_s3 & task_s3_g.bits.chiMes.opcode === MakeUnique & task_s3_g.bits.chiMes.isReq & !todo_s3_retry & hnHit)
+  XSPerfAccumulate("pcu_pipe_req_makeUnique_miss_cnt",  valid_s3 & canGo_s3 & task_s3_g.bits.chiMes.opcode === MakeUnique & task_s3_g.bits.chiMes.isReq & !todo_s3_retry & !hnHit)
+  // total
+  XSPerfAccumulate("pcu_pipe_req_total_cnt",      valid_s3 & canGo_s3 & !todo_s3_retry)
+  XSPerfAccumulate("pcu_pipe_req_hit_total_cnt",  valid_s3 & canGo_s3 & !todo_s3_retry & hnHit)
+  XSPerfAccumulate("pcu_pipe_req_miss_total_cnt", valid_s3 & canGo_s3 & !todo_s3_retry & !hnHit)
+  XSPerfAccumulate("pcu_pipe_retry_total_cnt",    valid_s3 & canGo_s3 & todo_s3_retry)
+
+
 }
