@@ -8,7 +8,7 @@ import zhujiang._
 import zhujiang.chi._
 import zhujiang.axi._
 import xs.utils.sram._
-import zhujiang.device.dma.SRAMState.{WaitReceipt => WaitReceipt}
+
 
 object ARState {
   val width = 2
@@ -205,7 +205,9 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
   axiRFlit.last    := arEntrys(sramStateEntrys(axiRSet).areid).sendDatNum === arEntrys(sramStateEntrys(axiRSet).areid).len & arEntrys(sramStateEntrys(axiRSet).areid).state =/= ARState.Free
 
   when(writeSram){
-    sramStateEntrys(sramStateEntrys(dataTxnid).next).state := SRAMState.SendData
+    sramStateEntrys(sramStateEntrys(dataTxnid).next).state := SRAMState.SendCompAck
+    sramStateEntrys(sramStateEntrys(dataTxnid).next).dbid  := io.chi_rxdat.bits.DBID
+    sramStateEntrys(sramStateEntrys(dataTxnid).next).homeNid := io.chi_rxdat.bits.HomeNID
   }
 
   val txRspFlit     = Wire(new RespFlit)
@@ -283,11 +285,11 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
             val dataHit    = io.chi_rxdat.fire && dataTxnid === i.U 
             val receiptHit = io.chi_rxrsp.fire & (io.chi_rxrsp.bits.Opcode === RspOpcode.ReadReceipt).asBool && receTxnid === i.U 
             when(dataHit && receiptHit){
-              sram.state := Mux(sram.full && sram.last, SRAMState.SendData, SRAMState.SendCompAck)
+              sram.state := Mux(sram.last && !sram.full, SRAMState.SendCompAck, SRAMState.SendData)
               sram.dbid  := io.chi_rxdat.bits.DBID(11,0)
               sram.homeNid := io.chi_rxdat.bits.HomeNID
             }.elsewhen(dataHit){
-              sram.state  := WaitReceipt
+              sram.state  := SRAMState.WaitReceipt
               sram.dbid   := io.chi_rxdat.bits.DBID(11,0)
               sram.homeNid := io.chi_rxdat.bits.HomeNID
             }.elsewhen(receiptHit){
@@ -298,7 +300,7 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
             val dataTxnid  = io.chi_rxdat.bits.TxnID
             val dataHit    = io.chi_rxdat.fire && dataTxnid === i.U 
             when(dataHit){
-              sram.state := Mux(sram.full && sram.last, SRAMState.SendData, SRAMState.SendCompAck)
+              sram.state := Mux(sram.last && !sram.full, SRAMState.SendCompAck, SRAMState.SendData)
               sram.dbid  := io.chi_rxdat.bits.DBID(11, 0)
               sram.homeNid := io.chi_rxdat.bits.HomeNID
             }
@@ -307,7 +309,7 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
             val receTxnid  = io.chi_rxrsp.bits.TxnID
             val receiptHit        = io.chi_rxrsp.fire && (io.chi_rxrsp.bits.Opcode === RspOpcode.ReadReceipt).asBool && receTxnid === i.U
             when(receiptHit){
-              sram.state := Mux(sram.full && sram.last, SRAMState.SendData, SRAMState.SendCompAck)
+              sram.state := Mux(sram.last && !sram.full, SRAMState.SendData, SRAMState.SendCompAck)
             }
           }
           is(SRAMState.SendCompAck){
