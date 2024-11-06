@@ -11,9 +11,9 @@ class DataBufferAllocReq(outstanding: Int) extends Bundle {
   val waitNum = UInt(log2Ceil(outstanding).W)
 }
 
-class SelNto1(outstanding: Int) extends Module {
+class SelNto1(size:Int, outstanding: Int) extends Module {
   val io = IO(new Bundle {
-    val in = Vec(outstanding, Flipped(Decoupled(new DataBufferAllocReq(outstanding))))
+    val in = Vec(size, Flipped(Decoupled(new DataBufferAllocReq(outstanding))))
     val out = Decoupled(new DataBufferAllocReq(outstanding))
   })
 
@@ -50,7 +50,7 @@ class DataBufferAllocReqSelector(outstanding: Int) extends Module {
   io.out <> selPipe.io.deq
 
   private def selOp(ins: Seq[DecoupledIO[DataBufferAllocReq]]): DecoupledIO[DataBufferAllocReq] = {
-    val sel = Module(new SelNto1(ins.length))
+    val sel = Module(new SelNto1(ins.length, outstanding))
     val pipeS1 = Module(new Queue(new DataBufferAllocReq(outstanding), entries = 2))
     sel.io.in.zip(ins).foreach({case(a, b) => a <> b})
     pipeS1.io.enq <> sel.io.out
