@@ -333,10 +333,10 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
           }
         }
         is(DCURState.ReadSram) {
-          val hit         = sramRFire & sramRID === i.U & sramRepl
+          val hit         = sramRFire & sramReplID === i.U & sramRepl
           when(hit) {
-            r             := 0.U.asTypeOf(r)
             r.state       := DCURState.Free
+            r.returnTxnID := 0.U
           }
         }
       }
