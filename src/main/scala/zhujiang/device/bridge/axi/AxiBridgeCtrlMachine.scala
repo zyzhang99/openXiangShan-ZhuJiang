@@ -53,7 +53,11 @@ class AxiBridgeCtrlMachine(
   }
 
   when(icn.rx.data.valid) {
-    assert(icn.rx.data.bits.Opcode === DatOpcode.NCBWrDataCompAck)
+    when(payload.state.u.compAck) {
+      assert(icn.rx.data.bits.Opcode === DatOpcode.NonCopyBackWriteData)
+    }.otherwise {
+      assert(icn.rx.data.bits.Opcode === DatOpcode.NCBWrDataCompAck)
+    }
   }
 
   wakeupOutCond := payload.state.d.completed && valid && payload.info.isSnooped
