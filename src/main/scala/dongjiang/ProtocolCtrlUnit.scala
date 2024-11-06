@@ -95,6 +95,12 @@ class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[
   // EXUs
   val exus            = Seq.fill(nrBankPerPCU) { Module(new ExecuteUnit()) }
 
+  // for debug
+  if (p(DebugOptionsKey).EnableDebug) {
+    val io_toLocal_tx_req_bits_DbgAddr = Wire(UInt(fullAddrBits.W))
+    io_toLocal_tx_req_bits_DbgAddr := localSnMaster.io.chi_tx_req_bits_DbgAddr.get
+    dontTouch(io_toLocal_tx_req_bits_DbgAddr)
+  }
 
 
 // ---------------------------------------------- Connection ---------------------------------------------------//

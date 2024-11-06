@@ -10,6 +10,7 @@ import xs.utils._
 import dongjiang.utils.FastArb._
 import xijiang.router.base.DeviceIcnBundle
 import xijiang.Node
+import xs.utils.perf.DebugOptionsKey
 
 abstract class IntfBaseIO(param: InterfaceParam, node: Node)(implicit p: Parameters) extends DJModule {
 // --------------------- IO declaration ------------------------//
@@ -27,6 +28,10 @@ abstract class IntfBaseIO(param: InterfaceParam, node: Node)(implicit p: Paramet
     val resp2Exu        = Decoupled(new Resp2ExuBundle())
     // To DataBuffer Signals
     val dbSigs          = new DBBundle(param.hasDBRCReq)
+
+    // for debug
+    val chi_tx_req_bits_DbgAddr = if (p(DebugOptionsKey).EnableDebug) { Some(Output(UInt(fullAddrBits.W))) } else None
+
 
     def req2Exu         = req2ExuOpt.get
     def reqAck2Intf     = reqAck2IntfOpt.get

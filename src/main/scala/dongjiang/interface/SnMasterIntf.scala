@@ -406,9 +406,8 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   txReq.bits.ReturnNID    := Mux(entrys(entryReq2NodeID).entryMes.doDMT, getFullNodeID(entrys(entryReq2NodeID).chiIndex.nodeID), io.hnfID)
   txReq.bits.ReturnTxnID  := Mux(entrys(entryReq2NodeID).entryMes.doDMT, entrys(entryReq2NodeID).chiIndex.txnID,                 entryReq2NodeID)
   if (p(DebugOptionsKey).EnableDebug) {
-    val io_chi_tx_req_bits_DbgAddr  = IO(Output(UInt(fullAddrBits.W)))
-    io_chi_tx_req_bits_DbgAddr      := entrys_dbg_addr(entryReq2NodeID)
-    dontTouch(io_chi_tx_req_bits_DbgAddr)
+    io.chi_tx_req_bits_DbgAddr.get  := entrys_dbg_addr(entryReq2NodeID)
+    dontTouch(io.chi_tx_req_bits_DbgAddr.get)
   }
 
 // ---------------------------------------------------------------------------------------------------------------------- //
