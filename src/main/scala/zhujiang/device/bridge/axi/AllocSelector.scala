@@ -2,8 +2,6 @@ package zhujiang.device.bridge.axi
 
 import chisel3._
 import chisel3.util._
-import xs.utils.{ParallelOperation, ParallelOperationN}
-import math.{ceil, pow}
 
 class DataBufferAllocReq(outstanding: Int) extends Bundle {
   val idxOH = UInt(outstanding.W)
@@ -47,20 +45,11 @@ class DataBufferAllocReqSelector(outstanding: Int) extends Module {
   })
 
   private val selPipe = Module(new Queue(new AxiDataBufferAllocReq(outstanding), entries = 2))
+  private val selector = Module(new SelNto1(outstanding, outstanding))
+  selector.io.in.zip(io.in).foreach({case(a, b) => a <> b})
+  selPipe.io.enq.valid := selector.io.out.valid
+  selPipe.io.enq.bits.idxOH := selector.io.out.bits.idxOH
+  selPipe.io.enq.bits.size := selector.io.out.bits.size
+  selector.io.out.ready := selPipe.io.enq.ready
   io.out <> selPipe.io.deq
-
-  private def selOp(ins: Seq[DecoupledIO[DataBufferAllocReq]]): DecoupledIO[DataBufferAllocReq] = {
-    val sel = Module(new SelNto1(ins.length, outstanding))
-    val pipeS1 = Module(new Queue(new DataBufferAllocReq(outstanding), entries = 2))
-    sel.io.in.zip(ins).foreach({case(a, b) => a <> b})
-    pipeS1.io.enq <> sel.io.out
-    pipeS1.io.deq
-  }
-
-  private val selRes = ParallelOperationN(io.in, ceil(pow(outstanding, 0.5)).round.toInt, selOp)
-
-  selPipe.io.enq.valid := selRes.valid
-  selPipe.io.enq.bits.idxOH := selRes.bits.idxOH
-  selPipe.io.enq.bits.size := selRes.bits.size
-  selRes.ready := selPipe.io.enq.ready
 }
