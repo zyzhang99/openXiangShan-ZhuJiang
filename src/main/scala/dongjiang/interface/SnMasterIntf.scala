@@ -22,9 +22,9 @@ import xs.utils.perf.{DebugOptions, DebugOptionsKey}
  *
  * Read Req With DMT:     [Free] -----> [Req2Node] -----> [Resp2Exu]
  *
- * Write Req:             [Free] -----> [Req2Node] -----> [WaitNodeDBID] -----> [RCDB] -----> [WriteData2Node] -----> [WaitNodeComp] -----> [Resp2Exu]
+ * Write Req:             [Free] -----> [Req2Node] -----> [WaitNodeDBID] -----> [RCDB] -----> [WriteData2Node] -----> ([WaitNodeComp]) -----> [Resp2Exu]
  *
- * Replace:               [Free] -----> [Req2Node] -----> [WaitNodeDBID] -----> [Replace2Node] -----> [WaitReplDBID] -----> [RCDB] -----> [WriteData2Node] -----> [WaitNodeComp] -----> [Resp2Exu]
+ * Replace:               [Free] -----> [Req2Node] -----> [WaitNodeDBID] -----> [Replace2Node] -----> [WaitReplDBID] -----> [RCDB] -----> [WriteData2Node] -----> ([WaitNodeComp]) -----> [Resp2Exu]
  *
  *
  * ************************************************************** ID Transfer ********************************************************************************
@@ -105,34 +105,35 @@ object SMType {
 }
 
 class SMEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle {
-  val chiIndex      = new ChiIndexBundle()
-  val chiMes        = new ChiMesBundle()
-  val pcuIndex      = new PcuIndexBundle()
-  val entryMes      = new DJBundle with HasUseAddr with HasDcuID {
-    val state       = UInt(RSState.width.W)
-    val doDMT       = Bool()
-    val toDCU       = Bool()
-    val hasData     = Bool()
-    val getDataNum  = UInt(beatNumBits.W)
-    val alrGetComp  = Bool() // Already Get Comp
-    val selfWay     = UInt(sWayBits.W)
+  val chiIndex        = new ChiIndexBundle()
+  val chiMes          = new ChiMesBundle()
+  val pcuIndex        = new PcuIndexBundle()
+  val entryMes        = new DJBundle with HasUseAddr with HasDcuID {
+    val state         = UInt(RSState.width.W)
+    val doDMT         = Bool()
+    val toDCU         = Bool()
+    val hasData       = Bool()
+    val getDataNum    = UInt(beatNumBits.W)
+    val alrGetCompNum = UInt(2.W) // Already Get Comp, only use in write or replace
+    val selfWay       = UInt(sWayBits.W)
   }
 
-  def state         = entryMes.state
-  def isFree        = entryMes.state === SMState.Free
-  def isGetDBID     = entryMes.state === SMState.GetDBID
-  def isReq2Node    = entryMes.state === SMState.Req2Node
-  def isRepl2Node   = entryMes.state === SMState.Replace2Node
-  def isResp2Exu    = entryMes.state === SMState.Resp2Exu
-  def isWaitDBData  = entryMes.state === SMState.WriteData2Node
-  def isRCDB        = entryMes.state === SMState.RCDB
-  def isLastBeat    = entryMes.getDataNum === (nrBeat - 1).U
-  def isRead        = isReadX(chiMes.opcode)
-  def isWrite       = isWriteX(chiMes.opcode)
-  def isRepl        = isReplace(chiMes.opcode)
-  def mshrIndexTxnID = Cat(entryMes.dcuID, entryMes.mSet, pcuIndex.mshrWay) | (1 << fullNodeIdBits).U
+  def state           = entryMes.state
+  def isFree          = entryMes.state === SMState.Free
+  def isGetDBID       = entryMes.state === SMState.GetDBID
+  def isReq2Node      = entryMes.state === SMState.Req2Node
+  def isRepl2Node     = entryMes.state === SMState.Replace2Node
+  def isResp2Exu      = entryMes.state === SMState.Resp2Exu
+  def isWaitDBData    = entryMes.state === SMState.WriteData2Node
+  def isRCDB          = entryMes.state === SMState.RCDB
+  def isLastBeat      = entryMes.getDataNum === (nrBeat - 1).U
+  def isRead          = isReadX(chiMes.opcode)
+  def isWrite         = isWriteX(chiMes.opcode)
+  def isRepl          = isReplace(chiMes.opcode)
+  def mshrIndexTxnID  = Cat(entryMes.dcuID, entryMes.mSet, pcuIndex.mshrWay) | (1 << fullNodeIdBits).U
   def fullAddr (p: UInt) = entryMes.fullAddr(entryMes.dcuID, p)
 
+  def getAllComp      = Mux(isRepl, entryMes.alrGetCompNum === 2.U, entryMes.alrGetCompNum === 1.U)
 
   def fullTgtID(fIDSeq: Seq[UInt]): UInt = { // friendIdSeq
     val nodeID      = WireInit(0.U(fullNodeIdBits.W))
@@ -229,15 +230,16 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
        * Receive DBID or Comp From CHI RxRsp
        */
       }.elsewhen(rxRsp.fire & rxRsp.bits.TxnID === i.U) {
-        when(rxRsp.bits.Opcode === DBIDResp) {
+        when(rxRsp.bits.Opcode === DBIDResp | rxRsp.bits.Opcode === CompDBIDResp) {
           entry.chiIndex.txnID      := rxRsp.bits.DBID
-          entry.entryMes.toDCU      := true.B
+          entry.entryMes.toDCU      := true.B // for send Replace
+          entry.entryMes.alrGetCompNum  := entry.entryMes.alrGetCompNum + (rxRsp.bits.Opcode === CompDBIDResp).asUInt
           assert(entry.state === SMState.WaitReplDBID | entry.state === SMState.WaitNodeDBID, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
           assert(Mux(entry.isRepl, Mux(entry.state === SMState.WaitReplDBID, entry.entryMes.toDCU, !entry.entryMes.toDCU), entry.entryMes.toDCU), "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
         }
         when(rxRsp.bits.Opcode === Comp) {
-          entry.entryMes.alrGetComp := true.B
-          assert(Mux(!entry.isRepl | entry.entryMes.alrGetComp, entry.state === SMState.WaitNodeComp,
+          entry.entryMes.alrGetCompNum := entry.entryMes.alrGetCompNum + 1.U
+            assert(Mux(!entry.isRepl | entry.entryMes.alrGetCompNum === 1.U, entry.state === SMState.WaitNodeComp,
             entry.state === SMState.WaitReplDBID | entry.state === SMState.RCDB | entry.state === SMState.WriteData2Node |  entry.state === SMState.WaitNodeComp),
             "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
         }
@@ -310,12 +312,12 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
         // State: WriteData2Node
         is(SMState.WriteData2Node) {
           val hit       = txDat.fire & entry.isLastBeat & io.dbSigs.dataFDB.bits.dbID === entry.pcuIndex.dbID
-          entry.state   := Mux(hit, SMState.WaitNodeComp, entry.state)
+          entry.state   := Mux(hit, Mux(entry.getAllComp, SMState.Resp2Exu, SMState.WaitNodeComp), entry.state)
         }
         // State: WaitNodeComp
         is(SMState.WaitNodeComp) {
           val hit       = rxRsp.fire & rxRsp.bits.TxnID === i.U
-          val canGo     = !entry.isRepl | entry.entryMes.alrGetComp
+          val canGo     = !entry.isRepl | entry.entryMes.alrGetCompNum === 1.U
           entry.state   := Mux(hit & canGo,  SMState.Resp2Exu, entry.state)
         }
         // State: Replace2Node
@@ -414,7 +416,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
 // ------------------------------------------- Receive CHI DBID From From Node ------------------------------------------ //
 // ---------------------------------------------------------------------------------------------------------------------- //
   rxRsp.ready             := true.B
-  assert(Mux(rxRsp.fire, rxRsp.bits.Opcode === DBIDResp | rxRsp.bits.Opcode === Comp, true.B))
+  assert(Mux(rxRsp.fire, rxRsp.bits.Opcode === CompDBIDResp | rxRsp.bits.Opcode === DBIDResp | rxRsp.bits.Opcode === Comp, true.B))
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //
