@@ -14,7 +14,7 @@ import org.chipsalliance.cde.config._
 import dongjiang.utils.Encoder._
 import xijiang.Node
 import xs.utils._
-import xs.utils.perf.{DebugOptions, DebugOptionsKey}
+import xs.utils.perf.{DebugOptions, DebugOptionsKey, HasPerfLogging}
 
 /*
  * ************************************************************** State transfer ***********************************************************************************
@@ -190,7 +190,7 @@ class RSEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle  {
 
 
 
-class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) extends IntfBaseIO(param, node) {
+class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) extends IntfBaseIO(param, node) with HasPerfLogging  {
   // Del it
   io <> DontCare
   dontTouch(io)
@@ -720,4 +720,13 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
     assert(rxReq.bits.TgtID === io.hnfID)
     assert(Mux(isReadX(rxReq.bits.Opcode), rxReq.bits.ExpCompAck, true.B))
   }
+
+// -------------------------------------------------- Perf Counter ------------------------------------------------------ //
+  val reqFire = rxReq.fire | io.req2Intf.fire | io.resp2Intf.fire
+  require(param.nrEntry > 4 & param.nrEntry % 4 == 0)
+  for(i <- 0 until  (param.nrEntry/4)) {
+    XSPerfAccumulate(s"pcu_localRnSlave_entry_group[${i}]_deal_req_cnt", reqFire & (i*4).U <= entryFreeID & entryFreeID <= (i*4+3).U)
+  }
+  XSPerfAccumulate("pcu_localRnSlave_req_cnt", reqFire)
+  XSPerfAccumulate("pcu_localRnSlave_req_block_cnt", (rxReq.valid | io.req2Intf.valid | io.resp2Intf.valid) & entryFreeNum === 0.U)
 }

@@ -12,7 +12,7 @@ import chisel3.util._
 import org.chipsalliance.cde.config._
 import dongjiang.utils.FastArb._
 import xijiang.Node
-import xs.utils.perf.{DebugOptions, DebugOptionsKey}
+import xs.utils.perf.{DebugOptions, DebugOptionsKey, HasPerfLogging}
 
 
 /*
@@ -156,7 +156,7 @@ class SMEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle {
   }
 }
 
-class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) extends IntfBaseIO(param, node) {
+class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) extends IntfBaseIO(param, node) with HasPerfLogging {
   // Del it
   io <> DontCare
   dontTouch(io)
@@ -485,8 +485,16 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
 
 
 
-// ---------------------------  Assertion  --------------------------------//
+// -------------------------------------------------  Assertion  -------------------------------------------------------- //
   val cntReg = RegInit(VecInit(Seq.fill(param.nrEntry) { 0.U(64.W) }))
   cntReg.zip(entrys).foreach { case (c, p) => c := Mux(p.isFree, 0.U, c + 1.U) }
   cntReg.zipWithIndex.foreach { case (c, i) => assert(c < TIMEOUT_SMINTF.U, "SNMAS Intf[0x%x] STATE[0x%x] ADDR[0x%x] OP[0x%x] TIMEOUT", i.U, entrys(i).state, entrys(i).fullAddr(io.pcuID), entrys(i).chiMes.opcode) }
+
+// -------------------------------------------------- Perf Counter ------------------------------------------------------ //
+  require(param.nrEntry > 4 & param.nrEntry % 4 == 0)
+  for (i <- 0 until (param.nrEntry / 4)) {
+    XSPerfAccumulate(s"pcu_localSnMaster_entry_group[${i}]_deal_req_cnt", io.req2Intf.fire & (i * 4).U <= entryGetReqID & entryGetReqID <= (i * 4 + 3).U)
+  }
+  XSPerfAccumulate("pcu_localSnMaster_req_cnt", io.req2Intf.fire)
+  XSPerfAccumulate("pcu_localRnSlave_req_block_cnt", io.req2Intf.valid & entryFreeNum === 0.U)
 }

@@ -13,7 +13,7 @@ import dongjiang.utils.Encoder._
 import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config._
-import xs.utils.perf.{DebugOptions, DebugOptionsKey}
+import xs.utils.perf.{DebugOptions, DebugOptionsKey, HasPerfLogging}
 
 
 object MSHRState {
@@ -59,7 +59,7 @@ class MSHREntry(implicit p: Parameters) extends DJBundle {
 }
 
 
-class MSHRCtl()(implicit p: Parameters) extends DJModule {
+class MSHRCtl()(implicit p: Parameters) extends DJModule with HasPerfLogging {
   // --------------------- IO declaration ------------------------//
   val io = IO(new Bundle {
     val dcuID         = Input(UInt(dcuBankBits.W))
@@ -147,7 +147,7 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
   /*
    * Get Block Message
    */
-  val canReceiveNode  = !nodeReqMatchVec.reduce(_ | _) & PopCount(nodeReqInvVec) > 0.U
+  val canReceiveReq   = !nodeReqMatchVec.reduce(_ | _) & PopCount(nodeReqInvVec) > 0.U
 
 
   /*
@@ -172,7 +172,7 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
    */
   io.req2Exu.ready                := reqAck_s0_q.io.enq.ready
   reqAck_s0_q.io.enq.valid        := io.req2Exu.valid
-  reqAck_s0_q.io.enq.bits.retry   := !canReceiveNode
+  reqAck_s0_q.io.enq.bits.retry   := !canReceiveReq
   reqAck_s0_q.io.enq.bits.to      := io.req2Exu.bits.from
   reqAck_s0_q.io.enq.bits.entryID := io.req2Exu.bits.pcuIndex.entryID
   io.reqAck2Intf                  <> reqAck_s0_q.io.deq
@@ -241,7 +241,7 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
             /*
              * Receive Node Req
              */
-          }.elsewhen(io.req2Exu.fire & canReceiveNode & i.U === req2ExuMSet & j.U === nodeReqInvWay) {
+          }.elsewhen(io.req2Exu.fire & canReceiveReq & i.U === req2ExuMSet & j.U === nodeReqInvWay) {
             m := 0.U.asTypeOf(m)
             m := mshrAlloc_s0
             assert(m.isFree, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
@@ -292,7 +292,7 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
           switch(m.mshrMes.state) {
             // Free
             is(MSHRState.Free) {
-              val nodeHit     = io.req2Exu.valid & canReceiveNode & i.U === req2ExuMSet & j.U === nodeReqInvWay
+              val nodeHit     = io.req2Exu.valid & canReceiveReq & i.U === req2ExuMSet & j.U === nodeReqInvWay
               m.mshrMes.state := Mux(nodeHit, MSHRState.BeSend, MSHRState.Free)
             }
             // BeSend
@@ -441,7 +441,7 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
   io.mshrResp2Dir     := resp2dirRegVec
 
 
-  // ---------------------------  Assertion  -------------------------------- //
+// -------------------------------------------------- Assertion ------------------------------------------------------ //
   // MSHR Timeout Check
   val cntMSHRReg = RegInit(VecInit(Seq.fill(djparam.nrMSHRSets) { VecInit(Seq.fill(djparam.nrMSHRWays) { 0.U(64.W) }) }))
   cntMSHRReg.zipWithIndex.foreach { case (c0, i) => c0.zipWithIndex.foreach { case(c1, j) => c1 := Mux(mshrTableReg(i)(j).isFree, 0.U, c1 + 1.U)  } }
@@ -451,4 +451,15 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule {
   val cntLockReg = RegInit(VecInit(Seq.fill(djparam.nrMSHRSets) { 0.U(64.W) }))
   cntLockReg.zipWithIndex.foreach { case(c, i) => c := Mux(!mshrLockVecReg(i), 0.U , c + 1.U) }
   cntLockReg.zipWithIndex.foreach { case(c, i) => assert(c < TIMEOUT_MSLOCK.U, "MSHR LOCK [0x%x] TIMEOUT", i.U) }
+
+
+// -------------------------------------------------- Perf Counter ------------------------------------------------------ //
+  require(djparam.nrMSHRWays > 4 & djparam.nrMSHRWays % 4 == 0)
+  for (i <- 0 until djparam.nrMSHRSets) {
+    for (j <- 0 until (djparam.nrMSHRWays / 4)) {
+      XSPerfAccumulate(s"pcu_MSHRCtl_entry_group[${i}][${j}]_deal_req_cnt", io.req2Exu.fire & canReceiveReq & req2ExuMSet === i.U & (j * 4).U <= nodeReqInvWay & nodeReqInvWay <= (j * 4 + 3).U)
+      XSPerfAccumulate(s"pcu_MHSRCtl_group[${i}]_deal_req_cnt", io.req2Exu.fire & canReceiveReq & req2ExuMSet === i.U)
+      XSPerfAccumulate(s"pcu_MSHRCtl_group[${i}]_req_block_cnt", io.req2Exu.fire & req2ExuMSet === i.U & !nodeReqMatchVec.reduce(_ | _) & PopCount(nodeReqInvVec) === 0.U)
+    }
+  }
 }

@@ -12,7 +12,7 @@ import chisel3._
 import chisel3.experimental.hierarchy.{instantiable, public}
 import chisel3.util._
 import org.chipsalliance.cde.config._
-import xs.utils.perf.{DebugOptions, DebugOptionsKey}
+import xs.utils.perf.{DebugOptions, DebugOptionsKey, HasPerfLogging}
 import xijiang.router.base.DeviceIcnBundle
 import xs.utils.sram._
 import dongjiang.utils.FastArb._
@@ -79,7 +79,7 @@ class DCUWEntry(implicit p: Parameters) extends DJBundle {
  */
 @instantiable
 class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
-  with ImplicitClock with ImplicitReset {
+  with ImplicitClock with ImplicitReset with HasPerfLogging {
   // ------------------------------------------ IO declaration --------------------------------------------- //
   @public val io = IO(new Bundle {
     val friendsNodeIDVec = Input(Vec(nodes.length, Vec(nrFriendsNodeMax, UInt(fullNodeIdBits.W)))) // RN/HN Friend Node ID Vec
@@ -382,4 +382,23 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
 
   assert(Mux(rxReq.valid, rxReq.bits.Opcode === ReadNoSnp | rxReq.bits.Opcode === WriteNoSnpFull | rxReq.bits.Opcode === Replace, true.B))
 
+
+
+// -------------------------------------------------- Perf Counter ------------------------------------------------------ //
+  // DCURBuf
+  require(djparam.nrDCURBuf > 4 & djparam.nrDCURBuf % 4 == 0)
+  for (i <- 0 until (djparam.nrDCURBuf / 4)) {
+    XSPerfAccumulate(s"pcu_DCU_rBuf_group[${i}]_deal_req_cnt", rxReq.fire & isReadX(rxReq.bits.Opcode) & (i * 4).U <= selRecRID & selRecRID <= (i * 4 + 3).U)
+  }
+  XSPerfAccumulate("pcu_DCU_rBuf_deal_req_cnt", rxReq.fire & isReadX(rxReq.bits.Opcode))
+  XSPerfAccumulate("pcu_DCU_rBuf_req_block_cnt", rxReq.valid & isReadX(rxReq.bits.Opcode) & PopCount(rBufFreeVec) === 0.U)
+  // DCURBuf
+  require(djparam.nrDCUWBuf > 4 & djparam.nrDCUWBuf % 4 == 0)
+  for (i <- 0 until (djparam.nrDCUWBuf / 4)) {
+    XSPerfAccumulate(s"pcu_DCU_wBuf_group[${i}]_deal_req_cnt", rxReq.fire & (isWriteX(rxReq.bits.Opcode) | isReplace(rxReq.bits.Opcode)) & (i * 4).U <= selRecWID & selRecWID <= (i * 4 + 3).U)
+  }
+  XSPerfAccumulate("pcu_DCU_wBuf_deal_req_cnt", rxReq.fire & (isWriteX(rxReq.bits.Opcode) | isReplace(rxReq.bits.Opcode)))
+  XSPerfAccumulate("pcu_DCU_wBuf_req_block_cnt", rxReq.valid & (isWriteX(rxReq.bits.Opcode) | isReplace(rxReq.bits.Opcode)) & PopCount(wBufFreeVec) === 0.U)
+  // count replace cnt
+  XSPerfAccumulate("pcu_DCU_wBuf_deal_replace_cnt", rxReq.fire & isReplace(rxReq.bits.Opcode))
 }
