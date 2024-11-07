@@ -227,7 +227,7 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
       assert(wBufRegVec(sramWID).data.map(_.valid).reduce(_ & _) | !d.io.write.valid)
   }
   dsRespIdPipe.io.enq.valid := sramRFire
-  dsRespIdPipe.io.enq.bits  := rBufRegVec(sramRID).dsBank
+  dsRespIdPipe.io.enq.bits  := Mux(sramRead, rBufRegVec(sramRID).dsBank, wBufRegVec(sramReplID).dsBank)
 
 
   /*
