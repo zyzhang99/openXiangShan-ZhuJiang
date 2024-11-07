@@ -95,14 +95,7 @@ class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[
   // EXUs
   val exus            = Seq.fill(nrBankPerPCU) { Module(new ExecuteUnit()) }
 
-  // for debug
-  if (p(DebugOptionsKey).EnableDebug) {
-    val io_toLocal_tx_req_bits_DbgAddr = Wire(UInt(fullAddrBits.W))
-    io_toLocal_tx_req_bits_DbgAddr := localSnMaster.io.chi_tx_req_bits_DbgAddr.get
-    dontTouch(io_toLocal_tx_req_bits_DbgAddr)
-  }
-
-
+  
 // ---------------------------------------------- Connection ---------------------------------------------------//
   /*
    * Connect LOCAL RING CHI IO
@@ -111,38 +104,57 @@ class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[
   localRnSlave.io.chi                     <> DontCare
 
   // rx req
-  io.toLocal.rx.req.get                   <> localRnSlave.io.chi.rx.req.get
+  localRnSlave.io.chi.rx.req.get          <> Queue(io.toLocal.rx.req.get, 2) // Adding queues for timing considerations
   
   // rx rsp
   localSnMaster.io.chi.rx.resp.get.valid  := io.toLocal.rx.resp.get.valid & fromSnNode(io.toLocal.rx.resp.get.bits.asTypeOf(new RespFlit()).SrcID)
   localRnSlave.io.chi.rx.resp.get.valid   := io.toLocal.rx.resp.get.valid & fromCcNode(io.toLocal.rx.resp.get.bits.asTypeOf(new RespFlit()).SrcID)
   localSnMaster.io.chi.rx.resp.get.bits   := io.toLocal.rx.resp.get.bits
   localRnSlave.io.chi.rx.resp.get.bits    := io.toLocal.rx.resp.get.bits
-  io.toLocal.rx.resp.get.ready            := (localSnMaster.io.chi.rx.resp.get.ready & fromSnNode(io.toLocal.rx.resp.get.bits.asTypeOf(new RespFlit()).SrcID)) |
-                                             (localRnSlave.io.chi.rx.resp.get.ready  & fromCcNode(io.toLocal.rx.resp.get.bits.asTypeOf(new RespFlit()).SrcID))
+  io.toLocal.rx.resp.get.ready            := true.B // Set true forever for timing considerations
+  assert(Mux(io.toLocal.rx.resp.get.valid, (localSnMaster.io.chi.rx.resp.get.ready & fromSnNode(io.toLocal.rx.resp.get.bits.asTypeOf(new RespFlit()).SrcID)) |
+                                           (localRnSlave.io.chi.rx.resp.get.ready  & fromCcNode(io.toLocal.rx.resp.get.bits.asTypeOf(new RespFlit()).SrcID)), true.B))
+
+
+
   // rx data
   // TODO: can be optimize by data directly send to data buffer
   localSnMaster.io.chi.rx.data.get.valid  := io.toLocal.rx.data.get.valid & fromSnNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)
   localRnSlave.io.chi.rx.data.get.valid   := io.toLocal.rx.data.get.valid & fromCcNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)
   localSnMaster.io.chi.rx.data.get.bits   := io.toLocal.rx.data.get.bits
   localRnSlave.io.chi.rx.data.get.bits    := io.toLocal.rx.data.get.bits
-  io.toLocal.rx.data.get.ready            := (localSnMaster.io.chi.rx.data.get.ready & fromSnNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)) |
-                                             (localRnSlave.io.chi.rx.data.get.ready & fromCcNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID))
+  io.toLocal.rx.data.get.ready            := true.B // Set true forever for timing considerations
+  assert(Mux(io.toLocal.rx.data.get.valid, (localSnMaster.io.chi.rx.data.get.ready & fromSnNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)) |
+                                           (localRnSlave.io.chi.rx.data.get.ready & fromCcNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)), true.B))
 
   // tx req
-  io.toLocal.tx.req.get                   <> localSnMaster.io.chi.tx.req.get
+  io.toLocal.tx.req.get                   <> Queue(localSnMaster.io.chi.tx.req.get, 2) // Adding queues for timing considerations
+  // for debug
+  if (p(DebugOptionsKey).EnableDebug) {
+    val io_toLocal_tx_req_bits_DbgAddr    = Wire(UInt(fullAddrBits.W)); dontTouch(io_toLocal_tx_req_bits_DbgAddr)
+    val tx_req_bits_DbgAddr_Q             = Module(new Queue(UInt(fullAddrBits.W), 2))
+    // enq
+    tx_req_bits_DbgAddr_Q.io.enq.valid    := localSnMaster.io.chi.tx.req.get.valid
+    tx_req_bits_DbgAddr_Q.io.enq.bits     := localSnMaster.io.chi_tx_req_bits_DbgAddr.get
+    // deq
+    tx_req_bits_DbgAddr_Q.io.deq.ready    := io.toLocal.tx.req.get.ready
+    io_toLocal_tx_req_bits_DbgAddr        := tx_req_bits_DbgAddr_Q.io.deq.bits
+  }
 
   // tx snoop
-  io.toLocal.tx.snoop.get                 <> localRnSlave.io.chi.tx.snoop.get
+  io.toLocal.tx.snoop.get                 <> Queue(localRnSlave.io.chi.tx.snoop.get, 2) // Adding queues for timing considerations
 
   // tx resp
-  io.toLocal.tx.resp.get                  <> localRnSlave.io.chi.tx.resp.get
+  io.toLocal.tx.resp.get                  <> Queue(localRnSlave.io.chi.tx.resp.get, 2) // Adding queues for timing considerations
 
   // tx data
-  io.toLocal.tx.data.get.valid            := localSnMaster.io.chi.tx.data.get.valid | localRnSlave.io.chi.tx.data.get.valid
-  io.toLocal.tx.data.get.bits             := Mux(localSnMaster.io.chi.tx.data.get.valid, localSnMaster.io.chi.tx.data.get.bits, localRnSlave.io.chi.tx.data.get.bits)
-  localSnMaster.io.chi.tx.data.get.ready  := io.toLocal.tx.data.get.ready
-  localRnSlave.io.chi.tx.data.get.ready   := io.toLocal.tx.data.get.ready & !localSnMaster.io.chi.tx.data.get.valid
+  val txDataQ                             = Module(new Queue(new DataFlit(), 2)) // Adding queues for timing considerations
+  txDataQ.io.enq.valid                    := localSnMaster.io.chi.tx.data.get.valid | localRnSlave.io.chi.tx.data.get.valid
+  txDataQ.io.enq.bits                     := Mux(localSnMaster.io.chi.tx.data.get.valid, localSnMaster.io.chi.tx.data.get.bits, localRnSlave.io.chi.tx.data.get.bits)
+  localSnMaster.io.chi.tx.data.get.ready  := txDataQ.io.enq.ready
+  localRnSlave.io.chi.tx.data.get.ready   := txDataQ.io.enq.ready & !localSnMaster.io.chi.tx.data.get.valid
+
+  io.toLocal.tx.data.get                  <> txDataQ.io.deq
 
 
   /*

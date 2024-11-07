@@ -29,7 +29,7 @@ abstract class IntfBaseIO(param: InterfaceParam, node: Node)(implicit p: Paramet
     // To DataBuffer Signals
     val dbSigs          = new DBBundle(param.hasDBRCReq)
 
-    // for debug
+    // for debug, only use in SnMaster
     val chi_tx_req_bits_DbgAddr = if (p(DebugOptionsKey).EnableDebug) { Some(Output(UInt(fullAddrBits.W))) } else None
 
 

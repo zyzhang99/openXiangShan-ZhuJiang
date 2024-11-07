@@ -44,7 +44,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
 
 // --------------------- Modules declaration ------------------------//
   val taskQ   = Module(new Queue(new PipeTaskBundle(), entries = djparam.nrPipeTaskQueue, pipe = true, flow = false))
-  val dirResQ = Module(new Queue(new DirRespBundle(), entries = djparam.nrPipeTaskQueue + 2, pipe = true, flow = true)) // one for mp_s1 read Dir before send task to mp_2, one for mp_s3
+  val dirResQ = Module(new Queue(new DirRespBundle(), entries = djparam.nrPipeTaskQueue + 2, pipe = true, flow = false)) // Dont set flow = true for timing reasons. // one for mp_s1 read Dir before send task to mp_2, one for mp_s3
 
   dontTouch(taskQ.io.count)
   dontTouch(dirResQ.io.count)

@@ -117,7 +117,7 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
   io.icns.zip(txRspVec).foreach { case(a, b) => a.tx.resp.get <> b}
   io.icns.zip(txDatVec).foreach { case(a, b) => a.tx.data.get <> b}
 
-  rxReq <> fastArbDec(rxReqVec)
+  rxReq <> Queue(fastArbDec(rxReqVec), 2) // Adding queues for timing considerations
   rxDat <> fastArbDec(rxDatVec)
 
   val txDatDirVec = Wire(Vec(nrIcn, Bool()))

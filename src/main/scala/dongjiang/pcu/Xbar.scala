@@ -69,11 +69,11 @@ class Xbar()(implicit p: Parameters) extends DJModule {
   }
 
   // There is a lot of room for optimization of the connection
-  interConnect(in = io.req2Exu.in,      q0 = 0, q1 = 0, q2 = 0, out = io.req2Exu.out)
+  interConnect(in = io.req2Exu.in,      q0 = 1, q1 = 0, q2 = 0, out = io.req2Exu.out) // Adding queues for timing considerations
 
   interConnect(in = io.reqAck2Intf.in,  q0 = 0, q1 = 0, q2 = 0, out = io.reqAck2Intf.out)
 
-  interConnect(in = io.resp2Intf.in,    q0 = 0, q1 = 0, q2 = 0, out = io.resp2Intf.out)
+  interConnect(in = io.resp2Intf.in,    q0 = 1, q1 = 0, q2 = 0, out = io.resp2Intf.out) // Adding queues for timing considerations
 
   interConnect(in = io.req2Intf.in,     q0 = 0, q1 = 0, q2 = 0, out = io.req2Intf.out)
 
