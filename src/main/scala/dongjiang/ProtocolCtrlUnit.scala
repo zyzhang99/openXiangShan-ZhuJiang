@@ -107,13 +107,15 @@ class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[
   localRnSlave.io.chi.rx.req.get          <> Queue(io.toLocal.rx.req.get, 2) // Adding queues for timing considerations
   
   // rx rsp
-  localSnMaster.io.chi.rx.resp.get.valid  := io.toLocal.rx.resp.get.valid & fromSnNode(io.toLocal.rx.resp.get.bits.asTypeOf(new RespFlit()).SrcID)
-  localRnSlave.io.chi.rx.resp.get.valid   := io.toLocal.rx.resp.get.valid & fromCcNode(io.toLocal.rx.resp.get.bits.asTypeOf(new RespFlit()).SrcID)
-  localSnMaster.io.chi.rx.resp.get.bits   := io.toLocal.rx.resp.get.bits
-  localRnSlave.io.chi.rx.resp.get.bits    := io.toLocal.rx.resp.get.bits
-  io.toLocal.rx.resp.get.ready            := true.B // Set true forever for timing considerations
-  assert(Mux(io.toLocal.rx.resp.get.valid, (localSnMaster.io.chi.rx.resp.get.ready & fromSnNode(io.toLocal.rx.resp.get.bits.asTypeOf(new RespFlit()).SrcID)) |
-                                           (localRnSlave.io.chi.rx.resp.get.ready  & fromCcNode(io.toLocal.rx.resp.get.bits.asTypeOf(new RespFlit()).SrcID)), true.B))
+  val rxRespQ                             = Module(new Queue(new RespFlit(), 2)) // Adding queues for timing considerations
+  rxRespQ.io.enq                          <> io.toLocal.rx.resp.get
+  localSnMaster.io.chi.rx.resp.get.valid  := rxRespQ.io.deq.valid & fromSnNode(rxRespQ.io.deq.bits.asTypeOf(new RespFlit()).SrcID)
+  localRnSlave.io.chi.rx.resp.get.valid   := rxRespQ.io.deq.valid & fromCcNode(rxRespQ.io.deq.bits.asTypeOf(new RespFlit()).SrcID)
+  localSnMaster.io.chi.rx.resp.get.bits   := rxRespQ.io.deq.bits
+  localRnSlave.io.chi.rx.resp.get.bits    := rxRespQ.io.deq.bits
+  rxRespQ.io.deq.ready                    := fromSnNode(rxRespQ.io.deq.bits.asTypeOf(new RespFlit()).SrcID) | localRnSlave.io.chi.rx.resp.get.ready
+  // assert
+  assert(Mux(rxRespQ.io.deq.valid & fromSnNode(rxRespQ.io.deq.bits.asTypeOf(new RespFlit()).SrcID), localSnMaster.io.chi.rx.resp.get.ready, true.B))
 
 
 
@@ -124,6 +126,7 @@ class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[
   localSnMaster.io.chi.rx.data.get.bits   := io.toLocal.rx.data.get.bits
   localRnSlave.io.chi.rx.data.get.bits    := io.toLocal.rx.data.get.bits
   io.toLocal.rx.data.get.ready            := true.B // Set true forever for timing considerations
+  // assert
   assert(Mux(io.toLocal.rx.data.get.valid, (localSnMaster.io.chi.rx.data.get.ready & fromSnNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)) |
                                            (localRnSlave.io.chi.rx.data.get.ready & fromCcNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)), true.B))
 
