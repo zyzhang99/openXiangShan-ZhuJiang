@@ -220,7 +220,7 @@ trait HasDJParam extends HasParseZJParam {
   lazy val dirBankBits      = log2Ceil(djparam.nrDirBank)
   require(isPow2(nrBeat))
   require(bankOff + fullBankBits - 1 < fullAddrBits - (cacheableBits + ccxChipBits))
-  require(bankOff > offsetBits + dirBankBits)
+  require(bankOff > offsetBits)
 
 
   // Base Interface Mes
