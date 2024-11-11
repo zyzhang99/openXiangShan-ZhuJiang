@@ -718,7 +718,10 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
     assert(parseFullAddr(rxReq.bits.Addr)._4 === io.pcuID)
     assert(parseFullAddr(rxReq.bits.Addr)._5 === 0.U)
     assert(rxReq.bits.TgtID === io.hnfID)
-    assert(Mux(isReadX(rxReq.bits.Opcode), rxReq.bits.ExpCompAck, true.B))
+    assert(Mux(isReadX(rxReq.bits.Opcode), rxReq.bits.ExpCompAck, true.B)) // TODO: need more power check
+    assert(Mux(isWriXOWO(rxReq.bits.Opcode), rxReq.bits.Order === Order.OWO & rxReq.bits.ExpCompAck,
+           Mux(rxReq.bits.Opcode === ReadOnce, rxReq.bits.Order === Order.EndpointOrder, rxReq.bits.Order === Order.None)))
+    assert(Mux(isWriXFull(rxReq.bits.Opcode), rxReq.bits.Size === chiFullSize.U, true.B))
   }
 
 // -------------------------------------------------- Perf Counter ------------------------------------------------------ //
