@@ -607,7 +607,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   io.dbSigs.dataTDB.bits.dbID     := entrys(entryRecChiDatID).pcuIndex.dbID
   io.dbSigs.dataTDB.bits.data     := rxDat.bits.Data
   io.dbSigs.dataTDB.bits.dataID   := rxDat.bits.DataID
-
+  io.dbSigs.dataTDB.bits.mask     := rxDat.bits.BE
 
   /*
    * Set ready value

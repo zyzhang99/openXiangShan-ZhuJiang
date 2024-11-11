@@ -217,6 +217,7 @@ trait HasDJParam extends HasParseZJParam {
   lazy val useAddrBits      = fullAddrBits - cacheableBits - ccxChipBits - fullBankBits  - offsetBits// need to check input pcu addr unuse bits is 0 expect bankBits
   lazy val dataBits         = djparam.blockBytes * 8
   lazy val beatBits         = djparam.beatBytes * 8
+  lazy val maskBits         = djparam.beatBytes
   lazy val dirBankBits      = log2Ceil(djparam.nrDirBank)
   require(isPow2(nrBeat))
   require(bankOff + fullBankBits - 1 < fullAddrBits - (cacheableBits + ccxChipBits))

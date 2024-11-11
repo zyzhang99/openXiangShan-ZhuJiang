@@ -59,7 +59,10 @@ object DCUWState {
 class DCUWEntry(implicit p: Parameters) extends DJBundle {
   val state             = UInt(DCUWState.width.W)
   val replRState        = UInt(DCURState.width.W)
-  val data              = Vec(nrBeat, Valid(UInt(beatBits.W)))
+  val beats             = Vec(nrBeat, Valid(new Bundle {
+    val data            = UInt(beatBits.W)
+    val mask            = UInt(maskBits.W)
+  }))
   val dsIndex           = UInt(dsIndexBits.W)
   val dsBank            = UInt(dsBankBits.W)
   val srcID             = UInt(fullNodeIdBits.W)
@@ -67,7 +70,7 @@ class DCUWEntry(implicit p: Parameters) extends DJBundle {
   val returnTxnID       = UInt(chiTxnIdBits.W)
 
   def canWrite          = replRState === DCURState.Free
-  def isLast            = PopCount(data.map(_.valid)) === (nrBeat - 1).U
+  def isLast            = PopCount(beats.map(_.valid)) === (nrBeat - 1).U
 }
 
 
@@ -223,8 +226,9 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
       d.io.read.bits        := Mux(sramRead, rBufRegVec(sramRID).dsIndex, wBufRegVec(sramReplID).dsIndex)
       d.io.write.valid      := wBufRegVec(sramWID).dsBank === i.U &  willSendWVec.reduce(_ | _)
       d.io.write.bits.index := wBufRegVec(sramWID).dsIndex
-      d.io.write.bits.data  := Cat(wBufRegVec(sramWID).data.map(_.bits).reverse)
-      assert(wBufRegVec(sramWID).data.map(_.valid).reduce(_ & _) | !d.io.write.valid)
+      d.io.write.bits.data  := Cat(wBufRegVec(sramWID).beats.map(_.bits.data).reverse)
+      d.io.write.bits.mask  := Cat(wBufRegVec(sramWID).beats.map(_.bits.mask).reverse)
+      assert(wBufRegVec(sramWID).beats.map(_.valid).reduce(_ & _) | !d.io.write.valid)
   }
   dsRespIdPipe.io.enq.valid := sramRFire
   dsRespIdPipe.io.enq.bits  := Mux(sramRead, rBufRegVec(sramRID).dsBank, wBufRegVec(sramReplID).dsBank)
@@ -300,8 +304,9 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
           val hit       = rxDat.fire & rxDat.bits.TxnID === i.U
           when(hit) {
             w.state     := Mux(hit & w.isLast, DCUWState.WriteSram, w.state)
-            w.data(toBeatNum(rxDat.bits.DataID)).valid  := true.B
-            w.data(toBeatNum(rxDat.bits.DataID)).bits   := rxDat.bits.Data
+            w.beats(toBeatNum(rxDat.bits.DataID)).valid     := true.B
+            w.beats(toBeatNum(rxDat.bits.DataID)).bits.data := rxDat.bits.Data
+            w.beats(toBeatNum(rxDat.bits.DataID)).bits.mask := rxDat.bits.BE
           }
         }
         is(DCUWState.WriteSram) {

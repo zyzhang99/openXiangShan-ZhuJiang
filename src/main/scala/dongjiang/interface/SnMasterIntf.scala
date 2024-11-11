@@ -449,7 +449,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   txDat.bits.TxnID       := entrys(entrySendDatID).chiIndex.txnID
   txDat.bits.DataID      := io.dbSigs.dataFDB.bits.dataID
   txDat.bits.Data        := io.dbSigs.dataFDB.bits.data
-  txDat.bits.BE          := Fill(rxDat.bits.BE.getWidth, 1.U(1.W))
+  txDat.bits.BE          := io.dbSigs.dataFDB.bits.mask
 
   io.dbSigs.dataFDB.ready       := txDat.ready
 
@@ -460,6 +460,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   io.dbSigs.dataTDB.bits.dbID   := entrys(rxDat.bits.TxnID(param.entryIdBits-1, 0)).pcuIndex.dbID
   io.dbSigs.dataTDB.bits.data   := rxDat.bits.Data
   io.dbSigs.dataTDB.bits.dataID := rxDat.bits.DataID
+  io.dbSigs.dataTDB.bits.mask   := rxDat.bits.BE
   rxDat.ready                   := io.dbSigs.dataTDB.ready
   assert(Mux(rxDat.valid, rxDat.bits.TxnID <= param.nrEntry.U, true.B))
 

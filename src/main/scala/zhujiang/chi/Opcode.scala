@@ -98,6 +98,7 @@ object ReqOpcode {
                                   (ReadOnceCleanInvalid <= x & x <= ReadNotSharedDirty) | x === ReadPreferUnique
   def isWriteX  (x: UInt): Bool = (WriteEvictFull <= x & x <= WriteUniquePtlStash) | (WriteEvictOrEvict <= x & x <= WriteNoSnpZero) |
                                   (WriteNoSnpDef <= x & x <= WriteBackFullCleanInvPoPA)
+  def isWriPtl  (x: UInt): Bool = x === WriteUniquePtl | x === WriteNoSnpPtl
   def isReplace (x: UInt): Bool = x === Replace
 }
 

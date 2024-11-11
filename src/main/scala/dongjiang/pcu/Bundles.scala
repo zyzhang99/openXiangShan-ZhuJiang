@@ -150,13 +150,15 @@ trait HasDBData extends DJBundle { this: Bundle =>
   def beatNum: UInt = toBeatNum(dataID)
   def isLast:  Bool = beatNum === (nrBeat - 1).U
 }
-
+trait HasMask extends DJBundle { this: Bundle =>
+  val mask          = UInt(maskBits.W)
+}
 // DataBuffer Read/Clean Req
 class DBRCReq     (implicit p: Parameters)   extends DJBundle with HasDBRCOp with HasDBID with HasToIncoID
 class GetDBID     (implicit p: Parameters)   extends DJBundle                             with HasFromIncoID with HasIntfEntryID
 class DBIDResp    (implicit p: Parameters)   extends DJBundle                with HasDBID with HasToIncoID   with HasIntfEntryID
-class NodeFDBData (implicit p: Parameters)   extends DJBundle with HasDBData with HasDBID with HasToIncoID
-class NodeTDBData (implicit p: Parameters)   extends DJBundle with HasDBData with HasDBID
+class NodeFDBData (implicit p: Parameters)   extends DJBundle with HasDBData with HasDBID with HasToIncoID   with HasMask
+class NodeTDBData (implicit p: Parameters)   extends DJBundle with HasDBData with HasDBID                    with HasMask
 
 class DBBundle(hasDBRCReq: Boolean = false)(implicit p: Parameters) extends DJBundle {
   val dbRCReqOpt  = if(hasDBRCReq) Some(Decoupled(new DBRCReq)) else None

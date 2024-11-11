@@ -11,6 +11,7 @@ import xs.utils.sram.SinglePortSramTemplate
 class DsWriteBundle(indexBits: Int)(implicit p: Parameters) extends DJBundle {
   val index = UInt(indexBits.W)
   val data  = UInt(dataBits.W)
+  val mask  = UInt(maskBits.W)
 }
 
 
@@ -24,7 +25,7 @@ class DataStorage(sets: Int)(implicit p: Parameters) extends DJModule {
   })
 
 // --------------------- Modules declaration ------------------------//
-  val arrays      = Seq.fill(nrBeat) { Module(new SinglePortSramTemplate(UInt(beatBits.W), sets, way = 1, setup = djparam.dcuSetup, latency = djparam.dcuLatency, extraHold = djparam.dcuExtraHold)) }
+  val arrays      = Seq.fill(nrBeat) { Module(new SinglePortSramTemplate(UInt(beatBits.W), sets, way = maskBits, setup = djparam.dcuSetup, latency = djparam.dcuLatency, extraHold = djparam.dcuExtraHold)) }
 
 //// ----------------------- Reg/Wire declaration --------------------------//
   // s2
@@ -44,10 +45,11 @@ class DataStorage(sets: Int)(implicit p: Parameters) extends DJModule {
   arrays.zipWithIndex.foreach {
     case(a, i) =>
       // ren
-      a.io.req.valid      := io.read.valid | io.write.valid
-      a.io.req.bits.write := io.write.valid
-      a.io.req.bits.addr  := Mux(io.write.valid, io.write.bits.index, io.read.bits)
+      a.io.req.valid          := io.read.valid | io.write.valid
+      a.io.req.bits.write     := io.write.valid
+      a.io.req.bits.addr      := Mux(io.write.valid, io.write.bits.index, io.read.bits)
       a.io.req.bits.data.foreach(_ := io.write.bits.data(beatBits * (i + 1) - 1, beatBits * i))
+      a.io.req.bits.mask.get  := io.write.bits.mask
   }
   io.write.ready  := arrays(0).io.req.ready
   io.read.ready   := arrays(0).io.req.ready & !io.write.valid

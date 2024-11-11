@@ -36,7 +36,10 @@ class DBEntry(implicit p: Parameters) extends DJBundle with HasToIncoID {
   val state       = UInt(DBState.width.W)
   val beatRNum    = UInt(log2Ceil(nrBeat).W)
   val needClean   = Bool()
-  val beats       = Vec(nrBeat, UInt(beatBits.W)) // TODO: Reg -> SRAM
+  val beats       = Vec(nrBeat, new Bundle {
+    val data      = UInt(beatBits.W)
+    val mask      = UInt(maskBits.W)
+  }) // TODO: Reg -> SRAM
   val beatVals    = Vec(nrBeat, Bool())
 
   def getBeat     = beats(beatRNum)
@@ -84,8 +87,9 @@ class DataBuffer()(implicit p: Parameters) extends DJModule with HasPerfLogging 
 // ----------------------------------------------------- DATA TO DB ----------------------------------------------------- //
 // ---------------------------------------------------------------------------------------------------------------------- //
   when(io.dataTDB.valid){
-    entrys(io.dataTDB.bits.dbID).beatVals(toBeatNum(io.dataTDB.bits.dataID))  := true.B
-    entrys(io.dataTDB.bits.dbID).beats(toBeatNum(io.dataTDB.bits.dataID))     := io.dataTDB.bits.data
+    entrys(io.dataTDB.bits.dbID).beatVals(toBeatNum(io.dataTDB.bits.dataID))    := true.B
+    entrys(io.dataTDB.bits.dbID).beats(toBeatNum(io.dataTDB.bits.dataID)).data  := io.dataTDB.bits.data
+    entrys(io.dataTDB.bits.dbID).beats(toBeatNum(io.dataTDB.bits.dataID)).mask  := io.dataTDB.bits.mask
     assert(!entrys(io.dataTDB.bits.dbID).beatVals(toBeatNum(io.dataTDB.bits.dataID)))
   }
   io.dataTDB.ready := true.B
@@ -118,9 +122,10 @@ class DataBuffer()(implicit p: Parameters) extends DJModule with HasPerfLogging 
   assert(PopCount(readingVec) <= 1.U)
 
   io.dataFDB.valid            := readVec.reduce(_ | _) | readingVec.reduce(_ | _)
-  io.dataFDB.bits.data        := entrys(selReadId).getBeat
+  io.dataFDB.bits.data        := entrys(selReadId).getBeat.data
   io.dataFDB.bits.dataID      := toDataID(entrys(selReadId).beatRNum)
   io.dataFDB.bits.dbID        := selReadId
+  io.dataFDB.bits.mask        := entrys(selReadId).getBeat.mask
   io.dataFDB.bits.to          := entrys(selReadId).to
   entrys(selReadId).beatRNum  := entrys(selReadId).beatRNum + io.dataFDB.fire.asUInt
 
