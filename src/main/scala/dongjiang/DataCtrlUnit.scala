@@ -259,14 +259,15 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
           val hit       = rxReq.fire & !reqIsW & !reqIsRepl & selRecRID === i.U
           when(hit) {
             r.state     := DCURState.ReadSram
-            r.dsIndex   := parseDCUAddr(rxReq.bits.Addr)._1
-            r.dsBank    := parseDCUAddr(rxReq.bits.Addr)._2
+            r.dsIndex   := parseDCUAddr(rxReq.bits.Addr)._2
+            r.dsBank    := parseDCUAddr(rxReq.bits.Addr)._3
             r.srcID     := rxReq.bits.SrcID
             r.txnID     := rxReq.bits.TxnID
             r.returnNID := rxReq.bits.ReturnNID
             r.returnTxnID := rxReq.bits.ReturnTxnID
             r.resp      := rxReq.bits.MemAttr(ChiResp.width - 1, 0)
             r.fullSize  := rxReq.bits.Size === chiFullSize.U
+            assert(!parseDCUAddr(rxReq.bits.Addr)._1)
             assert(rxReq.bits.Size === chiFullSize.U, "TODO")
           }
         }
@@ -291,10 +292,11 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
           val hit       = rxReq.fire & (reqIsW | reqIsRepl) & selRecWID === i.U
           when(hit) {
             w.state     := DCUWState.SendDBIDResp
-            w.dsIndex   := parseDCUAddr(rxReq.bits.Addr)._1
-            w.dsBank    := parseDCUAddr(rxReq.bits.Addr)._2
+            w.dsIndex   := parseDCUAddr(rxReq.bits.Addr)._2
+            w.dsBank    := parseDCUAddr(rxReq.bits.Addr)._3
             w.srcID     := rxReq.bits.SrcID
             w.txnID     := rxReq.bits.TxnID
+            assert(!parseDCUAddr(rxReq.bits.Addr)._1)
             assert(rxReq.bits.Size === chiFullSize.U)
           }
         }

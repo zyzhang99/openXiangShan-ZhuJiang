@@ -184,7 +184,7 @@ class RSEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle  {
   def isLastBeat    = Mux(chiMes.fullSize, entryMes.getBeatNum === 1.U, entryMes.getBeatNum === 0.U)
   def fullAddr(p: UInt) = entryMes.fullAddr(entryMes.dcuID, p)
   def snpAddr (p: UInt) = entryMes.snpAddr(entryMes.dcuID, p)
-  def addrWithDcuID = Cat(entryMes.useAddr, entryMes.dcuID)
+  def addrWithDcuID     = Cat(entryMes.useAddr, entryMes.dcuID)
 }
 
 
@@ -505,6 +505,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   entrySave.pcuIndex.dbID         := Mux(respVal, io.resp2Intf.bits.pcuIndex.dbID,      Mux(snpVal, 0.U,                                  0.U))
   entrySave.chiIndex.txnID        := Mux(respVal, io.resp2Intf.bits.chiIndex.txnID,     Mux(snpVal, io.req2Intf.bits.chiIndex.txnID,      rxReq.bits.TxnID))
   entrySave.chiIndex.nodeID       := Mux(respVal, io.resp2Intf.bits.chiIndex.nodeID,    Mux(snpVal, io.req2Intf.bits.chiIndex.nodeID,     getUseNodeID(rxReq.bits.SrcID)))
+  entrySave.chiIndex.secBeat      := Mux(respVal, io.resp2Intf.bits.chiIndex.secBeat,   Mux(snpVal, false.B,                              parseFullAddr(rxReq.bits.Addr)._5 >= beatBytes.U))
   entrySave.chiMes.opcode         := Mux(respVal, io.resp2Intf.bits.chiMes.opcode,      Mux(snpVal, io.req2Intf.bits.chiMes.opcode,       rxReq.bits.Opcode))
   entrySave.chiMes.retToSrc       := Mux(respVal, DontCare,                             Mux(snpVal, io.req2Intf.bits.chiMes.retToSrc,     DontCare))
   entrySave.chiMes.doNotGoToSD    := Mux(respVal, DontCare,                             Mux(snpVal, io.req2Intf.bits.chiMes.doNotGoToSD,  DontCare))
@@ -512,7 +513,10 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   entrySave.chiMes.resp           := Mux(respVal, io.resp2Intf.bits.chiMes.resp,        Mux(snpVal, 0.U,                                  0.U))
   entrySave.chiMes.expCompAck     := Mux(respVal, io.resp2Intf.bits.chiMes.expCompAck,  Mux(snpVal, false.B,                              rxReq.bits.ExpCompAck))
   entrySave.chiMes.fullSize       := Mux(respVal, io.resp2Intf.bits.chiMes.fullSize,    Mux(snpVal, true.B,                               rxReq.bits.Size === chiFullSize.U))
+  assert(Mux(entrySave.chiIndex.secBeat, !entrySave.chiMes.fullSize, true.B))
   assert(Mux(snpVal, io.req2Intf.bits.chiMes.fullSize, true.B))
+  assert(Mux(snpVal, !io.req2Intf.bits.chiIndex.secBeat, true.B))
+
 
   /*
    * Set Ready Value
@@ -543,6 +547,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   io.req2Exu.bits.chiMes.resp           := entrys(entrySendReqID).chiMes.resp
   io.req2Exu.bits.chiIndex.nodeID       := entrys(entrySendReqID).chiIndex.nodeID
   io.req2Exu.bits.chiIndex.txnID        := entrys(entrySendReqID).chiIndex.txnID
+  io.req2Exu.bits.chiIndex.secBeat      := entrys(entrySendReqID).chiIndex.secBeat
   io.req2Exu.bits.pcuMes.useAddr        := entrys(entrySendReqID).entryMes.useAddr
   // pcuIndex
   io.req2Exu.bits.to                    := entrys(entrySendReqID).entryMes.dcuID
@@ -609,7 +614,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   io.dbSigs.dataTDB.valid         := rxDat.valid
   io.dbSigs.dataTDB.bits.dbID     := entrys(entryRecChiDatID).pcuIndex.dbID
   io.dbSigs.dataTDB.bits.data     := rxDat.bits.Data
-  io.dbSigs.dataTDB.bits.dataID   := rxDat.bits.DataID
+  io.dbSigs.dataTDB.bits.dataID   := Mux(entrys(entryRecChiDatID).chiIndex.secBeat, "b10".U, rxDat.bits.DataID)
   io.dbSigs.dataTDB.bits.mask     := rxDat.bits.BE
 
   /*
@@ -633,9 +638,11 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   /*
    * Set DataBuffer Req Value
    */
-  io.dbSigs.getDBID.valid            := entryGetDBIDVec.reduce(_ | _)
-  io.dbSigs.getDBID.bits.from         := param.intfID.U
-  io.dbSigs.getDBID.bits.entryID     := entryGetDBID
+  io.dbSigs.getDBID.valid           := entryGetDBIDVec.reduce(_ | _)
+  io.dbSigs.getDBID.bits.from       := param.intfID.U
+  io.dbSigs.getDBID.bits.entryID    := entryGetDBID
+  io.dbSigs.getDBID.bits.secBeat    := entrys(entryGetDBID).chiIndex.secBeat
+  io.dbSigs.getDBID.bits.swapFirst  := false.B // TODO
 
   /*
    * Receive DBID From DataBuffer

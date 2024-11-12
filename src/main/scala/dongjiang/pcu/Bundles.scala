@@ -39,7 +39,7 @@ trait HasUseAddr extends DJBundle {this: Bundle =>
   def sfSet       = parseSFAddr(useAddr)._2
   def dirBank     = parseSFAddr(useAddr)._3
   def minDirSet   = useAddr(minDirSetBits - 1, 0)
-  def fullAddr(d: UInt, p:UInt) = getFullAddr(useAddr, d, p)
+  def fullAddr(d: UInt, p:UInt, sec: Bool = false.B) = getFullAddr(useAddr, d, p, sec)
   def snpAddr (d: UInt, p:UInt) = fullAddr(d, p)(fullAddrBits - 1, 3)
 }
 
@@ -63,6 +63,7 @@ trait HasDcuID extends DJBundle { this: Bundle => val dcuID = UInt(dcuBankBits.W
 class ChiIndexBundle(implicit p: Parameters) extends DJBundle {
   val nodeID          = UInt(useNodeIdBits.W)
   val txnID           = UInt(chiTxnIdBits.W)
+  val secBeat         = Bool() // offset >= 0x20
   def snpCcMetaVec    = nodeID(nrCcNode - 1 ,0)
 }
 
@@ -155,8 +156,8 @@ trait HasMask extends DJBundle { this: Bundle =>
   val mask          = UInt(maskBits.W)
 }
 // DataBuffer Read/Clean Req
-class DBRCReq     (implicit p: Parameters)   extends DJBundle with HasDBRCOp with HasDBID with HasToIncoID { val fullSize = Bool() }
-class GetDBID     (implicit p: Parameters)   extends DJBundle                             with HasFromIncoID with HasIntfEntryID
+class DBRCReq     (implicit p: Parameters)   extends DJBundle with HasDBRCOp with HasDBID with HasToIncoID { val rFullSize = Bool() }
+class GetDBID     (implicit p: Parameters)   extends DJBundle                             with HasFromIncoID with HasIntfEntryID { val secBeat = Bool(); val swapFirst = Bool() }
 class DBIDResp    (implicit p: Parameters)   extends DJBundle                with HasDBID with HasToIncoID   with HasIntfEntryID
 class NodeFDBData (implicit p: Parameters)   extends DJBundle with HasDBData with HasDBID with HasToIncoID   with HasMask
 class NodeTDBData (implicit p: Parameters)   extends DJBundle with HasDBData with HasDBID                    with HasMask

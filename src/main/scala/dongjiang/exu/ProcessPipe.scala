@@ -248,6 +248,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   // taskSnp_s3
   taskSnp_s3.chiIndex.txnID       := task_s3_g.bits.chiIndex.txnID
   taskSnp_s3.chiIndex.nodeID      := snpNodeVec.asUInt
+  taskSnp_s3.chiIndex.secBeat     := false.B
   taskSnp_s3.chiMes.channel       := CHIChannel.SNP
   taskSnp_s3.chiMes.doNotGoToSD   := true.B
   taskSnp_s3.chiMes.retToSrc      := decode_s3.retToSrc
@@ -301,7 +302,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   rcDBReq_s3.isRead     := decode_s3.rDB2Src
   rcDBReq_s3.isClean    := decode_s3.cleanDB
   rcDBReq_s3.dbID       := rcDBID
-  rcDBReq_s3.fullSize   := task_s3_g.bits.chiMes.fullSize
+  rcDBReq_s3.rFullSize  := task_s3_g.bits.chiMes.fullSize
 
 
   /*
@@ -412,6 +413,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   taskSnpEvict_s3                       := DontCare
   taskSnpEvict_s3.chiIndex.txnID        := task_s3_g.bits.chiIndex.txnID
   taskSnpEvict_s3.chiIndex.nodeID       := rnHitVec.asUInt
+  taskSnpEvict_s3.chiIndex.secBeat      := false.B
   taskSnpEvict_s3.chiMes.channel        := CHIChannel.SNP
   taskSnpEvict_s3.chiMes.doNotGoToSD    := true.B
   taskSnpEvict_s3.chiMes.retToSrc       := true.B

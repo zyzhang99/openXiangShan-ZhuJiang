@@ -243,12 +243,12 @@ trait HasDJParam extends HasParseZJParam {
   // Base DCU Mes
   lazy val nrPerDCUEntry    = djparam.selfSets * djparam.selfWays
   lazy val nrDSEntry        = nrPerDCUEntry / djparam.nrDSBank
-  // [dcuIndex] = [sSet] + [dirBank] + [sWay] = [dsIndex] + [dsBank]
+  // [dcuIndex] = [secBeat] + [sSet] + [dirBank] + [sWay] = [secBeat] + [dsIndex] + [dsBank]
   // Bank will be transfer to EREQ TgtID
-  lazy val dcuIndexBits     = log2Ceil(nrPerDCUEntry)
+  lazy val dcuIndexBits     = log2Ceil(nrPerDCUEntry) + 1
   lazy val dsIndexBits      = log2Ceil(nrDSEntry)
   lazy val dsBankBits       = log2Ceil(djparam.nrDSBank)
-  require(dcuIndexBits == (dsIndexBits + dsBankBits))
+  require(dcuIndexBits == (dsIndexBits + dsBankBits + 1))
 
 
   // DataBuffer entry Id Bits
@@ -259,7 +259,7 @@ trait HasDJParam extends HasParseZJParam {
   lazy val sWayBits         = log2Ceil(djparam.selfWays)
   lazy val sSetBits         = log2Ceil(djparam.selfSets /djparam.nrDirBank)
   lazy val sTagBits         = useAddrBits - sSetBits - dirBankBits
-  require(sSetBits + dirBankBits + sWayBits == dcuIndexBits)
+  require(sSetBits + dirBankBits + sWayBits == dcuIndexBits - 1)
 
   // SF DIR Parameters: [useAddr] = [sfTag] + [sfSet] + [dirBank]
   lazy val sfWayBits        = log2Ceil(djparam.sfDirWays)
@@ -309,11 +309,11 @@ trait HasDJParam extends HasParseZJParam {
     (cacheable(cacheableBits - 1, 0), ccxChipID(ccxChipBits - 1, 0), dcuBank(dcuBankBits - 1, 0), pcuBank(pcuBankBits - 1, 0), offset(offsetBits - 1, 0), useAddr)
   }
 
-  def getFullAddr(x: UInt, dcuBankID: UInt, pcuBankID: UInt): UInt = {
+  def getFullAddr(x: UInt, dcuBankID: UInt, pcuBankID: UInt, secBeat: Bool = false.B): UInt = {
     require(x.getWidth == useAddrBits)
     require(dcuBankID.getWidth == dcuBankBits)
     require(pcuBankID.getWidth == pcuBankBits)
-    val offset    = 0.U(offsetBits.W)
+    val offset    = Mux(secBeat, beatBytes.U(offsetBits.W), 0.U(offsetBits))
     val addr0     = x(bankOff - offsetBits - 1, 0)
     val addr1     = x(useAddrBits - 1, bankOff - offsetBits)
     val ccxChipID = 0.U(cacheableBits.W)
@@ -354,21 +354,22 @@ trait HasDJParam extends HasParseZJParam {
     x(dirBankBits - 1, 0)
   }
 
-  def getDCUAddress(sSet: UInt, dirBank: UInt, sWay:UInt): UInt = {
+  def getDCUAddress(secBeat: Bool, sSet: UInt, dirBank: UInt, sWay:UInt): UInt = {
     require(sSet.getWidth == sSetBits)
     require(dirBank.getWidth == dirBankBits)
     require(sWay.getWidth == sWayBits)
-    val dcuAddr = Cat(sSet, dirBank, sWay)
+    val dcuAddr = Cat(secBeat.asUInt, sSet, dirBank, sWay)
     require(dcuAddr.getWidth == dcuIndexBits, s"${dcuAddr.getWidth} = ${sSet.getWidth} + ${dirBank.getWidth} + ${sWay.getWidth} =/= $dcuIndexBits")
     dcuAddr
   }
 
-  def parseDCUAddr(x: UInt): (UInt, UInt) = {
+  def parseDCUAddr(x: UInt): (Bool, UInt, UInt) = {
     require(x.getWidth == fullAddrBits)
     val dsBank  = x
     val dsIndex = dsBank    >> dsBankBits
-    // return: [1:dsIndex] [2:dsBank]
-    (dsIndex(dsIndexBits - 1, 0), dsBank(dsBankBits - 1, 0))
+    val secBeat = dsIndex   >> dsIndexBits
+    // return: [1: secBeat] [2:dsIndex] [3:dsBank]
+    (secBeat(0).asBool ,dsIndex(dsIndexBits - 1, 0), dsBank(dsBankBits - 1, 0))
   }
 
   def toDataID(x: UInt): UInt = {

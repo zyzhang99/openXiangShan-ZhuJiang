@@ -131,7 +131,7 @@ class SMEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle {
   def isWriteReq      = isWriteX(chiMes.opcode)
   def isReplReq       = isReplace(chiMes.opcode)
   def mshrIndexTxnID  = Cat(entryMes.dcuID, entryMes.mSet, pcuIndex.mshrWay) | (1 << fullNodeIdBits).U
-  def fullAddr (p: UInt) = entryMes.fullAddr(entryMes.dcuID, p)
+  def fullAddr (p: UInt) = entryMes.fullAddr(entryMes.dcuID, p, chiIndex.secBeat)
 
   def getAllComp      = Mux(isReplReq, entryMes.alrGetCompNum === 2.U, entryMes.alrGetCompNum === 1.U)
 
@@ -143,7 +143,7 @@ class SMEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle {
   }
   def reqAddr(p: UInt) : UInt = {
     val addr        = WireInit(0.U(fullAddrBits.W))
-    when(entryMes.toDCU) { addr := getDCUAddress(entryMes.sSet, entryMes.dirBank, entryMes.selfWay) }
+    when(entryMes.toDCU) { addr := getDCUAddress(chiIndex.secBeat, entryMes.sSet, entryMes.dirBank, entryMes.selfWay) }
     .otherwise           { addr := fullAddr(p) }
     addr
   }
@@ -352,6 +352,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   entrySave.chiMes.fullSize   := io.req2Intf.bits.chiMes.fullSize
   entrySave.chiIndex.nodeID   := io.req2Intf.bits.chiIndex.nodeID
   entrySave.chiIndex.txnID    := io.req2Intf.bits.chiIndex.txnID
+  entrySave.chiIndex.secBeat  := io.req2Intf.bits.chiIndex.secBeat
   assert(Mux(io.req2Intf.valid, !io.req2Intf.bits.chiMes.expCompAck, true.B))
 
   /*
@@ -383,6 +384,8 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   io.dbSigs.getDBID.valid             := entryGetDBIDVec.reduce(_ | _)
   io.dbSigs.getDBID.bits.from         := param.intfID.U
   io.dbSigs.getDBID.bits.entryID      := entryGetDBID
+  io.dbSigs.getDBID.bits.secBeat      := entrys(entryGetDBID).chiIndex.secBeat
+  io.dbSigs.getDBID.bits.swapFirst    := DontCare
 
   /*
    * Receive DBID From DataBuffer
@@ -433,7 +436,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   io.dbSigs.dbRCReq.bits.isClean    := true.B
   io.dbSigs.dbRCReq.bits.dbID       := entrys(entryRCDBID).pcuIndex.dbID
   io.dbSigs.dbRCReq.bits.to         := param.intfID.U
-  io.dbSigs.dbRCReq.bits.fullSize   := entrys(entryRCDBID).chiMes.fullSize
+  io.dbSigs.dbRCReq.bits.rFullSize  := entrys(entryRCDBID).chiMes.fullSize
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //
@@ -458,10 +461,12 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
 // ---------------------------------------------------------------------------------------------------------------------- //
 // --------------------------------- Receive Data From CHI DAT And Send It To DataBuffer -------------------------------- //
 // ---------------------------------------------------------------------------------------------------------------------- //
+  val entryRecChiDatID          = rxDat.bits.TxnID(param.entryIdBits-1, 0)
+
   io.dbSigs.dataTDB.valid       := rxDat.valid
-  io.dbSigs.dataTDB.bits.dbID   := entrys(rxDat.bits.TxnID(param.entryIdBits-1, 0)).pcuIndex.dbID
+  io.dbSigs.dataTDB.bits.dbID   := entrys(entryRecChiDatID).pcuIndex.dbID
   io.dbSigs.dataTDB.bits.data   := rxDat.bits.Data
-  io.dbSigs.dataTDB.bits.dataID := rxDat.bits.DataID
+  io.dbSigs.dataTDB.bits.dataID := Mux(entrys(entryRecChiDatID).chiIndex.secBeat, "b10".U, rxDat.bits.DataID)
   io.dbSigs.dataTDB.bits.mask   := rxDat.bits.BE
   rxDat.ready                   := io.dbSigs.dataTDB.ready
   assert(Mux(rxDat.valid, rxDat.bits.TxnID <= param.nrEntry.U, true.B))

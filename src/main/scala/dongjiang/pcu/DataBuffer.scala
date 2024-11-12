@@ -35,15 +35,17 @@ object DBState {
 class DBEntry(implicit p: Parameters) extends DJBundle with HasToIncoID {
   val state       = UInt(DBState.width.W)
   val beatRNum    = UInt(log2Ceil(nrBeat).W)
-  val fullSize    = Bool()
   val needClean   = Bool()
   val beats       = Vec(nrBeat, Valid(new Bundle {
     val data      = UInt(beatBits.W)
     val mask      = UInt(maskBits.W)
   })) // TODO: Reg -> SRAM
+  val rFullSize   = Bool()
+  val secBeat     = Bool() // Origin req get second beat
+  val swapFirst   = Bool() // Only use in AtomicCompare
 
-  def getBeat     = beats(beatRNum).bits
-  def isLast      = Mux(fullSize, beatRNum === 1.U, beatRNum === 0.U)
+  def getBeat     = beats(Mux(rFullSize & secBeat, 1.U, beatRNum)).bits
+  def isLast      = Mux(rFullSize, beatRNum === 1.U, beatRNum === 0.U)
   def isFree      = state === DBState.FREE
   def isAlloc     = state === DBState.ALLOC
   def isRead      = state === DBState.READ
@@ -102,7 +104,7 @@ class DataBuffer()(implicit p: Parameters) extends DJModule with HasPerfLogging 
   when(io.dbRCReqOpt.get.fire) {
     entrys(io.dbRCReqOpt.get.bits.dbID).needClean := io.dbRCReqOpt.get.bits.isClean
     entrys(io.dbRCReqOpt.get.bits.dbID).to        := io.dbRCReqOpt.get.bits.to
-    entrys(io.dbRCReqOpt.get.bits.dbID).fullSize  := io.dbRCReqOpt.get.bits.fullSize
+    entrys(io.dbRCReqOpt.get.bits.dbID).rFullSize := io.dbRCReqOpt.get.bits.rFullSize
   }
   io.dbRCReqOpt.get.ready := entrys(io.dbRCReqOpt.get.bits.dbID).canRecReq
   when(io.dbRCReqOpt.get.valid) {
@@ -143,9 +145,11 @@ class DataBuffer()(implicit p: Parameters) extends DJModule with HasPerfLogging 
       switch(e.state) {
         // FREE
         is(DBState.FREE) {
-          val hit     = dbidRespQ.io.enq.fire & getDBIDId === i.U
+          val hit     = io.getDBID.fire & getDBIDId === i.U
           e           := 0.U.asTypeOf(e)
           e.state     := Mux(hit, DBState.ALLOC, e.state)
+          e.secBeat   := Mux(hit, io.getDBID.bits.secBeat, false.B)
+          e.swapFirst := Mux(hit, io.getDBID.bits.swapFirst, false.B)
         }
         // ALLOC
         is(DBState.ALLOC) {
