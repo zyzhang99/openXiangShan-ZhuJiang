@@ -220,7 +220,7 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule with HasPerfLogging {
                 // Nothing to do and it has been receicve master resp
                 assert(PopCount(m.mshrMes.waitIntfVec) === 1.U, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
                 assert(m.respMes.mstResp.valid, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
-              }.elsewhen(isWriXOWO(m.chiMes.opcode)) { // OWO
+              }.elsewhen(isWriUniX(m.chiMes.opcode)) { // OWO
                 // Nothing to do and State Will be Free
                 assert(m.respMes.noRespValid, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
               }.otherwise {
@@ -241,7 +241,7 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule with HasPerfLogging {
               m.respMes.masDBID.bits    := io.resp2Exu.bits.pcuIndex.dbID
             }.elsewhen(io.resp2Exu.bits.pcuMes.isWriResp) {
               // Nothing to do and State Will be Free
-              when(!isWriXOWO(m.chiMes.opcode)) {
+              when(!isWriUniX(m.chiMes.opcode)) {
                 assert(PopCount(m.mshrMes.waitIntfVec) === 1.U, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
               }
               assert(m.respMes.noRespValid, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)

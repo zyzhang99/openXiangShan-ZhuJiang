@@ -716,15 +716,29 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
 
   when(rxReq.valid) {
     // [1:cacheable] [2:ccxChipID] [3:dcuBank] [4:pcuBank] [5:offset] [6:useAddr]
+    // cacheable
     assert(parseFullAddr(rxReq.bits.Addr)._1 === 0.U)
+    // ccxChipID
     assert(parseFullAddr(rxReq.bits.Addr)._2 === 0.U)
+    // pcuBank
     assert(parseFullAddr(rxReq.bits.Addr)._4 === io.pcuID)
-    assert(parseFullAddr(rxReq.bits.Addr)._5 === 0.U)
+    // offset
+    assert(Mux(isAtomicX(rxReq.bits.Opcode), true.B, // Atomic
+           Mux(isWriUniX(rxReq.bits.Opcode) | rxReq.bits.Opcode === ReadOnce, parseFullAddr(rxReq.bits.Addr)._5 === 0.U | parseFullAddr(rxReq.bits.Addr)._5 === 0x20.U, // WriteUnique or ReadOnce
+               parseFullAddr(rxReq.bits.Addr)._5 === 0.U))) // Other
+    // TgtID
     assert(rxReq.bits.TgtID === io.hnfID)
-    assert(Mux(isReadX(rxReq.bits.Opcode), rxReq.bits.ExpCompAck, true.B)) // TODO: need more power check
-    assert(Mux(isWriXOWO(rxReq.bits.Opcode), rxReq.bits.Order === Order.OWO & rxReq.bits.ExpCompAck,
-           Mux(rxReq.bits.Opcode === ReadOnce, rxReq.bits.Order === Order.EndpointOrder, rxReq.bits.Order === Order.None)))
-    assert(Mux(isWriXFull(rxReq.bits.Opcode), rxReq.bits.Size === chiFullSize.U, true.B))
+    // ExpCompAck
+    assert(Mux(isReadX(rxReq.bits.Opcode),      rxReq.bits.ExpCompAck, true.B)) // TODO: need more power check
+    // Order
+    assert(Mux(isWriUniX(rxReq.bits.Opcode),    rxReq.bits.Order === Order.OWO & rxReq.bits.ExpCompAck,
+           Mux(rxReq.bits.Opcode === ReadOnce,  rxReq.bits.Order === Order.EndpointOrder, rxReq.bits.Order === Order.None)))
+    // Size
+    assert(Mux(isWriXFull(rxReq.bits.Opcode),   rxReq.bits.Size === chiFullSize.U, true.B))
+    assert(Mux(isAtomicX(rxReq.bits.Opcode),    rxReq.bits.Size <= chiHalfSize.U, // Atomic
+           Mux(isWriXPtl(rxReq.bits.Opcode),    rxReq.bits.Size < chiFullSize.U, // WriteXPtl
+           Mux(rxReq.bits.Opcode === ReadOnce,  rxReq.bits.Size <= chiFullSize.U, // ReadOnce
+                                                rxReq.bits.Size === chiFullSize.U)))) // Other
   }
 
 // -------------------------------------------------- Perf Counter ------------------------------------------------------ //
