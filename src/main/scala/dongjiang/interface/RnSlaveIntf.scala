@@ -164,7 +164,7 @@ class RSEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle  {
     val state         = UInt(RSState.width.W)
     val nID           = UInt(param.entryIdBits.W)
     val hasData       = Bool()
-    val getDataNum    = UInt(beatNumBits.W)
+    val getBeatNum    = UInt(1.W)
     val getSnpRespOH  = UInt(nrCcNode.W)
     val snpFwdWaitAck = Bool() // CompAck
     val nestMes       = new Bundle {
@@ -181,7 +181,7 @@ class RSEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle  {
   def isGetDBID     = entryMes.state === RSState.GetDBID    & entryMes.nID === 0.U
   def isSendSnp     = entryMes.state === RSState.Snp2Node
   def isSendSnpIng  = entryMes.state === RSState.Snp2NodeIng
-  def isLastBeat    = entryMes.getDataNum === (nrBeat - 1).U
+  def isLastBeat    = Mux(chiMes.fullSize, entryMes.getBeatNum === 1.U, entryMes.getBeatNum === 0.U)
   def fullAddr(p: UInt) = entryMes.fullAddr(entryMes.dcuID, p)
   def snpAddr (p: UInt) = entryMes.snpAddr(entryMes.dcuID, p)
   def addrWithDcuID = Cat(entryMes.useAddr, entryMes.dcuID)
@@ -311,12 +311,12 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
       // ------------------------------------------- Update Base Values -------------------------------------------------- //
       // Receive New Req
       when((rxReq.fire | io.req2Intf.fire | io.resp2Intf.fire) & entryFreeID === i.U) {
-        entryMes            := entrySave.entryMes
+        entryMes                := entrySave.entryMes
       // Count CHI TX Dat
       }.elsewhen(rxDat.fire & entryRecChiDatID === i.U) {
         val hitRespDat = rxDat.fire & entryRecChiDatID === i.U
-        entryMes.getDataNum := entryMes.getDataNum + hitRespDat.asUInt
-        entryMes.hasData    := true.B
+        entryMes.getBeatNum     := entryMes.getBeatNum + hitRespDat.asUInt
+        entryMes.hasData        := true.B
         assert(isWriteX(entrys(i).chiMes.opcode) | (entrys(i).chiMes.isSnp & entrys(i).chiMes.retToSrc))
       // Get CompAck
       }.elsewhen(rxRsp.fire & entryRecChiRspID === i.U & !rspIsDMTComp & rxRsp.bits.Opcode === CompAck) {
@@ -511,6 +511,8 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   entrySave.chiMes.channel        := Mux(respVal, io.resp2Intf.bits.chiMes.channel,     Mux(snpVal, CHIChannel.SNP,                       CHIChannel.REQ))
   entrySave.chiMes.resp           := Mux(respVal, io.resp2Intf.bits.chiMes.resp,        Mux(snpVal, 0.U,                                  0.U))
   entrySave.chiMes.expCompAck     := Mux(respVal, io.resp2Intf.bits.chiMes.expCompAck,  Mux(snpVal, false.B,                              rxReq.bits.ExpCompAck))
+  entrySave.chiMes.fullSize       := Mux(respVal, io.resp2Intf.bits.chiMes.fullSize,    Mux(snpVal, true.B,                               rxReq.bits.Size === chiFullSize.U))
+  assert(Mux(snpVal, io.req2Intf.bits.chiMes.fullSize, true.B))
 
   /*
    * Set Ready Value
@@ -536,6 +538,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   io.req2Exu.valid                      := reqBeSendVec.reduce(_ | _)
   io.req2Exu.bits.chiMes.channel        := entrys(entrySendReqID).chiMes.channel
   io.req2Exu.bits.chiMes.opcode         := entrys(entrySendReqID).chiMes.opcode
+  io.req2Exu.bits.chiMes.fullSize       := entrys(entrySendReqID).chiMes.fullSize
   io.req2Exu.bits.chiMes.expCompAck     := entrys(entrySendReqID).chiMes.expCompAck
   io.req2Exu.bits.chiMes.resp           := entrys(entrySendReqID).chiMes.resp
   io.req2Exu.bits.chiIndex.nodeID       := entrys(entrySendReqID).chiIndex.nodeID
@@ -709,7 +712,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
 // ---------------------------  Assertion  -------------------------------- //
   val cntReg = RegInit(VecInit(Seq.fill(param.nrEntry) { 0.U(64.W) }))
   cntReg.zip(entrys).foreach { case(c, p) => c := Mux(p.isFree, 0.U, c + 1.U) }
-  cntReg.zipWithIndex.foreach { case(c, i) => assert(c < TIMEOUT_RSINTF.U, "RNSLV ENTRY[0x%x] STATE[0x%x] ADDR[0x%x] CHANNEL[%x] OP[0x%x] TIMEOUT", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).entryMes.state, entrys(i).chiMes.channel, entrys(i).chiMes.opcode) }
+  cntReg.zipWithIndex.foreach { case(c, i) => assert(c < TIMEOUT_RSINTF.U, "RNSLV ENTRY[0x%x] STATE[0x%x] ADDR[0x%x] CHANNEL[%x] OP[0x%x] TIMEOUT", i.U, entrys(i).entryMes.state, entrys(i).fullAddr(io.pcuID), entrys(i).chiMes.channel, entrys(i).chiMes.opcode) }
 
   when(rxReq.valid) {
     // [1:cacheable] [2:ccxChipID] [3:dcuBank] [4:pcuBank] [5:offset] [6:useAddr]

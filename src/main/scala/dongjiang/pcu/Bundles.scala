@@ -76,6 +76,7 @@ class ChiMesBundle(implicit p: Parameters) extends DJBundle with HasCHIChannel {
   // Common
   val opcode          = UInt(7.W)
   val resp            = UInt(ChiResp.width.W)
+  val fullSize        = Bool()
 }
 
 // ---------------------------------------------------------------- PCU Base Bundle ----------------------------------------------------------------------------- //
@@ -154,7 +155,7 @@ trait HasMask extends DJBundle { this: Bundle =>
   val mask          = UInt(maskBits.W)
 }
 // DataBuffer Read/Clean Req
-class DBRCReq     (implicit p: Parameters)   extends DJBundle with HasDBRCOp with HasDBID with HasToIncoID
+class DBRCReq     (implicit p: Parameters)   extends DJBundle with HasDBRCOp with HasDBID with HasToIncoID { val fullSize = Bool() }
 class GetDBID     (implicit p: Parameters)   extends DJBundle                             with HasFromIncoID with HasIntfEntryID
 class DBIDResp    (implicit p: Parameters)   extends DJBundle                with HasDBID with HasToIncoID   with HasIntfEntryID
 class NodeFDBData (implicit p: Parameters)   extends DJBundle with HasDBData with HasDBID with HasToIncoID   with HasMask

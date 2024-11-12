@@ -31,8 +31,6 @@ case class InterfaceParam
 
 case class DJParam(
                   // -------------------------- Base Mes ---------------------- //
-                  blockBytes:         Int = 64,
-                  beatBytes:          Int = 32,
                   addressBits:        Int = 48,
                   // ------------------------- Interface Mes -------------------- //
                   localRnSlaveIntf:   InterfaceParam = InterfaceParam( name = "RnSalve_LOCAL",  intfID = IncoID.LOCALSLV, isRn = true,   isSlave = true,   nrEntry = 32, nrEvictEntry = 8),
@@ -206,18 +204,25 @@ trait HasDJParam extends HasParseZJParam {
   val p: Parameters
   val djparam = p(ZJParametersKey).djParams //TODO: use lazy val in all parameters
 
+  lazy val chiTxnIdBits = 12
+
+  // Data Mes Parameters
+  lazy val blockBytes       = 64 // cache line bytes
+  lazy val beatBytes        = 32
+  lazy val nrBeat           = 2
+  lazy val dataBits         = blockBytes * 8
+  lazy val beatBits         = beatBytes * 8
+  lazy val maskBits         = beatBytes
+  lazy val chiFullSize      = 6
+  lazy val chiHalfSize      = 5
+
+
   // Base Mes Parameters
   // [fullAddr] = [cacheable] + [ccxChipID] + [useAddr1] + [bankID] + [useAddr0] + [offset]
   // [useAddr]  = [useAddr1] + [useAddr0]
-  lazy val nrBeat           = djparam.blockBytes / djparam.beatBytes
-  lazy val beatNumBits      = log2Ceil(nrBeat)
-  lazy val offsetBits       = log2Ceil(djparam.blockBytes)
-  lazy val chiTxnIdBits     = 12
+  lazy val offsetBits       = log2Ceil(blockBytes)
   lazy val fullAddrBits     = djparam.addressBits
   lazy val useAddrBits      = fullAddrBits - cacheableBits - ccxChipBits - fullBankBits  - offsetBits// need to check input pcu addr unuse bits is 0 expect bankBits
-  lazy val dataBits         = djparam.blockBytes * 8
-  lazy val beatBits         = djparam.beatBytes * 8
-  lazy val maskBits         = djparam.beatBytes
   lazy val dirBankBits      = log2Ceil(djparam.nrDirBank)
   require(isPow2(nrBeat))
   require(bankOff + fullBankBits - 1 < fullAddrBits - (cacheableBits + ccxChipBits))

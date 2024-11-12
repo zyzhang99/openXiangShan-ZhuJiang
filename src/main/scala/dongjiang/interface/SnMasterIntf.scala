@@ -113,7 +113,7 @@ class SMEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle {
     val doDMT         = Bool()
     val toDCU         = Bool()
     val hasData       = Bool()
-    val getDataNum    = UInt(beatNumBits.W)
+    val getBeatNum    = UInt(1.W)
     val alrGetCompNum = UInt(2.W) // Already Get Comp, only use in write or replace
     val selfWay       = UInt(sWayBits.W)
   }
@@ -126,7 +126,7 @@ class SMEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle {
   def isResp2Exu      = entryMes.state === SMState.Resp2Exu
   def isWaitDBData    = entryMes.state === SMState.WriteData2Node
   def isRCDB          = entryMes.state === SMState.RCDB
-  def isLastBeat      = entryMes.getDataNum === (nrBeat - 1).U
+  def isLastBeat      = Mux(chiMes.fullSize, entryMes.getBeatNum === 1.U, entryMes.getBeatNum === 0.U)
   def isReadReq       = isReadX(chiMes.opcode)
   def isWriteReq      = isWriteX(chiMes.opcode)
   def isReplReq       = isReplace(chiMes.opcode)
@@ -221,7 +221,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
        * Receive Data And Resp From CHI RxDat
        */
       }.elsewhen(rxDat.fire & rxDat.bits.TxnID === i.U) {
-        entry.entryMes.getDataNum   := entry.entryMes.getDataNum + 1.U
+        entry.entryMes.getBeatNum   := entry.entryMes.getBeatNum + 1.U
         entry.chiMes.resp           := rxDat.bits.Resp
         assert(rxDat.bits.Opcode === CompData, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
         assert(entry.isReadReq, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
@@ -247,7 +247,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
        * Receive Data From DataBuffer
        */
       }.elsewhen(io.dbSigs.dataFDB.fire & entry.isWaitDBData & io.dbSigs.dataFDB.bits.dbID === entry.pcuIndex.dbID) {
-        entry.entryMes.getDataNum   := entry.entryMes.getDataNum + 1.U
+        entry.entryMes.getBeatNum   := entry.entryMes.getBeatNum + 1.U
         assert(entry.state === SMState.WriteData2Node, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
       /*
        * Clean Intf Entry When Its Free
@@ -349,6 +349,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   entrySave.pcuIndex.dbID     := io.req2Intf.bits.pcuIndex.dbID
   entrySave.chiMes.resp       := io.req2Intf.bits.chiMes.resp
   entrySave.chiMes.opcode     := io.req2Intf.bits.chiMes.opcode
+  entrySave.chiMes.fullSize   := io.req2Intf.bits.chiMes.fullSize
   entrySave.chiIndex.nodeID   := io.req2Intf.bits.chiIndex.nodeID
   entrySave.chiIndex.txnID    := io.req2Intf.bits.chiIndex.txnID
   assert(Mux(io.req2Intf.valid, !io.req2Intf.bits.chiMes.expCompAck, true.B))
@@ -403,7 +404,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   txReq.bits.TgtID        := entrys(entryReq2NodeID).fullTgtID(io.fIDVec)
   txReq.bits.TxnID        := Mux(entrys(entryReq2NodeID).entryMes.doDMT, entrys(entryReq2NodeID).mshrIndexTxnID, entryReq2NodeID)
   txReq.bits.SrcID        := io.hnfID
-  txReq.bits.Size         := log2Ceil(djparam.blockBytes).U
+  txReq.bits.Size         := Mux(entrys(entryReq2NodeID).chiMes.fullSize, chiFullSize.U, chiHalfSize.U)
   txReq.bits.MemAttr      := entrys(entryReq2NodeID).chiMes.resp // Multiplex MemAttr to transfer CHI State // Use in Read Req
   //                                                                     Read With DMT                                                                                    Replcae                                 Read Without DMT
   txReq.bits.ReturnNID    := Mux(entrys(entryReq2NodeID).entryMes.doDMT, getFullNodeID(entrys(entryReq2NodeID).chiIndex.nodeID), Mux(entrys(entryReq2NodeID).isRepl2Node, ddrcNodeId.U,                           io.hnfID))
@@ -432,6 +433,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   io.dbSigs.dbRCReq.bits.isClean    := true.B
   io.dbSigs.dbRCReq.bits.dbID       := entrys(entryRCDBID).pcuIndex.dbID
   io.dbSigs.dbRCReq.bits.to         := param.intfID.U
+  io.dbSigs.dbRCReq.bits.fullSize   := entrys(entryRCDBID).chiMes.fullSize
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //

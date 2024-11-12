@@ -37,6 +37,7 @@ class DCUREntry(implicit p: Parameters) extends DJBundle {
   val returnNID         = UInt(fullNodeIdBits.W)
   val returnTxnID       = UInt(chiTxnIdBits.W)
   val resp              = UInt(ChiResp.width.W)
+  val fullSize          = Bool()
 }
 
 
@@ -164,7 +165,7 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
   // ChiRespQueue
   val rRespQ                = Module(new Queue(new DataFlit(), entries = djparam.nrDCURespQ, flow = false, pipe = true))
   val rDatQ                 = Module(new Queue(Vec(nrBeat, UInt(beatBits.W)), entries = djparam.nrDCURespQ, flow = false, pipe = true))
-  val sendBeatNumReg        = RegInit(0.U(beatNumBits.W))
+  val sendBeatNumReg        = RegInit(0.U(1.W))
   val dsRespVec             = Wire(Vec(djparam.nrDSBank, Valid(UInt(dataBits.W))))
 
 
@@ -265,6 +266,8 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
             r.returnNID := rxReq.bits.ReturnNID
             r.returnTxnID := rxReq.bits.ReturnTxnID
             r.resp      := rxReq.bits.MemAttr(ChiResp.width - 1, 0)
+            r.fullSize  := rxReq.bits.Size === chiFullSize.U
+            assert(rxReq.bits.Size === chiFullSize.U, "TODO")
           }
         }
         is(DCURState.ReadSram) {
@@ -292,6 +295,7 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
             w.dsBank    := parseDCUAddr(rxReq.bits.Addr)._2
             w.srcID     := rxReq.bits.SrcID
             w.txnID     := rxReq.bits.TxnID
+            assert(rxReq.bits.Size === chiFullSize.U)
           }
         }
         is(DCUWState.SendDBIDResp) {
@@ -385,8 +389,6 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
 // ------------------------------------------------------------ Assertion ----------------------------------------------- //
 
   assert(Mux(rxReq.valid, rxReq.bits.Addr(fullAddrBits - 1, fullAddrBits - sTagBits) === 0.U, true.B))
-
-  assert(Mux(rxReq.valid, rxReq.bits.Size === log2Ceil(djparam.blockBytes).U, true.B))
 
   assert(Mux(rDatQ.io.enq.valid, rDatQ.io.enq.ready, true.B))
 

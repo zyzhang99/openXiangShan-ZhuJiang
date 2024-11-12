@@ -42,37 +42,37 @@ object LocalReadDecode {
     // ----------------------------------------------------------- LOCAL RESP ------------------------------------------------------------//
     // TODO: Consider a variation of the SC/SD mapping as UC/SD In Local
     //  I  I  I
-    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I,  I, RD,  HasData, sn = ChiResp.UC)      -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
-    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I,  I, RD,           sn = ChiResp.UC)      -> (                             WSFDir |                                                                  HnState(I)  | SrcState(UC) | OthState(I)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I,  I, Read, HasData, sn = ChiResp.UC)      -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I,  I, Read,          sn = ChiResp.UC)      -> (                             WSFDir |                                                                  HnState(I)  | SrcState(UC) | OthState(I)),
     //  I UC  I
-    LocalRespInst(REQ, ReadNotSharedDirty,  I, UC,  I, Snp, HasData, rn = ChiResp.I)       -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
-    LocalRespInst(REQ, ReadNotSharedDirty,  I, UC,  I, Snp, HasData, rn = ChiResp.I_PD)    -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
-    LocalRespInst(REQ, ReadNotSharedDirty,  I, UC,  I, Snp, HasData, rn = ChiResp.SC)      -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(I)  | SrcState(SC) | OthState(SC)),
-    LocalRespInst(REQ, ReadNotSharedDirty,  I, UC,  I, Snp, HasData, rn = ChiResp.SC_PD)   -> (Commit | RDB2Src           | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(SD) | SrcState(SC) | OthState(SC) | WriteDCU | WriOp(WriteNoSnpFull)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I, UC,  I, Snp,  HasData, rn = ChiResp.I)       -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I, UC,  I, Snp,  HasData, rn = ChiResp.I_PD)    -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I, UC,  I, Snp,  HasData, rn = ChiResp.SC)      -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(I)  | SrcState(SC) | OthState(SC)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I, UC,  I, Snp,  HasData, rn = ChiResp.SC_PD)   -> (Commit | RDB2Src           | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(SD) | SrcState(SC) | OthState(SC) | WriteDCU | WriOp(WriteNoSnpFull)),
     //  I UD  I
-    LocalRespInst(REQ, ReadNotSharedDirty,  I, UD,  I, Snp, HasData, rn = ChiResp.I_PD)    -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
-    LocalRespInst(REQ, ReadNotSharedDirty,  I, UD,  I, Snp, HasData, rn = ChiResp.SC_PD)   -> (Commit | RDB2Src           | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(SD) | SrcState(SC) | OthState(SC) | WriteDCU | WriOp(WriteNoSnpFull)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I, UD,  I, Snp,  HasData, rn = ChiResp.I_PD)    -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I, UD,  I, Snp,  HasData, rn = ChiResp.SC_PD)   -> (Commit | RDB2Src           | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(SD) | SrcState(SC) | OthState(SC) | WriteDCU | WriOp(WriteNoSnpFull)),
     //  I SC  I
-    LocalRespInst(REQ, ReadNotSharedDirty,  I, SC,  I, Snp, HasData, rn = ChiResp.I)       -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(I)  | SrcState(SC) | OthState(I)),
-    LocalRespInst(REQ, ReadNotSharedDirty,  I, SC,  I, Snp, HasData, rn = ChiResp.SC)      -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(I)  | SrcState(SC) | OthState(SC)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I, SC,  I, Snp,  HasData, rn = ChiResp.I)       -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(I)  | SrcState(SC) | OthState(I)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I, SC,  I, Snp,  HasData, rn = ChiResp.SC)      -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(I)  | SrcState(SC) | OthState(SC)),
     //  I  I UC
-    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, UC, RD,  HasData, sn = ChiResp.UC)      -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
-    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, UC, RD,           sn = ChiResp.UC)      -> (                             WSFDir | WSDir |                                                          HnState(I)  | SrcState(UC) | OthState(I)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, UC, Read, HasData, sn = ChiResp.UC)      -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, UC, Read,          sn = ChiResp.UC)      -> (                             WSFDir | WSDir |                                                          HnState(I)  | SrcState(UC) | OthState(I)),
     //  I  I UD
-    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, UD, RD,  HasData, sn = ChiResp.UD_PD)   -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
-    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, UD, RD,           sn = ChiResp.UD_PD)   -> (                             WSFDir | WSDir |                                                          HnState(I)  | SrcState(UD) | OthState(I)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, UD, Read, HasData, sn = ChiResp.UD_PD)   -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, UD, Read,          sn = ChiResp.UD_PD)   -> (                             WSFDir | WSDir |                                                          HnState(I)  | SrcState(UD) | OthState(I)),
     //  I  I SC
-    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, SC, RD,  HasData, sn = ChiResp.SC)      -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(SC) | SrcState(SC) | OthState(I)),
-    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, SC, RD,           sn = ChiResp.SC)      -> (                             WSFDir |                                                                  HnState(SC) | SrcState(SC) | OthState(I)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, SC, Read, HasData, sn = ChiResp.SC)      -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(SC) | SrcState(SC) | OthState(I)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, SC, Read,          sn = ChiResp.SC)      -> (                             WSFDir |                                                                  HnState(SC) | SrcState(SC) | OthState(I)),
     //  I SC SC
-    LocalRespInst(REQ, ReadNotSharedDirty,  I, SC, SC, RD,  HasData, sn = ChiResp.SC)      -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(SC) | SrcState(SC) | OthState(SC)),
-    LocalRespInst(REQ, ReadNotSharedDirty,  I, SC, SC, RD,           sn = ChiResp.SC)      -> (                             WSFDir |                                                                  HnState(SC) | SrcState(SC) | OthState(SC)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I, SC, SC, Read, HasData, sn = ChiResp.SC)      -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(SC) | SrcState(SC) | OthState(SC)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I, SC, SC, Read,          sn = ChiResp.SC)      -> (                             WSFDir |                                                                  HnState(SC) | SrcState(SC) | OthState(SC)),
     //  I  I SD
-    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, SD, RD,  HasData, sn = ChiResp.SC)      -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(SD) | SrcState(SC) | OthState(I)),
-    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, SD, RD,           sn = ChiResp.SC)      -> (                             WSFDir |                                                                  HnState(SD) | SrcState(SC) | OthState(I)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, SD, Read, HasData, sn = ChiResp.SC)      -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(SD) | SrcState(SC) | OthState(I)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, SD, Read,          sn = ChiResp.SC)      -> (                             WSFDir |                                                                  HnState(SD) | SrcState(SC) | OthState(I)),
     //  I SC SD
-    LocalRespInst(REQ, ReadNotSharedDirty,  I, SC, SD, RD,  HasData, sn = ChiResp.SC)      -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(SD) | SrcState(SC) | OthState(SC)),
-    LocalRespInst(REQ, ReadNotSharedDirty,  I, SC, SD, RD,           sn = ChiResp.SC)      -> (                             WSFDir |                                                                  HnState(SD) | SrcState(SC) | OthState(SC)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I, SC, SD, Read, HasData, sn = ChiResp.SC)      -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(SD) | SrcState(SC) | OthState(SC)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I, SC, SD, Read,          sn = ChiResp.SC)      -> (                             WSFDir |                                                                  HnState(SD) | SrcState(SC) | OthState(SC)),
   )
 
 
@@ -100,8 +100,8 @@ object LocalReadDecode {
     // ----------------------------------------------------------- LOCAL RESP ---------------------------------------------------------------//
     // TODO: Consider a variation of the SC/SD mapping as UC/SD In Local
     //  I  I  I
-    LocalRespInst(REQ, ReadUnique,  I,  I,  I, RD,     HasData, sn = ChiResp.UC)      -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
-    LocalRespInst(REQ, ReadUnique,  I,  I,  I, RD,              sn = ChiResp.UC)      -> (                             WSFDir |                                                                  HnState(I)  | SrcState(UC) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique,  I,  I,  I, Read,   HasData, sn = ChiResp.UC)      -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique,  I,  I,  I, Read,            sn = ChiResp.UC)      -> (                             WSFDir |                                                                  HnState(I)  | SrcState(UC) | OthState(I)),
     //  I UC  I
     LocalRespInst(REQ, ReadUnique,  I, UC,  I, Snp,    HasData, rn = ChiResp.I)       -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
     LocalRespInst(REQ, ReadUnique,  I, UC,  I, Snp,    HasData, rn = ChiResp.I_PD)    -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
@@ -110,24 +110,24 @@ object LocalReadDecode {
     //  I SC  I
     LocalRespInst(REQ, ReadUnique,  I, SC,  I, Snp,    HasData, rn = ChiResp.I)       -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
     //  I  I UC
-    LocalRespInst(REQ, ReadUnique,  I,  I, UC, RD,     HasData, sn = ChiResp.UC)      -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
-    LocalRespInst(REQ, ReadUnique,  I,  I, UC, RD,              sn = ChiResp.UC)      -> (                             WSFDir | WSDir |                                                          HnState(I)  | SrcState(UC) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique,  I,  I, UC, Read,   HasData, sn = ChiResp.UC)      -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique,  I,  I, UC, Read,            sn = ChiResp.UC)      -> (                             WSFDir | WSDir |                                                          HnState(I)  | SrcState(UC) | OthState(I)),
     //  I  I UD
-    LocalRespInst(REQ, ReadUnique,  I,  I, UD, RD,     HasData, sn = ChiResp.UD_PD)   -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
-    LocalRespInst(REQ, ReadUnique,  I,  I, UD, RD,              sn = ChiResp.UD_PD)   -> (                             WSFDir | WSDir |                                                          HnState(I)  | SrcState(UD) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique,  I,  I, UD, Read,   HasData, sn = ChiResp.UD_PD)   -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique,  I,  I, UD, Read,            sn = ChiResp.UD_PD)   -> (                             WSFDir | WSDir |                                                          HnState(I)  | SrcState(UD) | OthState(I)),
     //  I  I SC
-    LocalRespInst(REQ, ReadUnique,  I,  I, SC, RD,     HasData, sn = ChiResp.UC)      -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
-    LocalRespInst(REQ, ReadUnique,  I,  I, SC, RD,              sn = ChiResp.UC)      -> (                             WSFDir | WSDir |                                                          HnState(I)  | SrcState(UC) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique,  I,  I, SC, Read,   HasData, sn = ChiResp.UC)      -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique,  I,  I, SC, Read,            sn = ChiResp.UC)      -> (                             WSFDir | WSDir |                                                          HnState(I)  | SrcState(UC) | OthState(I)),
     //  I SC SC
     LocalRespInst(REQ, ReadUnique,  I, SC, SC, Snp,    HasData, rn = ChiResp.I)       -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
     //  I  I SD
-    LocalRespInst(REQ, ReadUnique,  I,  I, SD, RD,     HasData, sn = ChiResp.UD_PD)   -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
-    LocalRespInst(REQ, ReadUnique,  I,  I, SD, RD,              sn = ChiResp.UD_PD)   -> (                             WSFDir | WSDir |                                                          HnState(I)  | SrcState(UD) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique,  I,  I, SD, Read,   HasData, sn = ChiResp.UD_PD)   -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique,  I,  I, SD, Read,            sn = ChiResp.UD_PD)   -> (                             WSFDir | WSDir |                                                          HnState(I)  | SrcState(UD) | OthState(I)),
     //  I SC SD
     LocalRespInst(REQ, ReadUnique,  I, SC, SD, Snp,    HasData, rn = ChiResp.I)       -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
     // SC  I  I
-    LocalRespInst(REQ, ReadUnique, SC,  I,  I, RD,     HasData, sn = ChiResp.UC)      -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
-    LocalRespInst(REQ, ReadUnique, SC,  I,  I, RD,              sn = ChiResp.UC)      -> (                             WSFDir |                                                                  HnState(I)  | SrcState(UC) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique, SC,  I,  I, Read,   HasData, sn = ChiResp.UC)      -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique, SC,  I,  I, Read,            sn = ChiResp.UC)      -> (                             WSFDir |                                                                  HnState(I)  | SrcState(UC) | OthState(I)),
     // SC SC  I
     LocalRespInst(REQ, ReadUnique, SC, SC,  I, Snp,    HasData, rn = ChiResp.I)       -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
     // SC SC SC
@@ -135,11 +135,11 @@ object LocalReadDecode {
     // SC SC SD
     LocalRespInst(REQ, ReadUnique, SC, SC, SD, Snp,    HasData, rn = ChiResp.I)       -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
     // SC  I SC
-    LocalRespInst(REQ, ReadUnique, SC,  I, SC, RD,     HasData, sn  = ChiResp.UC)     -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
-    LocalRespInst(REQ, ReadUnique, SC,  I, SC, RD,              sn  = ChiResp.UC)     -> (                             WSFDir | WSDir |                                                          HnState(I)  | SrcState(UC) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique, SC,  I, SC, Read,   HasData, sn  = ChiResp.UC)     -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique, SC,  I, SC, Read,            sn  = ChiResp.UC)     -> (                             WSFDir | WSDir |                                                          HnState(I)  | SrcState(UC) | OthState(I)),
     // SC  I SD
-    LocalRespInst(REQ, ReadUnique, SC,  I, SD, RD,     HasData, sn  = ChiResp.UD_PD)  -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
-    LocalRespInst(REQ, ReadUnique, SC,  I, SD, RD,              sn  = ChiResp.UD_PD)  -> (                             WSFDir | WSDir |                                                          HnState(I)  | SrcState(UD) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique, SC,  I, SD, Read,   HasData, sn  = ChiResp.UD_PD)  -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique, SC,  I, SD, Read,            sn  = ChiResp.UD_PD)  -> (                             WSFDir | WSDir |                                                          HnState(I)  | SrcState(UD) | OthState(I)),
   )
 
 
@@ -165,7 +165,7 @@ object LocalReadWithDCTDecode {
     // ----------------------------------------------------------- LOCAL RESP ------------------------------------------------------------//
     // TODO: Consider a variation of the SC/SD mapping as UC/SD In Local
     //  I  I  I
-    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I,  I, RD,      HasData, sn = ChiResp.UC)                       -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I,  I, Read,    HasData, sn = ChiResp.UC)                       -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
     //  I UC  I
     LocalRespInst(REQ, ReadNotSharedDirty,  I, UC,  I, SnpFwd,  HasData, rn = ChiResp.I,     fwd = ChiResp.SC)  -> (                   CleanDB | WSFDir |                                                                  HnState(I)  | SrcState(SC) | OthState(I)),
     LocalRespInst(REQ, ReadNotSharedDirty,  I, UC,  I, SnpFwd,  HasData, rn = ChiResp.I_PD,  fwd = ChiResp.SC)  -> (                             WSFDir | WSDir |                                                          HnState(SD) | SrcState(SC) | OthState(I)  | WriteDCU | WriOp(WriteNoSnpFull)),
@@ -178,17 +178,17 @@ object LocalReadWithDCTDecode {
     LocalRespInst(REQ, ReadNotSharedDirty,  I, SC,  I, SnpFwd,          rn = ChiResp.I,     fwd = ChiResp.SC)   -> (                             WSFDir |                                                                  HnState(I)  | SrcState(SC) | OthState(I)),
     LocalRespInst(REQ, ReadNotSharedDirty,  I, SC,  I, SnpFwd,          rn = ChiResp.SC,    fwd = ChiResp.SC)   -> (                             WSFDir |                                                                  HnState(I)  | SrcState(SC) | OthState(SC)),
     //  I  I UC
-    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, UC, RD,      HasData, sn = ChiResp.UC)                       -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, UC, Read,    HasData, sn = ChiResp.UC)                       -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
     //  I  I UD
-    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, UD, RD,      HasData, sn = ChiResp.UD_PD)                    -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, UD, Read,    HasData, sn = ChiResp.UD_PD)                    -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
     //  I  I SC
-    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, SC, RD,      HasData, sn = ChiResp.SC)                       -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(SC) | SrcState(SC) | OthState(I)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, SC, Read,    HasData, sn = ChiResp.SC)                       -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(SC) | SrcState(SC) | OthState(I)),
     //  I SC SC
-    LocalRespInst(REQ, ReadNotSharedDirty,  I, SC, SC, RD,      HasData, sn = ChiResp.SC)                       -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(SC) | SrcState(SC) | OthState(SC)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I, SC, SC, Read,    HasData, sn = ChiResp.SC)                       -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(SC) | SrcState(SC) | OthState(SC)),
     //  I  I SD
-    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, SD, RD,      HasData, sn = ChiResp.SC)                       -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(SD) | SrcState(SC) | OthState(I)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, SD, Read,    HasData, sn = ChiResp.SC)                       -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(SD) | SrcState(SC) | OthState(I)),
     //  I SC SD
-    LocalRespInst(REQ, ReadNotSharedDirty,  I, SC, SD, RD,      HasData, sn = ChiResp.SC)                       -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(SD) | SrcState(SC) | OthState(SC)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I, SC, SD, Read,    HasData, sn = ChiResp.SC)                       -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.SC)    | HnState(SD) | SrcState(SC) | OthState(SC)),
   )
 
 
@@ -216,7 +216,7 @@ object LocalReadWithDCTDecode {
     // ----------------------------------------------------------- LOCAL RESP ---------------------------------------------------------------//
     // TODO: Consider a variation of the SC/SD mapping as UC/SD In Local
     //  I  I  I
-    LocalRespInst(REQ, ReadUnique,  I,  I,  I, RD,     HasData, sn = ChiResp.UC)                      -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique,  I,  I,  I, Read,   HasData, sn = ChiResp.UC)                      -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
     //  I UC  I
     LocalRespInst(REQ, ReadUnique,  I, UC,  I, SnpFwd,          rn = ChiResp.I, fwd = ChiResp.UC)     -> (                             WSFDir |                                                                  HnState(I)  | SrcState(UC) | OthState(I)),
     LocalRespInst(REQ, ReadUnique,  I, UC,  I, SnpFwd,          rn = ChiResp.I, fwd = ChiResp.UD_PD)  -> (                             WSFDir |                                                                  HnState(I)  | SrcState(UD) | OthState(I)),
@@ -225,20 +225,20 @@ object LocalReadWithDCTDecode {
     //  I SC  I
     LocalRespInst(REQ, ReadUnique,  I, SC,  I, SnpFwd,          rn = ChiResp.I, fwd = ChiResp.UC)     -> (                             WSFDir |                                                                  HnState(I)  | SrcState(UC) | OthState(I)),
     //  I  I UC
-    LocalRespInst(REQ, ReadUnique,  I,  I, UC, RD,     HasData, sn = ChiResp.UC)                      -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique,  I,  I, UC, Read,   HasData, sn = ChiResp.UC)                      -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
     //  I  I UD
-    LocalRespInst(REQ, ReadUnique,  I,  I, UD, RD,     HasData, sn = ChiResp.UD_PD)                   -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique,  I,  I, UD, Read,   HasData, sn = ChiResp.UD_PD)                   -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
     //  I  I SC
-    LocalRespInst(REQ, ReadUnique,  I,  I, SC, RD,     HasData, sn = ChiResp.UC)                      -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique,  I,  I, SC, Read,   HasData, sn = ChiResp.UC)                      -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
     //  I SC SC
     LocalRespInst(REQ, ReadUnique,  I, SC, SC, SnpFwd,          rn = ChiResp.I, fwd = ChiResp.UC)     -> (                             WSFDir | WSDir |                                                          HnState(I)  | SrcState(UC) | OthState(I)),
     //  I  I SD
-    LocalRespInst(REQ, ReadUnique,  I,  I, SD, RD,     HasData, sn = ChiResp.UD_PD)                   -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique,  I,  I, SD, Read,   HasData, sn = ChiResp.UD_PD)                   -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
     //  I SC SD
     LocalRespInst(REQ, ReadUnique,  I, SC, SD, Snp,    HasData, rn = ChiResp.I)                       -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
 
     // SC  I  I
-    LocalRespInst(REQ, ReadUnique, SC,  I,  I, RD,     HasData, sn = ChiResp.UC)                      -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique, SC,  I,  I, Read,   HasData, sn = ChiResp.UC)                      -> (Commit | RDB2Src | CleanDB | WSFDir |         RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
     // SC SC  I
     LocalRespInst(REQ, ReadUnique, SC, SC,  I, SnpFwd,          rn = ChiResp.I, fwd = ChiResp.UC)     -> (                             WSFDir | WSDir |                                                          HnState(I)  | SrcState(UC) | OthState(I)),
     // SC SC SC
@@ -246,9 +246,9 @@ object LocalReadWithDCTDecode {
     // SC SC SD
     LocalRespInst(REQ, ReadUnique, SC, SC, SD, Snp,    HasData, rn = ChiResp.I)                       -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
     // SC  I SC
-    LocalRespInst(REQ, ReadUnique, SC,  I, SC, RD,     HasData, sn  = ChiResp.UC)                     -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique, SC,  I, SC, Read,   HasData, sn  = ChiResp.UC)                     -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
     // SC  I SD
-    LocalRespInst(REQ, ReadUnique, SC,  I, SD, RD,     HasData, sn  = ChiResp.UD_PD)                  -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
+    LocalRespInst(REQ, ReadUnique, SC,  I, SD, Read,   HasData, sn  = ChiResp.UD_PD)                  -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UD_PD) | HnState(I)  | SrcState(UD) | OthState(I)),
   )
 
 
@@ -326,27 +326,27 @@ object LoaclDatalessDecode {
 
 object LoaclWriteDecode {
   def writeBackFull: Seq[(UInt, UInt)] = Seq(
-    LocalRespInst(REQ, WriteBackFull,  I,  I,  I, WB, HasData, rn = ChiResp.I)     -> CleanDB,
-    LocalRespInst(REQ, WriteBackFull,  I, UC,  I, WB, HasData, rn = ChiResp.I)     -> CleanDB,
-    LocalRespInst(REQ, WriteBackFull,  I, UD,  I, WB, HasData, rn = ChiResp.I)     -> CleanDB,
-    LocalRespInst(REQ, WriteBackFull,  I, SC,  I, WB, HasData, rn = ChiResp.I)     -> CleanDB,
-    LocalRespInst(REQ, WriteBackFull,  I, SC, SC, WB, HasData, rn = ChiResp.I)     -> CleanDB,
-    LocalRespInst(REQ, WriteBackFull,  I, SC, SD, WB, HasData, rn = ChiResp.I)     -> CleanDB,
-    LocalRespInst(REQ, WriteBackFull,  I,  I, SC, WB, HasData, rn = ChiResp.I)     -> CleanDB,
-    LocalRespInst(REQ, WriteBackFull,  I,  I, SD, WB, HasData, rn = ChiResp.I)     -> CleanDB,
-    LocalRespInst(REQ, WriteBackFull,  I,  I, UC, WB, HasData, rn = ChiResp.I)     -> CleanDB,
-    LocalRespInst(REQ, WriteBackFull,  I,  I, UD, WB, HasData, rn = ChiResp.I)     -> CleanDB,
+    LocalRespInst(REQ, WriteBackFull,  I,  I,  I, CB, HasData, rn = ChiResp.I)     -> CleanDB,
+    LocalRespInst(REQ, WriteBackFull,  I, UC,  I, CB, HasData, rn = ChiResp.I)     -> CleanDB,
+    LocalRespInst(REQ, WriteBackFull,  I, UD,  I, CB, HasData, rn = ChiResp.I)     -> CleanDB,
+    LocalRespInst(REQ, WriteBackFull,  I, SC,  I, CB, HasData, rn = ChiResp.I)     -> CleanDB,
+    LocalRespInst(REQ, WriteBackFull,  I, SC, SC, CB, HasData, rn = ChiResp.I)     -> CleanDB,
+    LocalRespInst(REQ, WriteBackFull,  I, SC, SD, CB, HasData, rn = ChiResp.I)     -> CleanDB,
+    LocalRespInst(REQ, WriteBackFull,  I,  I, SC, CB, HasData, rn = ChiResp.I)     -> CleanDB,
+    LocalRespInst(REQ, WriteBackFull,  I,  I, SD, CB, HasData, rn = ChiResp.I)     -> CleanDB,
+    LocalRespInst(REQ, WriteBackFull,  I,  I, UC, CB, HasData, rn = ChiResp.I)     -> CleanDB,
+    LocalRespInst(REQ, WriteBackFull,  I,  I, UD, CB, HasData, rn = ChiResp.I)     -> CleanDB,
 
-    LocalRespInst(REQ, WriteBackFull, UD,  I,  I, WB, HasData, rn = ChiResp.UD_PD) -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+    LocalRespInst(REQ, WriteBackFull, UD,  I,  I, CB, HasData, rn = ChiResp.UD_PD) -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
     //temporary fix
-    LocalRespInst(REQ, WriteBackFull, UC,  I,  I, WB, HasData, rn = ChiResp.UC)    -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UC) | WriteDCU | WriOp(WriteNoSnpFull)),
-    LocalRespInst(REQ, WriteBackFull, UC,  I,  I, WB, HasData, rn = ChiResp.UD_PD) -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
-    LocalRespInst(REQ, WriteBackFull, SC,  I,  I, WB, HasData, rn = ChiResp.SC)    -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UC) | WriteDCU | WriOp(WriteNoSnpFull)),
-    LocalRespInst(REQ, WriteBackFull, SC, SC,  I, WB, HasData, rn = ChiResp.SC)    -> (WSFDir | WSDir | SrcState(I) | OthState(SC) | HnState(SC) | WriteDCU | WriOp(WriteNoSnpFull)),
-    LocalRespInst(REQ, WriteBackFull, SC, SC, SC, WB, HasData, rn = ChiResp.SC)    -> (WSFDir |         SrcState(I) | OthState(SC) | HnState(SC) | CleanDB),
-    LocalRespInst(REQ, WriteBackFull, SC, SC, SD, WB, HasData, rn = ChiResp.SC)    -> (WSFDir |         SrcState(I) | OthState(SC) | HnState(SD) | CleanDB),
-    LocalRespInst(REQ, WriteBackFull, SC,  I, SC, WB, HasData, rn = ChiResp.SC)    -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UC) | CleanDB),
-    LocalRespInst(REQ, WriteBackFull, SC,  I, SD, WB, HasData, rn = ChiResp.SC)    -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UD) | CleanDB),
+    LocalRespInst(REQ, WriteBackFull, UC,  I,  I, CB, HasData, rn = ChiResp.UC)    -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UC) | WriteDCU | WriOp(WriteNoSnpFull)),
+    LocalRespInst(REQ, WriteBackFull, UC,  I,  I, CB, HasData, rn = ChiResp.UD_PD) -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+    LocalRespInst(REQ, WriteBackFull, SC,  I,  I, CB, HasData, rn = ChiResp.SC)    -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UC) | WriteDCU | WriOp(WriteNoSnpFull)),
+    LocalRespInst(REQ, WriteBackFull, SC, SC,  I, CB, HasData, rn = ChiResp.SC)    -> (WSFDir | WSDir | SrcState(I) | OthState(SC) | HnState(SC) | WriteDCU | WriOp(WriteNoSnpFull)),
+    LocalRespInst(REQ, WriteBackFull, SC, SC, SC, CB, HasData, rn = ChiResp.SC)    -> (WSFDir |         SrcState(I) | OthState(SC) | HnState(SC) | CleanDB),
+    LocalRespInst(REQ, WriteBackFull, SC, SC, SD, CB, HasData, rn = ChiResp.SC)    -> (WSFDir |         SrcState(I) | OthState(SC) | HnState(SD) | CleanDB),
+    LocalRespInst(REQ, WriteBackFull, SC,  I, SC, CB, HasData, rn = ChiResp.SC)    -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UC) | CleanDB),
+    LocalRespInst(REQ, WriteBackFull, SC,  I, SD, CB, HasData, rn = ChiResp.SC)    -> (WSFDir | WSDir | SrcState(I) | OthState(I)  | HnState(UD) | CleanDB),
   )
 
   def table: Seq[(UInt, UInt)] = writeBackFull

@@ -156,6 +156,7 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule with HasPerfLogging {
   mshrAlloc_s0.mshrMes.mTag             := io.req2Exu.bits.pcuMes.mTag
   mshrAlloc_s0.chiMes.expCompAck        := io.req2Exu.bits.chiMes.expCompAck
   mshrAlloc_s0.chiMes.opcode            := io.req2Exu.bits.chiMes.opcode
+  mshrAlloc_s0.chiMes.fullSize          := io.req2Exu.bits.chiMes.fullSize
   mshrAlloc_s0.chiIndex                 := io.req2Exu.bits.chiIndex
   when(io.req2Exu.bits.chiMes.isReq & isWriteX(io.req2Exu.bits.chiMes.opcode)) {
     mshrAlloc_s0.respMes.slvDBID.valid  := true.B

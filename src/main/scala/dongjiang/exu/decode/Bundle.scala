@@ -21,11 +21,11 @@ object RespType {
   val NotResp       = "b0000".U
   val Snp           = "b0001".U
   val SnpFwd        = "b0010".U
-  val RD            = "b0100".U // Read Down
-  val WB            = "b1000".U // Write Back
+  val Read          = "b0100".U // Read
+  val CB            = "b1000".U // Copy Back
 
-  def Snp_RD        = Snp | RD
-  def SnpFwd_RD     = SnpFwd | RD
+  def Snp_RD        = Snp | Read
+  def SnpFwd_RD     = SnpFwd | Read
 
   def isSnpX(x: UInt) = x === Snp | x === SnpFwd
 }

@@ -267,7 +267,7 @@
 //
 //
 //// ------------------------------------------------------------ Assertion ----------------------------------------------- //
-//    assert(Mux(txReq.valid, txReq.bits.Size === log2Ceil(djparam.blockBytes).U, true.B))
+//    assert(Mux(txReq.valid, txReq.bits.Size === log2Ceil(blockBytes).U, true.B))
 //
 //    assert(Mux(rRespQ.io.enq.valid, rDatQ.io.enq.ready, true.B))
 //
