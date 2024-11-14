@@ -34,18 +34,17 @@ object DBState {
 
 class DBEntry(implicit p: Parameters) extends DJBundle with HasToIncoID {
   val state       = UInt(DBState.width.W)
-  val beatRNum    = UInt(log2Ceil(nrBeat).W)
+  val rBeatNum    = UInt(log2Ceil(nrBeat).W)
+  val rBeatOH     = UInt(2.W)
   val needClean   = Bool()
   val beats       = Vec(nrBeat, Valid(new Bundle {
     val data      = UInt(beatBits.W)
     val mask      = UInt(maskBits.W)
   })) // TODO: Reg -> SRAM
-  val rFullSize   = Bool()
-  val secBeat     = Bool() // Origin req get second beat
   val swapFirst   = Bool() // Only use in AtomicCompare
 
-  def getBeat     = beats(Mux(rFullSize & secBeat, 1.U, beatRNum)).bits
-  def isLast      = Mux(rFullSize, beatRNum === 1.U, beatRNum === 0.U)
+  def getBeat     = beats(Mux(rBeatOH === "b10".U, 1.U, rBeatNum)).bits
+  def isLast      = Mux(rBeatOH === "b11".U, rBeatNum === 1.U, rBeatNum === 0.U)
   def isFree      = state === DBState.FREE
   def isAlloc     = state === DBState.ALLOC
   def isRead      = state === DBState.READ
@@ -104,7 +103,8 @@ class DataBuffer()(implicit p: Parameters) extends DJModule with HasPerfLogging 
   when(io.dbRCReqOpt.get.fire) {
     entrys(io.dbRCReqOpt.get.bits.dbID).needClean := io.dbRCReqOpt.get.bits.isClean
     entrys(io.dbRCReqOpt.get.bits.dbID).to        := io.dbRCReqOpt.get.bits.to
-    entrys(io.dbRCReqOpt.get.bits.dbID).rFullSize := io.dbRCReqOpt.get.bits.rFullSize
+    entrys(io.dbRCReqOpt.get.bits.dbID).rBeatOH   := io.dbRCReqOpt.get.bits.rBeatOH
+    assert(Mux(io.dbRCReqOpt.get.bits.isRead, io.dbRCReqOpt.get.bits.rBeatOH =/= 0.U, true.B))
   }
   io.dbRCReqOpt.get.ready := entrys(io.dbRCReqOpt.get.bits.dbID).canRecReq
   when(io.dbRCReqOpt.get.valid) {
@@ -126,11 +126,11 @@ class DataBuffer()(implicit p: Parameters) extends DJModule with HasPerfLogging 
 
   io.dataFDB.valid            := readVec.reduce(_ | _) | readingVec.reduce(_ | _)
   io.dataFDB.bits.data        := entrys(selReadId).getBeat.data
-  io.dataFDB.bits.dataID      := toDataID(entrys(selReadId).beatRNum)
+  io.dataFDB.bits.dataID      := toDataID(entrys(selReadId).rBeatNum)
   io.dataFDB.bits.dbID        := selReadId
   io.dataFDB.bits.mask        := entrys(selReadId).getBeat.mask
   io.dataFDB.bits.to          := entrys(selReadId).to
-  entrys(selReadId).beatRNum  := entrys(selReadId).beatRNum + io.dataFDB.fire.asUInt
+  entrys(selReadId).rBeatNum  := entrys(selReadId).rBeatNum + io.dataFDB.fire.asUInt
 
   when(io.dataFDB.valid) {
     assert(entrys(io.dataFDB.bits.dbID).beats(toBeatNum(io.dataTDB.bits.dataID)).valid)
@@ -148,7 +148,6 @@ class DataBuffer()(implicit p: Parameters) extends DJModule with HasPerfLogging 
           val hit     = io.getDBID.fire & getDBIDId === i.U
           e           := 0.U.asTypeOf(e)
           e.state     := Mux(hit, DBState.ALLOC, e.state)
-          e.secBeat   := Mux(hit, io.getDBID.bits.secBeat, false.B)
           e.swapFirst := Mux(hit, io.getDBID.bits.swapFirst, false.B)
         }
         // ALLOC
@@ -175,7 +174,7 @@ class DataBuffer()(implicit p: Parameters) extends DJModule with HasPerfLogging 
           val read    = io.dbRCReqOpt.get.bits.isRead & hit
           val clean   = io.dbRCReqOpt.get.bits.isClean & hit
           e.state     := Mux(read, DBState.READ, Mux(clean, DBState.FREE, e.state))
-          e.beatRNum  := 0.U
+          e.rBeatNum  := 0.U
         }
       }
   }

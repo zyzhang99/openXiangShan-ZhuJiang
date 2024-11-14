@@ -16,7 +16,6 @@ class ExuChiMesBundle(implicit p: Parameters) extends DJBundle with HasCHIChanne
     val expCompAck      = Bool()
     // Common
     val opcode          = UInt(7.W)
-    val fullSize        = Bool()
 }
 
 class ExuRespMesBundle(implicit p: Parameters) extends DJBundle {

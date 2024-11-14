@@ -126,7 +126,7 @@ class SMEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle {
   def isResp2Exu      = entryMes.state === SMState.Resp2Exu
   def isWaitDBData    = entryMes.state === SMState.WriteData2Node
   def isRCDB          = entryMes.state === SMState.RCDB
-  def isLastBeat      = Mux(chiMes.fullSize, entryMes.getBeatNum === 1.U, entryMes.getBeatNum === 0.U)
+  def isLastBeat      = Mux(chiIndex.fullSize, entryMes.getBeatNum === 1.U, entryMes.getBeatNum === 0.U)
   def isReadReq       = isReadX(chiMes.opcode)
   def isWriteReq      = isWriteX(chiMes.opcode)
   def isReplReq       = isReplace(chiMes.opcode)
@@ -349,10 +349,9 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   entrySave.pcuIndex.dbID     := io.req2Intf.bits.pcuIndex.dbID
   entrySave.chiMes.resp       := io.req2Intf.bits.chiMes.resp
   entrySave.chiMes.opcode     := io.req2Intf.bits.chiMes.opcode
-  entrySave.chiMes.fullSize   := io.req2Intf.bits.chiMes.fullSize
   entrySave.chiIndex.nodeID   := io.req2Intf.bits.chiIndex.nodeID
   entrySave.chiIndex.txnID    := io.req2Intf.bits.chiIndex.txnID
-  entrySave.chiIndex.secBeat  := io.req2Intf.bits.chiIndex.secBeat
+  entrySave.chiIndex.beatOH   := io.req2Intf.bits.chiIndex.beatOH
   assert(Mux(io.req2Intf.valid, !io.req2Intf.bits.chiMes.expCompAck, true.B))
 
   /*
@@ -384,7 +383,6 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   io.dbSigs.getDBID.valid             := entryGetDBIDVec.reduce(_ | _)
   io.dbSigs.getDBID.bits.from         := param.intfID.U
   io.dbSigs.getDBID.bits.entryID      := entryGetDBID
-  io.dbSigs.getDBID.bits.secBeat      := entrys(entryGetDBID).chiIndex.secBeat
   io.dbSigs.getDBID.bits.swapFirst    := DontCare
 
   /*
@@ -407,7 +405,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   txReq.bits.TgtID        := entrys(entryReq2NodeID).fullTgtID(io.fIDVec)
   txReq.bits.TxnID        := Mux(entrys(entryReq2NodeID).entryMes.doDMT, entrys(entryReq2NodeID).mshrIndexTxnID, entryReq2NodeID)
   txReq.bits.SrcID        := io.hnfID
-  txReq.bits.Size         := Mux(entrys(entryReq2NodeID).chiMes.fullSize, chiFullSize.U, chiHalfSize.U)
+  txReq.bits.Size         := Mux(entrys(entryReq2NodeID).chiIndex.fullSize, chiFullSize.U, chiHalfSize.U)
   txReq.bits.MemAttr      := entrys(entryReq2NodeID).chiMes.resp // Multiplex MemAttr to transfer CHI State // Use in Read Req
   //                                                                     Read With DMT                                                                                    Replcae                                 Read Without DMT
   txReq.bits.ReturnNID    := Mux(entrys(entryReq2NodeID).entryMes.doDMT, getFullNodeID(entrys(entryReq2NodeID).chiIndex.nodeID), Mux(entrys(entryReq2NodeID).isRepl2Node, ddrcNodeId.U,                           io.hnfID))
@@ -436,7 +434,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   io.dbSigs.dbRCReq.bits.isClean    := true.B
   io.dbSigs.dbRCReq.bits.dbID       := entrys(entryRCDBID).pcuIndex.dbID
   io.dbSigs.dbRCReq.bits.to         := param.intfID.U
-  io.dbSigs.dbRCReq.bits.rFullSize  := entrys(entryRCDBID).chiMes.fullSize
+  io.dbSigs.dbRCReq.bits.rBeatOH    := entrys(entryRCDBID).chiIndex.beatOH
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //

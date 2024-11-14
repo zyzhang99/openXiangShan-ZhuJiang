@@ -248,14 +248,13 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   // taskSnp_s3
   taskSnp_s3.chiIndex.txnID       := task_s3_g.bits.chiIndex.txnID
   taskSnp_s3.chiIndex.nodeID      := snpNodeVec.asUInt
-  taskSnp_s3.chiIndex.secBeat     := false.B
+  taskSnp_s3.chiIndex.beatOH      := "b11".U
   taskSnp_s3.chiMes.channel       := CHIChannel.SNP
   taskSnp_s3.chiMes.doNotGoToSD   := true.B
   taskSnp_s3.chiMes.retToSrc      := decode_s3.retToSrc
   taskSnp_s3.chiMes.fwdState      := decode_s3.fwdState
   taskSnp_s3.chiMes.expCompAck    := false.B
   taskSnp_s3.chiMes.opcode        := decode_s3.snpOp
-  taskSnp_s3.chiMes.fullSize      := true.B
   taskSnp_s3.chiMes.resp          := DontCare
   taskSnp_s3.from                 := io.dcuID
   taskSnp_s3.to                   := IncoID.LOCALSLV.U
@@ -277,7 +276,6 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   taskRD_s3.chiMes.channel        := CHIChannel.REQ
   taskRD_s3.chiMes.expCompAck     := false.B
   taskRD_s3.chiMes.opcode         := decode_s3.rdOp
-  taskRD_s3.chiMes.fullSize       := task_s3_g.bits.chiMes.fullSize
   taskRD_s3.chiMes.resp           := ChiResp.UC
   taskRD_s3.from                  := io.dcuID
   taskRD_s3.to                    := IncoID.LOCALMST.U
@@ -302,7 +300,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   rcDBReq_s3.isRead     := decode_s3.rDB2Src
   rcDBReq_s3.isClean    := decode_s3.cleanDB
   rcDBReq_s3.dbID       := rcDBID
-  rcDBReq_s3.rFullSize  := task_s3_g.bits.chiMes.fullSize
+  rcDBReq_s3.rBeatOH    := task_s3_g.bits.chiIndex.beatOH
 
 
   /*
@@ -313,7 +311,6 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   readDCU_s3.chiMes.channel         := CHIChannel.REQ
   readDCU_s3.chiMes.expCompAck      := false.B
   readDCU_s3.chiMes.opcode          := decode_s3.rdOp
-  readDCU_s3.chiMes.fullSize        := task_s3_g.bits.chiMes.fullSize
   readDCU_s3.chiMes.resp            := decode_s3.resp
   readDCU_s3.from                   := io.dcuID
   readDCU_s3.to                     := IncoID.LOCALMST.U
@@ -330,10 +327,10 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   val snpRespHasData                = RespType.isSnpX(inst_s3.respType) & task_s3_g.bits.respMes.slvDBID.valid & !taskIsCB
   writeDCU_s3                       := DontCare
   writeDCU_s3.chiIndex              := task_s3_g.bits.chiIndex
+  writeDCU_s3.chiIndex.beatOH       := task_s3_g.bits.chiIndex.beatOH | Mux(snpRespHasData, "b11".U, "b00".U)
   writeDCU_s3.chiMes.channel        := CHIChannel.REQ
   writeDCU_s3.chiMes.expCompAck     := false.B
   writeDCU_s3.chiMes.opcode         := decode_s3.wdOp
-  writeDCU_s3.chiMes.fullSize       := task_s3_g.bits.chiMes.fullSize | snpRespHasData
   writeDCU_s3.from                  := io.dcuID
   writeDCU_s3.to                    := IncoID.LOCALMST.U
   writeDCU_s3.pcuIndex.mshrWay      := task_s3_g.bits.taskMes.mshrWay
@@ -348,10 +345,10 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
    */
   taskRepl_s3                       := DontCare
   taskRepl_s3.chiIndex              := task_s3_g.bits.chiIndex
+  taskRepl_s3.chiIndex.beatOH       := "b11".U; assert(Mux(todo_s3_replace, task_s3_g.bits.chiIndex.fullSize | snpRespHasData, true.B))
   taskRepl_s3.chiMes.channel        := CHIChannel.REQ
   taskRepl_s3.chiMes.expCompAck     := false.B
   taskRepl_s3.chiMes.opcode         := Replace
-  taskRepl_s3.chiMes.fullSize       := true.B; assert(Mux(todo_s3_replace, task_s3_g.bits.chiMes.fullSize | snpRespHasData, true.B))
   taskRepl_s3.from                  := io.dcuID
   taskRepl_s3.to                    := IncoID.LOCALMST.U
   taskRepl_s3.pcuIndex.mshrWay      := task_s3_g.bits.taskMes.mshrWay
@@ -398,7 +395,6 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   commit_s3.chiMes.channel        := decode_s3.respChnl
   commit_s3.chiMes.expCompAck     := task_s3_g.bits.chiMes.expCompAck
   commit_s3.chiMes.opcode         := decode_s3.respOp
-  commit_s3.chiMes.fullSize       := task_s3_g.bits.chiMes.fullSize
   commit_s3.chiMes.resp           := decode_s3.resp
   commit_s3.from                  := io.dcuID
   commit_s3.to                    := IncoID.LOCALSLV.U
@@ -413,12 +409,11 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   taskSnpEvict_s3                       := DontCare
   taskSnpEvict_s3.chiIndex.txnID        := task_s3_g.bits.chiIndex.txnID
   taskSnpEvict_s3.chiIndex.nodeID       := rnHitVec.asUInt
-  taskSnpEvict_s3.chiIndex.secBeat      := false.B
+  taskSnpEvict_s3.chiIndex.beatOH       := "b11".U
   taskSnpEvict_s3.chiMes.channel        := CHIChannel.SNP
   taskSnpEvict_s3.chiMes.doNotGoToSD    := true.B
   taskSnpEvict_s3.chiMes.retToSrc       := true.B
   taskSnpEvict_s3.chiMes.opcode         := SnpUnique
-  taskSnpEvict_s3.chiMes.fullSize       := true.B
   taskSnpEvict_s3.from                  := io.dcuID
   taskSnpEvict_s3.to                    := IncoID.LOCALSLV.U
   taskSnpEvict_s3.pcuIndex.mshrWay      := task_s3_g.bits.taskMes.mshrWay

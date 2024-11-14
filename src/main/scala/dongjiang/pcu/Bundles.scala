@@ -63,8 +63,11 @@ trait HasDcuID extends DJBundle { this: Bundle => val dcuID = UInt(dcuBankBits.W
 class ChiIndexBundle(implicit p: Parameters) extends DJBundle {
   val nodeID          = UInt(useNodeIdBits.W)
   val txnID           = UInt(chiTxnIdBits.W)
-  val secBeat         = Bool() // offset >= 0x20
+  val beatOH          = UInt(2.W)
   def snpCcMetaVec    = nodeID(nrCcNode - 1 ,0)
+  def fullSize        = beatOH === "b11".U
+  def fstBeat         = beatOH === "b01".U
+  def secBeat         = beatOH === "b10".U
 }
 
 class ChiMesBundle(implicit p: Parameters) extends DJBundle with HasCHIChannel {
@@ -77,7 +80,6 @@ class ChiMesBundle(implicit p: Parameters) extends DJBundle with HasCHIChannel {
   // Common
   val opcode          = UInt(7.W)
   val resp            = UInt(ChiResp.width.W)
-  val fullSize        = Bool()
 }
 
 // ---------------------------------------------------------------- PCU Base Bundle ----------------------------------------------------------------------------- //
@@ -156,8 +158,8 @@ trait HasMask extends DJBundle { this: Bundle =>
   val mask          = UInt(maskBits.W)
 }
 // DataBuffer Read/Clean Req
-class DBRCReq     (implicit p: Parameters)   extends DJBundle with HasDBRCOp with HasDBID with HasToIncoID { val rFullSize = Bool() }
-class GetDBID     (implicit p: Parameters)   extends DJBundle                             with HasFromIncoID with HasIntfEntryID { val secBeat = Bool(); val swapFirst = Bool() }
+class DBRCReq     (implicit p: Parameters)   extends DJBundle with HasDBRCOp with HasDBID with HasToIncoID { val rBeatOH = UInt(2.W) }
+class GetDBID     (implicit p: Parameters)   extends DJBundle                             with HasFromIncoID with HasIntfEntryID { val swapFirst = Bool() }
 class DBIDResp    (implicit p: Parameters)   extends DJBundle                with HasDBID with HasToIncoID   with HasIntfEntryID
 class NodeFDBData (implicit p: Parameters)   extends DJBundle with HasDBData with HasDBID with HasToIncoID   with HasMask
 class NodeTDBData (implicit p: Parameters)   extends DJBundle with HasDBData with HasDBID                    with HasMask
