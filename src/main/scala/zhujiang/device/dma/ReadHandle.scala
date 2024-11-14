@@ -52,7 +52,7 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
 
   val chiFreeVec     = chiEntrys.map(_.state === CHIRState.Free)
   val chiSendAckVec  = chiEntrys.map(_.state === CHIRState.sendCompAck)
-  val chiSendDatVec  = chiEntrys.map(c => c.state === CHIRState.SendData && c.num === 0.U)
+  val chiSendDatVec  = chiEntrys.map(c => c.state === CHIRState.SendData && c.num === 0.U && axiEntrys(c.areid).nid === 0.U)
 
   val selSendAckChiEntry = PriorityEncoder(chiSendAckVec)
   val selSendDatChiEntry = PriorityEncoder(chiSendDatVec)
@@ -72,7 +72,7 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
     chiEntrys(sramSelector.io.out0).full  := true.B
     chiEntrys(sramSelector.io.out0).last  := false.B
     chiEntrys(sramSelector.io.out0).num   := axiEntrys(selSendAxiEntry).sendReqNum - axiEntrys(selSendAxiEntry).sendDatNum - (io.axi_r.fire && 
-    io.axi_r.bits.id === axiEntrys(chiEntrys(sramSelector.io.out0).areid).arid && axiEntrys(chiEntrys(sramSelector.io.out1).areid).nid === 0.U).asUInt
+    io.axi_r.bits.id === axiEntrys(selSendAxiEntry).arid && axiEntrys(selSendAxiEntry).nid === 0.U).asUInt
     chiEntrys(sramSelector.io.out0).next  := sramSelector.io.out1
     chiEntrys(sramSelector.io.out0).state := CHIRState.Wait
 
@@ -80,7 +80,7 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
     chiEntrys(sramSelector.io.out1).full  := true.B
     chiEntrys(sramSelector.io.out1).last  := true.B
     chiEntrys(sramSelector.io.out1).num   := axiEntrys(selSendAxiEntry).sendReqNum + 1.U - axiEntrys(selSendAxiEntry).sendDatNum - (io.axi_r.fire &&
-    io.axi_r.bits.id === axiEntrys(chiEntrys(sramSelector.io.out1).areid).arid && axiEntrys(chiEntrys(sramSelector.io.out1).areid).nid === 0.U).asUInt
+    io.axi_r.bits.id === axiEntrys(selSendAxiEntry).arid && axiEntrys(selSendAxiEntry).nid === 0.U).asUInt
     chiEntrys(sramSelector.io.out1).state := CHIRState.Wait
 
     axiEntrys(selSendAxiEntry).addr       := axiEntrys(selSendAxiEntry).addr + 64.U 
@@ -89,7 +89,7 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
     chiEntrys(sramSelector.io.out0).full  := false.B
     chiEntrys(sramSelector.io.out0).last  := true.B
     chiEntrys(sramSelector.io.out0).num   := axiEntrys(selSendAxiEntry).sendReqNum - axiEntrys(selSendAxiEntry).sendDatNum - (io.axi_r.fire &&
-    io.axi_r.bits.id === axiEntrys(chiEntrys(sramSelector.io.out0).areid).arid && axiEntrys(chiEntrys(sramSelector.io.out0).areid).nid === 0.U).asUInt
+    io.axi_r.bits.id === axiEntrys(selSendAxiEntry).arid && axiEntrys(selSendAxiEntry).nid === 0.U).asUInt
     chiEntrys(sramSelector.io.out0).state := CHIRState.Wait
 
     axiEntrys(selSendAxiEntry).addr       := axiEntrys(selSendAxiEntry).addr + 32.U 
@@ -134,7 +134,7 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
   val axiRFlit     = Wire(new RFlit(axiParams))
   axiRFlit        := 0.U.asTypeOf(axiRFlit)
   axiRFlit.data   := sramRdDatReg
-  axiRFlit.id     := axiEntrys(chiEntrys(sramRdSet).areid).arid
+  axiRFlit.id     := axiEntrys(chiEntrys(sramRdSet).areid).arid 
   axiRFlit.last   := axiEntrys(chiEntrys(sramRdSet).areid).sendDatNum === axiEntrys(chiEntrys(sramRdSet).areid).len && axiEntrys(chiEntrys(sramRdSet).areid).state =/= AXIRState.Free
 
   when(io.chi_rxdat.fire && io.chi_rxdat.bits.DataID === 2.U){
@@ -174,13 +174,19 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
           a.sendDatNum := Mux(datNumAdd, a.sendDatNum + 1.U, a.sendDatNum)
         }
         is(AXIRState.Comp){
-          val hit = a.arid === io.axi_r.fire && io.axi_r.bits.id === a.arid && a.nid === 0.U && io.axi_r.bits.last
+          val hit = io.axi_r.fire && io.axi_r.bits.id === a.arid && a.nid === 0.U && io.axi_r.bits.last
           val datNumAdd = io.axi_r.fire && io.axi_r.bits.id === a.arid && a.nid === 0.U
           a.sendDatNum := Mux(datNumAdd, a.sendDatNum + 1.U, a.sendDatNum)
           when(hit){
             a := 0.U.asTypeOf(a)
           }
         }
+      }
+  }
+  axiEntrys.foreach{
+    case(a) =>
+      when(a.state =/= AXIRState.Free && a.nid =/= 0.U && io.axi_r.fire && io.axi_r.bits.last && io.axi_r.bits.id === a.arid){
+        a.nid := a.nid - 1.U
       }
   }
 
@@ -252,7 +258,6 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
 /* 
  * assert logic
  */
-  assert(PopCount(chiSendDatVec) === 0.U || PopCount(chiSendDatVec) === 1.U, "Num order is error")
   when(io.chi_rxdat.fire && io.chi_rxdat.bits.DataID === 0.U){
     assert(!chiEntrys(dataTxnid).haveRecDataFir, "CHIEntrys haveRecDataFir logic is error")
   }
