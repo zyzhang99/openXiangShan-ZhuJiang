@@ -333,7 +333,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   writeDCU_s3.chiMes.channel        := CHIChannel.REQ
   writeDCU_s3.chiMes.expCompAck     := false.B
   writeDCU_s3.chiMes.opcode         := decode_s3.wdOp
-  writeDCU_s3.chiMes.fullSize       := true.B; assert(Mux(todo_s3.writeDCU, task_s3_g.bits.chiMes.fullSize | snpRespHasData, true.B))
+  writeDCU_s3.chiMes.fullSize       := task_s3_g.bits.chiMes.fullSize | snpRespHasData
   writeDCU_s3.from                  := io.dcuID
   writeDCU_s3.to                    := IncoID.LOCALMST.U
   writeDCU_s3.pcuIndex.mshrWay      := task_s3_g.bits.taskMes.mshrWay

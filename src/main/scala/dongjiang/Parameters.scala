@@ -285,12 +285,12 @@ trait HasDJParam extends HasParseZJParam {
 
 
   // TIMEOUT CHECK CNT VALUE
-  lazy val TIMEOUT_DB       = 10000 + 10000 // DataBuffer
-  lazy val TIMEOUT_MSHR     = 8000  + 10000 // BlockTable
-  lazy val TIMEOUT_RSINTF   = 5000  + 10000 // Rn Slave Intf
-  lazy val TIMEOUT_SMINTF   = 5000  + 10000 // Sn Master Intf
-  lazy val TIMEOUT_RMINTF   = 5000  + 10000 // Rn Master Intf
-  lazy val TIMEOUT_MSLOCK   = 3000  + 10000 // MSHR Lock
+  lazy val TIMEOUT_MSHR     = 5000 + 10000 // MSHR
+  lazy val TIMEOUT_DB       = 5000 + 10000 // DataBuffer
+  lazy val TIMEOUT_RSINTF   =        10000 // Rn Slave Intf
+  lazy val TIMEOUT_SMINTF   =        10000 // Sn Master Intf
+  lazy val TIMEOUT_RMINTF   =        10000 // Rn Master Intf
+  lazy val TIMEOUT_MSLOCK   =        10000 // MSHR Lock
   lazy val TIMEOUT_PIPEEXU  = 3000          // Pipe Execute
 
   def parseFullAddr(x: UInt): (UInt, UInt, UInt, UInt, UInt, UInt) = {
@@ -313,7 +313,7 @@ trait HasDJParam extends HasParseZJParam {
     require(x.getWidth == useAddrBits)
     require(dcuBankID.getWidth == dcuBankBits)
     require(pcuBankID.getWidth == pcuBankBits)
-    val offset    = Mux(secBeat, beatBytes.U(offsetBits.W), 0.U(offsetBits))
+    val offset    = Mux(secBeat, beatBytes.U(offsetBits.W), 0.U(offsetBits.W))
     val addr0     = x(bankOff - offsetBits - 1, 0)
     val addr1     = x(useAddrBits - 1, bankOff - offsetBits)
     val ccxChipID = 0.U(cacheableBits.W)
@@ -363,13 +363,13 @@ trait HasDJParam extends HasParseZJParam {
     dcuAddr
   }
 
-  def parseDCUAddr(x: UInt): (Bool, UInt, UInt) = {
+  def parseDCUAddr(x: UInt): (UInt, UInt, UInt) = {
     require(x.getWidth == fullAddrBits)
     val dsBank  = x
     val dsIndex = dsBank    >> dsBankBits
-    val secBeat = dsIndex   >> dsIndexBits
-    // return: [1: secBeat] [2:dsIndex] [3:dsBank]
-    (secBeat(0).asBool ,dsIndex(dsIndexBits - 1, 0), dsBank(dsBankBits - 1, 0))
+    val beatOff = dsIndex   >> dsIndexBits
+    // return: [1: beatOff] [2:dsIndex] [3:dsBank]
+    (beatOff(0) ,dsIndex(dsIndexBits - 1, 0), dsBank(dsBankBits - 1, 0))
   }
 
   def toDataID(x: UInt): UInt = {

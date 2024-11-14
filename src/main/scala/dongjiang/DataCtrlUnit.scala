@@ -37,7 +37,7 @@ class DCUREntry(implicit p: Parameters) extends DJBundle {
   val returnNID         = UInt(fullNodeIdBits.W)
   val returnTxnID       = UInt(chiTxnIdBits.W)
   val resp              = UInt(ChiResp.width.W)
-  val fullSize          = Bool()
+  val beatOH            = UInt(2.W)
 }
 
 
@@ -69,15 +69,13 @@ class DCUWEntry(implicit p: Parameters) extends DJBundle {
   val srcID             = UInt(fullNodeIdBits.W)
   val txnID             = UInt(chiTxnIdBits.W)
   val returnTxnID       = UInt(chiTxnIdBits.W)
+  val beatOH            = UInt(2.W)
 
   def canWrite          = replRState === DCURState.Free
-  def isLast            = PopCount(beats.map(_.valid)) === (nrBeat - 1).U
 }
 
 
 
-// TODO: DMT
-// TODO: DWT
 /*
  * DCUs do not have sorting capabilities and must use the DWT transfer structure to sort by using Comp
  */
@@ -159,14 +157,14 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
   val sramWReadyVec         = Wire(Vec(djparam.nrDSBank, Bool()))
 
   // DataStorage
-  val ds                    = Seq.fill(djparam.nrDSBank) { Module(new DataStorage(sets = nrDSEntry)) }
-  val dsRespIdPipe          = Module(new Pipe(UInt(dsBankBits.W), latency = djparam.dcuSetup + djparam.dcuLatency + 1)) // Designed for timing optimization
+  val dsVec                 = Seq.fill(djparam.nrDSBank) { Seq.fill(nrBeat) { Module(new DataStorage(sets = nrDSEntry)) } }
+  val dsRespIdPipe          = Module(new Pipe(new Bundle { val id = UInt(dsBankBits.W); val beatOH = UInt(2.W) }, latency = djparam.dcuSetup + djparam.dcuLatency + 1)) // Designed for timing optimization
 
   // ChiRespQueue
   val rRespQ                = Module(new Queue(new DataFlit(), entries = djparam.nrDCURespQ, flow = false, pipe = true))
-  val rDatQ                 = Module(new Queue(Vec(nrBeat, UInt(beatBits.W)), entries = djparam.nrDCURespQ, flow = false, pipe = true))
+  val rDataQ                = Module(new Queue(new Bundle { val beats = Vec(2, UInt(beatBits.W)); val beatOH = UInt(2.W) }, entries = djparam.nrDCURespQ, flow = false, pipe = true))
   val sendBeatNumReg        = RegInit(0.U(1.W))
-  val dsRespVec             = Wire(Vec(djparam.nrDSBank, Valid(UInt(dataBits.W))))
+  val dsRespVec             = Wire(Vec(djparam.nrDSBank, Vec(nrBeat, Valid(UInt(dataBits.W)))))
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //
@@ -181,6 +179,7 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
   val selRecRID             = PriorityEncoder(rBufFreeVec)
   val reqIsW                = isWriteX(rxReq.bits.Opcode)
   val reqIsRepl             = isReplace(rxReq.bits.Opcode)
+  val beatOff               = parseDCUAddr(rxReq.bits.Addr)._1
   when(reqIsW | reqIsRepl) {
     rxReq.ready             := wBufFreeVec.reduce(_ | _)
   }.otherwise {
@@ -206,8 +205,8 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
   /*
     * Select Buf Send Req To SRAM
     */
-  sramRReadyVec             := ds.map(_.io.read.ready)
-  sramWReadyVec             := ds.map(_.io.write.ready)
+  sramRReadyVec             := dsVec.map(_.map(_.io.read.ready).reduce(_ & _))
+  sramWReadyVec             := dsVec.map(_.map(_.io.write.ready).reduce(_ & _))
 
   val willSendRVec          = rBufRegVec.map { case r => r.state === DCURState.ReadSram      & sramRReadyVec(r.dsBank) & rRespQ.io.enq.ready }
   val willSendReplVec       = wBufRegVec.map { case r => r.replRState === DCURState.ReadSram & sramRReadyVec(r.dsBank) & rRespQ.io.enq.ready }
@@ -219,21 +218,24 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
   val sramRead              = willSendRVec.reduce(_ | _)
   val sramRepl              = !sramRead & willSendReplVec.reduce(_ | _)
 
-  val sramRFire             = ds.map(_.io.read.fire).reduce(_ | _); assert(PopCount(ds.map(_.io.read.fire)) <= 1.U)
-  val sramWFire             = ds.map(_.io.write.fire).reduce(_ | _); assert(PopCount(ds.map(_.io.write.fire)) <= 1.U)
-  ds.zipWithIndex.foreach {
-    case(d, i) =>
-      d.io.read.valid       := (sramRead & rBufRegVec(sramRID).dsBank === i.U) | (sramRepl & wBufRegVec(sramReplID).dsBank === i.U)
-      d.io.read.bits        := Mux(sramRead, rBufRegVec(sramRID).dsIndex, wBufRegVec(sramReplID).dsIndex)
-      d.io.write.valid      := wBufRegVec(sramWID).dsBank === i.U &  willSendWVec.reduce(_ | _)
-      d.io.write.bits.index := wBufRegVec(sramWID).dsIndex
-      d.io.write.bits.data  := Cat(wBufRegVec(sramWID).beats.map(_.bits.data).reverse)
-      d.io.write.bits.mask  := Cat(wBufRegVec(sramWID).beats.map(_.bits.mask).reverse)
-      assert(wBufRegVec(sramWID).beats.map(_.valid).reduce(_ & _) | !d.io.write.valid)
+  val sramRFire             = dsVec.map(_.map(_.io.read.fire).reduce(_ | _)).reduce(_ | _); assert(PopCount(dsVec.map(_.map(_.io.read.fire).reduce(_ | _))) <= 1.U)
+  val sramWFire             = dsVec.map(_.map(_.io.write.fire).reduce(_ | _)).reduce(_ | _); assert(PopCount(dsVec.map(_.map(_.io.write.fire).reduce(_ | _))) <= 1.U)
+  dsVec.zipWithIndex.foreach {
+    case (ds, i) =>
+      ds.zipWithIndex.foreach {
+        case (d, j) =>
+          d.io.read.valid       := (sramRead & rBufRegVec(sramRID).dsBank === i.U & rBufRegVec(sramRID).beatOH(j)) | (sramRepl & wBufRegVec(sramReplID).dsBank === i.U)
+          d.io.read.bits        := Mux(sramRead, rBufRegVec(sramRID).dsIndex, wBufRegVec(sramReplID).dsIndex)
+          d.io.write.valid      := willSendWVec.reduce(_ | _) & wBufRegVec(sramWID).dsBank === i.U & wBufRegVec(sramWID).beatOH(j)
+          d.io.write.bits.index := wBufRegVec(sramWID).dsIndex
+          d.io.write.bits.beat  := wBufRegVec(sramWID).beats(j).bits.data
+          d.io.write.bits.mask  := wBufRegVec(sramWID).beats(j).bits.mask
+          assert(wBufRegVec(sramWID).beats(j).valid | !d.io.write.valid)
+    }
   }
-  dsRespIdPipe.io.enq.valid := sramRFire
-  dsRespIdPipe.io.enq.bits  := Mux(sramRead, rBufRegVec(sramRID).dsBank, wBufRegVec(sramReplID).dsBank)
-
+  dsRespIdPipe.io.enq.valid       := sramRFire
+  dsRespIdPipe.io.enq.bits.id     := Mux(sramRead, rBufRegVec(sramRID).dsBank, wBufRegVec(sramReplID).dsBank)
+  dsRespIdPipe.io.enq.bits.beatOH := Mux(sramRead, rBufRegVec(sramRID).beatOH, wBufRegVec(sramReplID).beatOH)
 
   /*
     * Get Read CHI Resp
@@ -266,9 +268,8 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
             r.returnNID := rxReq.bits.ReturnNID
             r.returnTxnID := rxReq.bits.ReturnTxnID
             r.resp      := rxReq.bits.MemAttr(ChiResp.width - 1, 0)
-            r.fullSize  := rxReq.bits.Size === chiFullSize.U
-            assert(!parseDCUAddr(rxReq.bits.Addr)._1)
-            assert(rxReq.bits.Size === chiFullSize.U, "TODO")
+            r.beatOH    := Mux(rxReq.bits.Size === chiFullSize.U, "b11".U, Cat(beatOff, !beatOff))
+            assert(Mux(rxReq.bits.Size === chiFullSize.U, !beatOff, true.B))
           }
         }
         is(DCURState.ReadSram) {
@@ -296,8 +297,9 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
             w.dsBank    := parseDCUAddr(rxReq.bits.Addr)._3
             w.srcID     := rxReq.bits.SrcID
             w.txnID     := rxReq.bits.TxnID
-            assert(!parseDCUAddr(rxReq.bits.Addr)._1)
-            assert(rxReq.bits.Size === chiFullSize.U)
+            w.beatOH    := Mux(rxReq.bits.Size === chiFullSize.U, "b11".U, Cat(beatOff, !beatOff))
+            assert(Mux(rxReq.bits.Size === chiFullSize.U, !beatOff, true.B))
+            assert(Mux(isReplace(rxReq.bits.Opcode), rxReq.bits.Size === chiFullSize.U, true.B))
           }
         }
         is(DCUWState.SendDBIDResp) {
@@ -309,10 +311,13 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
         is(DCUWState.WaitData) {
           val hit       = rxDat.fire & rxDat.bits.TxnID === i.U
           when(hit) {
-            w.state     := Mux(hit & w.isLast, DCUWState.WriteSram, w.state)
-            w.beats(toBeatNum(rxDat.bits.DataID)).valid     := true.B
-            w.beats(toBeatNum(rxDat.bits.DataID)).bits.data := rxDat.bits.Data
-            w.beats(toBeatNum(rxDat.bits.DataID)).bits.mask := rxDat.bits.BE
+            val beatNum = Mux(w.beatOH === "b10".U, 1.U, toBeatNum(rxDat.bits.DataID))
+            val isLast  = Mux(w.beatOH === "b11".U, PopCount(w.beats.map(_.valid)) === 1.U, true.B)
+
+            w.state     := Mux(hit & isLast, DCUWState.WriteSram, w.state)
+            w.beats(beatNum).valid     := true.B
+            w.beats(beatNum).bits.data := rxDat.bits.Data
+            w.beats(beatNum).bits.mask := rxDat.bits.BE
           }
         }
         is(DCUWState.WriteSram) {
@@ -363,36 +368,40 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
   /*
     * Receive SRAM Resp
     */
-  val dsRespID        = dsRespIdPipe.io.deq.bits
-  rDatQ.io.enq.valid  := dsRespIdPipe.io.deq.valid
-  dsRespVec           := ds.map(_.io.resp)
-  rDatQ.io.enq.bits.zipWithIndex.foreach { case (beat, i) =>
-    beat := dsRespVec(dsRespID).bits(beatBits * (i + 1) - 1, beatBits * i)
-  }
+  val dsRespID              = dsRespIdPipe.io.deq.bits.id
+  val dsRespOH              = dsRespIdPipe.io.deq.bits.beatOH
+  dsRespVec.zip(dsVec).foreach { case(a, b) => a := b.map(_.io.resp) }
+
+  rDataQ.io.enq.valid       := dsRespIdPipe.io.deq.valid
+  rDataQ.io.enq.bits.beats  := dsRespVec(dsRespID).map(_.bits)
+  rDataQ.io.enq.bits.beatOH := dsRespOH
   // assert
-  assert(Mux(dsRespIdPipe.io.deq.valid, PopCount(dsRespVec.map(_.valid)) === 1.U, PopCount(dsRespVec.map(_.valid)) === 0.U))
-  assert(Mux(dsRespIdPipe.io.deq.valid, OHToUInt(dsRespVec.map(_.valid)) === dsRespID, true.B))
+  assert(Mux(dsRespIdPipe.io.deq.valid, PopCount(dsRespVec.map(_.map(_.valid).reduce(_ | _))) === 1.U, PopCount(dsRespVec.map(_.map(_.valid).reduce(_ | _))) === 0.U))
+  assert(Mux(dsRespIdPipe.io.deq.valid, OHToUInt(PopCount(dsRespVec.map(_.map(_.valid).reduce(_ | _)))) === dsRespID, true.B))
+  assert(Mux(dsRespIdPipe.io.deq.valid, Cat(dsRespVec(dsRespID).map(_.valid)) === dsRespOH, true.B))
 
   /*
     * Send Resp To CHI RxDat
     */
-  sendBeatNumReg      := sendBeatNumReg + txDat.fire.asUInt
-  txDat.valid         := rRespQ.io.deq.valid & rDatQ.io.deq.valid
+  val sendBeat        = Mux(rDataQ.io.deq.bits.beatOH === "b10".U, 1.U, sendBeatNumReg)
+  val sendIsLast      = Mux(rDataQ.io.deq.bits.beatOH === "b11".U, 1.U, 0.U)
+  sendBeatNumReg      := Mux(rDataQ.io.deq.fire, 0.U, sendBeatNumReg + txDat.fire.asUInt)
+
+  txDat.valid         := rRespQ.io.deq.valid & rDataQ.io.deq.valid
   txDat.bits          := Mux(txDat.valid, rRespQ.io.deq.bits, 0.U.asTypeOf(txDat.bits))
-  txDat.bits.Data     := rDatQ.io.deq.bits(sendBeatNumReg)
+  txDat.bits.Data     := rDataQ.io.deq.bits.beats(sendBeat)
   txDat.bits.DataID   := toDataID(sendBeatNumReg)
   txDat.bits.BE       := Fill(rxDat.bits.BE.getWidth, 1.U(1.W))
 
-  rRespQ.io.deq.ready := sendBeatNumReg === (nrBeat - 1).U & txDat.fire
-  rDatQ.io.deq.ready  := sendBeatNumReg === (nrBeat - 1).U & txDat.fire
-
+  rRespQ.io.deq.ready := sendBeatNumReg === sendIsLast & txDat.fire
+  rDataQ.io.deq.ready := sendBeatNumReg === sendIsLast & txDat.fire
 
 
 // ------------------------------------------------------------ Assertion ----------------------------------------------- //
 
   assert(Mux(rxReq.valid, rxReq.bits.Addr(fullAddrBits - 1, fullAddrBits - sTagBits) === 0.U, true.B))
 
-  assert(Mux(rDatQ.io.enq.valid, rDatQ.io.enq.ready, true.B))
+  assert(Mux(rDataQ.io.enq.valid, rDataQ.io.enq.ready, true.B))
 
   assert(Mux(rxReq.valid, rxReq.bits.Opcode === ReadNoSnp | rxReq.bits.Opcode === WriteNoSnpFull | rxReq.bits.Opcode === Replace, true.B))
 
