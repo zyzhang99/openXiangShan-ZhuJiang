@@ -102,6 +102,7 @@ object ReqOpcode {
   def isWriUniX (x: UInt): Bool = x === WriteUniqueFull | x === WriteUniquePtl
   def isWriXPtl (x: UInt): Bool = x === WriteUniquePtl | x === WriteNoSnpPtl
   def isWriXFull(x: UInt): Bool = x === WriteUniqueFull | x === WriteBackFull
+  def isCMO     (x: UInt): Bool = x === CleanShared | x === CleanInvalid | x === MakeInvalid
   def isAtomicX (x: UInt): Bool = AtomicStoreADD <= x & x <= AtomicCompare
   def isReplace (x: UInt): Bool = x === Replace
 }
@@ -176,8 +177,8 @@ object SnpOpcode {
   val SnpUniqueEvict = 0x18.U(width.W)
 
   def isSnpXFwd        (x: UInt): Bool = x >= SnpSharedFwd & x =/= SnpPreferUnique
-  def isSnpToInvalid   (x: UInt): Bool = x === SnpUnique | x === SnpUniqueFwd | x === SnpMakeInvalid | x === SnpUniqueEvict
-  def isSnpToShare     (x: UInt): Bool = x === SnpNotSharedDirty | x === SnpNotSharedDirtyFwd
+  def isSnpToInvalid   (x: UInt): Bool = x === SnpUnique | x === SnpUniqueFwd | x === SnpMakeInvalid | x === SnpUniqueEvict | x === SnpCleanInvalid
+  def isSnpToShare     (x: UInt): Bool = x === SnpNotSharedDirty | x === SnpNotSharedDirtyFwd | x === SnpCleanShared
   def isSnpOnce        (x: UInt): Bool = x === SnpOnce
   def isLegalSnpOpInPCU(x: UInt): Bool = isSnpToShare(x) | isSnpToInvalid(x)
 

@@ -62,6 +62,9 @@ trait HasOperationsBundle extends Bundle {
   val readDown    = Bool()
   val writeDown   = Bool()
 
+  // Send Flush to DCU
+  val flush       = Bool()
+
   // Read DataBuffer to Send Data to Resp Node
   val rDB2Src     = Bool() // Read DataBuffer to Req Src
   val cleanDB     = Bool() // Clean DataBuffer
@@ -147,6 +150,7 @@ object Code {
   def Snoop            : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.snoop := true.B;        temp.asUInt }
   def ReadDown         : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.readDown := true.B;     temp.asUInt }
   def WriteDown        : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.writeDown := true.B;    temp.asUInt }
+  def Flush            : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.flush := true.B;        temp.asUInt }
   def RDB2Src          : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.rDB2Src := true.B;      temp.asUInt }
   def CleanDB          : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.cleanDB := true.B;      temp.asUInt }
   def ReadDCU          : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.readDCU := true.B;      temp.asUInt }
@@ -160,7 +164,7 @@ object Code {
   def Resp    (x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.resp := x;              temp.asUInt }
   def FwdState(x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.fwdState := x;          temp.asUInt }
   def SnpOp   (x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.snpOp := x;             temp.asUInt }
-  def retToSrc         : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.retToSrc := true.B;     temp.asUInt }
+  def RetToSrc         : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.retToSrc := true.B;     temp.asUInt }
   def ReadOp  (x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.rdOp := x;              temp.asUInt }
   def WriOp   (x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.wdOp := x;              temp.asUInt }
   def HnState (x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.hnState := x;           temp.asUInt }

@@ -68,7 +68,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   val decode_s3           = Wire(new DecodeBundle()); dontTouch(decode_s3)
   // s3 execute signals: Set specific tasks value
   val dbid_s3             = Wire(UInt(dbIdBits.W)); dontTouch(decode_s3)
-  val taskSnp_s3          = WireInit(0.U.asTypeOf(new Req2IntfBundle()))
+  val taskSnp_s3          = Wire(new Req2IntfBundle())
   val taskRD_s3           = WireInit(0.U.asTypeOf(new Req2IntfBundle()))
   val taskWD_s3           = WireInit(0.U.asTypeOf(new Req2IntfBundle()))
   val rcDBReq_s3          = WireInit(0.U.asTypeOf(new DBRCReq()))
@@ -76,6 +76,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   val writeDCU_s3         = WireInit(0.U.asTypeOf(new Req2IntfBundle()))
   val wSDir_s3            = WireInit(0.U.asTypeOf(io.dirWrite.s.bits))
   val wSFDir_s3           = WireInit(0.U.asTypeOf(io.dirWrite.sf.bits))
+  val flush_s3            = WireInit(0.U.asTypeOf(new Req2IntfBundle()))
   val commit_s3           = WireInit(0.U.asTypeOf(new Resp2IntfBundle()))
   val taskRepl_s3         = WireInit(0.U.asTypeOf(new Req2IntfBundle()))
   val taskSnpEvict_s3     = WireInit(0.U.asTypeOf(new Req2IntfBundle()))
@@ -241,7 +242,11 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   val snpToShare      = isSnpToShare(getSnpOp(task_s3_g.bits.chiMes.opcode))
   val snpToOnce       = isSnpOnce(getSnpOp(task_s3_g.bits.chiMes.opcode))
   when(snpToInvalid) {
-    snpNodeVec        := rnHitWithoutSrc
+    when(isCMO(task_s3_g.bits.chiMes.opcode)) {
+      snpNodeVec      := rnHitVec
+    }.otherwise {
+      snpNodeVec      := rnHitWithoutSrc
+    }
   }.elsewhen(snpToShare) {
     snpNodeVec        := PriorityEncoderOH(rnHitWithoutSrc) // TODO: Can be Optimized
   }.elsewhen(snpToOnce){
@@ -406,10 +411,13 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
       }
   }
 
-
+ /*
+  * Send Flush to DCU
+  */
+  assert(!todo_s3.flush | !valid_s3)
 
   /*
-   * Send Commit to S4
+   * Send Commit to Intf
    */
   commit_s3                       := DontCare
   commit_s3.chiIndex              := task_s3_g.bits.chiIndex
