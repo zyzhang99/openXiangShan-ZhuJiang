@@ -178,6 +178,7 @@ object SnpOpcode {
   def isSnpXFwd        (x: UInt): Bool = x >= SnpSharedFwd & x =/= SnpPreferUnique
   def isSnpToInvalid   (x: UInt): Bool = x === SnpUnique | x === SnpUniqueFwd | x === SnpMakeInvalid | x === SnpUniqueEvict
   def isSnpToShare     (x: UInt): Bool = x === SnpNotSharedDirty | x === SnpNotSharedDirtyFwd
+  def isSnpOnce        (x: UInt): Bool = x === SnpOnce
   def isLegalSnpOpInPCU(x: UInt): Bool = isSnpToShare(x) | isSnpToInvalid(x)
 
   def getSnpOp(x: UInt): UInt = {
@@ -186,6 +187,9 @@ object SnpOpcode {
       is(ReqOpcode.ReadNotSharedDirty) { snpOp := SnpNotSharedDirty }
       is(ReqOpcode.ReadUnique)         { snpOp := SnpUnique }
       is(ReqOpcode.MakeUnique)         { snpOp := SnpMakeInvalid }
+      is(ReqOpcode.ReadOnce)           { snpOp := SnpOnce }
+      is(ReqOpcode.WriteUniqueFull)    { snpOp := SnpMakeInvalid }
+      is(ReqOpcode.WriteNoSnpPtl)      { snpOp := SnpUnique }
     }
     snpOp
   }
@@ -195,7 +199,7 @@ object SnpOpcode {
     switch(x) {
       is(ReqOpcode.ReadNotSharedDirty) { snpOp := SnpNotSharedDirtyFwd }
       is(ReqOpcode.ReadUnique)         { snpOp := SnpUniqueFwd }
-      is(ReqOpcode.MakeUnique)         { snpOp := 0x1F.U }
+      is(ReqOpcode.ReadOnce)           { snpOp := SnpOnceFwd }
     }
     snpOp
   }

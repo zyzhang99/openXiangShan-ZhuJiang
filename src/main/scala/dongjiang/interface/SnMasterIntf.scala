@@ -407,6 +407,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   txReq.bits.SrcID        := io.hnfID
   txReq.bits.Size         := Mux(entrys(entryReq2NodeID).chiIndex.fullSize, chiFullSize.U, chiHalfSize.U)
   txReq.bits.MemAttr      := entrys(entryReq2NodeID).chiMes.resp // Multiplex MemAttr to transfer CHI State // Use in Read Req
+  txReq.bits.Order        := DontCare // TODO
   //                                                                     Read With DMT                                                                                    Replcae                                 Read Without DMT
   txReq.bits.ReturnNID    := Mux(entrys(entryReq2NodeID).entryMes.doDMT, getFullNodeID(entrys(entryReq2NodeID).chiIndex.nodeID), Mux(entrys(entryReq2NodeID).isRepl2Node, ddrcNodeId.U,                           io.hnfID))
   txReq.bits.ReturnTxnID  := Mux(entrys(entryReq2NodeID).entryMes.doDMT, entrys(entryReq2NodeID).chiIndex.txnID,                 Mux(entrys(entryReq2NodeID).isRepl2Node, entrys(entryReq2NodeID).chiIndex.txnID, entryReq2NodeID))
