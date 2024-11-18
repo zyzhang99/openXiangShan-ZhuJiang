@@ -20,22 +20,26 @@ import xs.utils.perf.{DebugOptions, DebugOptionsKey, HasPerfLogging}
  * ************************************************************** State transfer ***********************************************************************************
  * Req Contain Read and Dataless
  * Req Retry:             [Free]  -----> [Req2Exu] -----> [WaitExuAck] ---retry---> [Req2Exu]
- * Req Receive:           [Free]  -----> [Req2Exu] -----> [WaitExuAck] --receive--> [Free]
+ * Req Receive:           [Free]  -----> [Req2Exu] -----> [WaitExuAck] --receive--> ([waitSendRRec]) -----> [Free]
  *
  *
- * Resp:                  [Free]  -----> [Resp2Node] -----> [WaitCompAck]
+ * Resp:                  [Free]  -----> [Resp2Node] -----> [WaitCompAck] -----> [Free]
  *
  *
  * Write Retry:           [Free]  -----> [GetDBID] -----> [WaitDBID] -----> [DBIDResp2Node] -----> [WaitData] -----> [Req2Exu] -----> [WaitExuAck] ---retry---> [Req2Exu]
- * Write:                 [Free]  -----> [GetDBID] -----> [WaitDBID] -----> [DBIDResp2Node] -----> [WaitData] -----> [Req2Exu] -----> [WaitExuAck] --receive--> [Free]
- * Write Nest By Snp case:          ^                 ^                     ^                 ^                 ^                ^
- *                              waitWBDone       waitWBDone             waitWBDone        waitWBDone  -----> trans2Snp        trans2Snp
+ * Write:                 [Free]  -----> [GetDBID] -----> [WaitDBID] -----> [DBIDResp2Node] -----> [WaitData] -----> [Req2Exu] -----> [WaitExuAck] --receive--> [Comp2Node] -----> [WaitCompAck] -----> [Free]
+ *
+ *
+ * CopyBack Retry:        [Free]  -----> [GetDBID] -----> [WaitDBID] -----> [DBIDResp2Node] -----> [WaitData] -----> [Req2Exu] -----> [WaitExuAck] ---retry---> [Req2Exu]
+ * CopyBack:              [Free]  -----> [GetDBID] -----> [WaitDBID] -----> [DBIDResp2Node] -----> [WaitData] -----> [Req2Exu] -----> [WaitExuAck] --receive--> [Free]
+ * CopyBack Nest By Snp case:       ^                ^                 ^                      ^                 ^                ^
+ *                              waitWBDone       waitWBDone        waitWBDone             waitWBDone  -----> trans2Snp        trans2Snp
  *
  *
  * Snoop Need Data:       [Free]  -----> [GetDBID] -----> [WaitDBID] -----> [Snp2Node] -----> ([Snp2NodeIng]) -----> [WaitSnpResp] -----> [Resp2Exu] // TODO: cant send snoop to node when has resp with same addr in the entry
  * Snoop No Need Data:    [Free]                   ----->                   [Snp2Node] -----> ([Snp2NodeIng]) -----> [WaitSnpResp] -----> [Resp2Exu]
- * Snoop Nest Write 0:    [XXXX]                   ----->                   [Snp2Node] -----> ([Snp2NodeIng]) -----> [WaitSnpResp] -----> [Resp2Exu]
- * Snoop Nest Write 1:    [XXXX]                   ----->                                                                                 [Resp2Exu] * only need to snp one node
+ * Snoop Nest CopyBack 0: [XXXX]                   ----->                   [Snp2Node] -----> ([Snp2NodeIng]) -----> [WaitSnpResp] -----> [Resp2Exu]
+ * Snoop Nest CopyBack 1: [XXXX]                   ----->                                                                                 [Resp2Exu] * only need to snp one node
  *                                                   ^
  *                                                trans2Snp
  *
@@ -43,18 +47,24 @@ import xs.utils.perf.{DebugOptions, DebugOptionsKey, HasPerfLogging}
  *
  * ************************************************************** Entry Transfer ********************************************************************************
  * Req:
- * [------] <- Req0x0 | [Req0x0] -> Req to EXU   | [------] <- Resp from EXU | [Rsp0x0] -> resp to node
+ * [------] <- Req0x0 | [Req0x0] -> Req to EXU   | [------] <- Resp from EXU   | [Rsp0x0] -> resp to node
+ * [------]           | [------]                 | [------]                    | [------]
+ * [------]           | [------]                 | [------]                    | [------]
+ * [------]           | [------]                 | [------]                    | [------]
+ *
+ *
+ * CopyBack:
+ * [------] <- CB 0x0 | [CB 0x0] -> Wri to EXU   | [------]                    | [------]
  * [------]           | [------]                 | [------]                    | [------]
  * [------]           | [------]                 | [------]                    | [------]
  * [------]           | [------]                 | [------]                    | [------]
  *
  *
  * Write:
- * [------] <- Wri0x0 | [Wri0x0] -> Wri to EXU   | [Wri0x0] <- Resp from EXU | [------]
+ * [------] <- Wri0x0 | [Wri0x0] -> Wri to EXU   | [------] <- CompAck from node | [------]
  * [------]           | [------]                 | [------]                    | [------]
  * [------]           | [------]                 | [------]                    | [------]
  * [------]           | [------]                 | [------]                    | [------]
- *
  *
  * Snoop:
  * [Snp0x0] <- Snp0x0 | [Snp0x0] -> Snp to node  | [Snp0x0] <- Resp from node  | [------] -> resp to EXU
@@ -63,16 +73,23 @@ import xs.utils.perf.{DebugOptions, DebugOptionsKey, HasPerfLogging}
  * [------]           | [------]                 | [------]                    | [------]
  *
  *
- * * Req Nest By Snp:
+ * Req Nest By Snp:
  * [------] <- Req0x0 | [Req0x0]                 | [Req0x0] need to wait snoop done
  * [------]           | [------] <-Snp0x0        | [Snp0x0]
  * [------]           | [------]                 | [------]
  * [------]           | [------]                 | [------]
  *
  *
- * * Write Nest By Snp:
- * [------] <- Wri0x0 | [Wri0x0] <-Snp0x0        | [Wri0x0] need to wait write done and transfer write to snoop
+ * CopyBack Nest By Snp:
+ * [------] <- CB 0x0 | [CB 0x0] <-Snp0x0        | [CB 0x0] need to wait write done and transfer write to snoop
  * [------]           | [------]                 | [------]
+ * [------]           | [------]                 | [------]
+ * [------]           | [------]                 | [------]
+ *
+ *
+ * Write Nest By Snp:
+ * [------] <- Wri0x0 | [Wri0x0]                 | [Wri0x0] need to wait snoop done
+ * [------]           | [------] <-Snp0x0        | [Snp0x0]
  * [------]           | [------]                 | [------]
  * [------]           | [------]                 | [------]
  *
@@ -144,6 +161,7 @@ object RSState {
   val Free            = "b0000".U // 0x0
   val Req2Exu         = "b0001".U // 0x1
   val WaitExuAck      = "b0010".U // 0x2
+  val WaitSendRRec    = "b0011".U // 0x3
   val Resp2Node       = "b0101".U // 0x5
   val WaitCompAck     = "b0110".U // 0x6
   val Resp2Exu        = "b0111".U // 0x7
@@ -167,6 +185,7 @@ class RSEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle  {
     val getBeatNum    = UInt(1.W)
     val getSnpRespOH  = UInt(nrCcNode.W)
     val snpFwdWaitAck = Bool() // CompAck
+    val needSendRRec  = Bool()
     val nestMes       = new Bundle {
       val waitWBDone  = Bool()
       val trans2Snp   = Bool()
@@ -176,7 +195,7 @@ class RSEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle  {
   def state         = entryMes.state
   def isFree        = entryMes.state === RSState.Free
   def isReqBeSend   = entryMes.state === RSState.Req2Exu    & !entryMes.nestMes.asUInt.orR & entryMes.nID === 0.U
-  def isRspBeSend   = (entryMes.state === RSState.Resp2Node & chiMes.isRsp) | entryMes.state === RSState.DBIDResp2Node
+  def isRspBeSend   = (entryMes.state === RSState.Resp2Node & chiMes.isRsp) | entryMes.state === RSState.DBIDResp2Node | entryMes.needSendRRec
   def isDatBeSend   = entryMes.state === RSState.Resp2Node  & chiMes.isDat
   def isGetDBID     = entryMes.state === RSState.GetDBID    & entryMes.nID === 0.U
   def isSendSnp     = entryMes.state === RSState.Snp2Node
@@ -212,6 +231,8 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   val entryRecChiDatID  = Wire(UInt(param.entryIdBits.W))
   // ENTRY Send Resp To EXU ID
   val entryResp2ExuID   = Wire(UInt(param.entryIdBits.W))
+  // ENTRY Send Resp To Node ID
+  val entrySendRspID    = Wire(UInt(param.entryIdBits.W))
   // req/resp from EXU or rxReq
   val entrySave         = WireInit(0.U.asTypeOf(new RSEntry(param)))
   // snp to node
@@ -321,6 +342,9 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
       // Get CompAck
       }.elsewhen(rxRsp.fire & entryRecChiRspID === i.U & !rspIsDMTComp & rxRsp.bits.Opcode === CompAck) {
         entryMes.snpFwdWaitAck  := false.B
+      // Send ReadReceipt
+      }.elsewhen(txRsp.fire & entrySendRspID === i.U & txRsp.bits.Opcode === ReadReceipt) {
+        entryMes.needSendRRec   := false.B
       }
 
       // ---------------------------------------------------- Set Task NID ------------------------------------------------- //
@@ -395,16 +419,16 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
         is(RSState.Free) {
           val hit       = entryFreeID === i.U
           val reqHit    = rxReq.fire & !isWriteX(rxReq.bits.Opcode) & hit
-          val writeHit  = rxReq.fire & isWriteX(rxReq.bits.Opcode) & hit
+          val cbOrWriHit= rxReq.fire & isWriteX(rxReq.bits.Opcode) & hit
           val snpHit    = io.req2Intf.fire & hit
           val respHit   = io.resp2Intf.fire & hit
           val ret2Src   = io.req2Intf.bits.chiMes.retToSrc
           state         := Mux(reqHit, RSState.Req2Exu,
                             Mux(snpHit & ret2Src, RSState.GetDBID,
                               Mux(snpHit & !ret2Src, RSState.Snp2Node,
-                                Mux(writeHit, RSState.GetDBID,
+                                Mux(cbOrWriHit, RSState.GetDBID,
                                     Mux(respHit, RSState.Resp2Node, state)))))
-          assert(PopCount(Seq(reqHit, writeHit, snpHit, respHit)) <= 1.U, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          assert(PopCount(Seq(reqHit, cbOrWriHit, snpHit, respHit)) <= 1.U, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
         }
         // State: Req2Exu
         is(RSState.Req2Exu) {
@@ -414,12 +438,17 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
         // State: WaitExuAck
         is(RSState.WaitExuAck) {
           val hit       = io.reqAck2Intf.fire & io.reqAck2Intf.bits.entryID === i.U
-          state         := Mux(hit, Mux(io.reqAck2Intf.bits.retry, RSState.Req2Exu, RSState.Free), state)
+          state         := Mux(hit, Mux(io.reqAck2Intf.bits.retry, RSState.Req2Exu, Mux(entrys(i).entryMes.needSendRRec, RSState.WaitSendRRec, RSState.Free)), state)
+        }
+        // State: WaitSendRRec
+        is(RSState.WaitSendRRec) {
+          val hit = !entrys(i).entryMes.needSendRRec | (txRsp.fire & entrySendRspID === i.U); assert(Mux(txRsp.fire & entrySendRspID === i.U, txRsp.bits.Opcode === ReadReceipt, true.B))
+          state := Mux(hit, RSState.Free, state)
         }
         // State: Resp2Node
         is(RSState.Resp2Node) {
           val txDatHit  = txDat.fire & txDat.bits.DBID === i.U & toBeatNum(txDat.bits.DataID) === (nrBeat - 1).U
-          val txRspHit  = txRsp.fire & txRsp.bits.DBID === i.U
+          val txRspHit  = txRsp.fire & entrySendRspID === i.U; assert(txRsp.bits.Opcode === Comp | !txRspHit)
           val expAck    = entrys(i).chiMes.expCompAck
           state         := Mux(txDatHit | txRspHit, Mux(expAck, RSState.WaitCompAck, RSState.Free), state)
         }
@@ -441,7 +470,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
         }
         // State: DBIDResp2Node
         is(RSState.DBIDResp2Node) {
-          val hit       = txRsp.fire & txRsp.bits.DBID === i.U
+          val hit       = txRsp.fire & entrySendRspID === i.U; assert(txRsp.bits.Opcode === CompDBIDResp | txRsp.bits.Opcode === DBIDResp | !hit)
           state         := Mux(hit, RSState.WaitData, state)
         }
         // State: WaitData
@@ -501,6 +530,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   entrySave.entryMes.useAddr      := Mux(respVal, 0.U,                                  Mux(snpVal, io.req2Intf.bits.pcuMes.useAddr,      parseFullAddr(rxReq.bits.Addr)._6))
   entrySave.entryMes.dcuID        := Mux(respVal, io.resp2Intf.bits.from,               Mux(snpVal, io.req2Intf.bits.from,                parseFullAddr(rxReq.bits.Addr)._3))
   entrySave.entryMes.snpFwdWaitAck:= Mux(respVal, false.B,                              Mux(snpVal, isSnpXFwd(io.req2Intf.bits.chiMes.opcode), false.B))
+  entrySave.entryMes.needSendRRec := Mux(respVal, false.B,                              Mux(snpVal, false.B,                              rxReq.bits.Opcode === ReadOnce))
   entrySave.pcuIndex.mshrWay      := Mux(respVal, DontCare,                             Mux(snpVal, io.req2Intf.bits.pcuIndex.mshrWay,    DontCare))
   entrySave.pcuIndex.dbID         := Mux(respVal, io.resp2Intf.bits.pcuIndex.dbID,      Mux(snpVal, 0.U,                                  0.U))
   entrySave.chiIndex.txnID        := Mux(respVal, io.resp2Intf.bits.chiIndex.txnID,     Mux(snpVal, io.req2Intf.bits.chiIndex.txnID,      rxReq.bits.TxnID))
@@ -581,17 +611,18 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   /*
    * Select one Entry to Send RxRsp
    */
-  val rspBeSendVec   = entrys.map { case p => p.isRspBeSend}
-  val rspSelId       = PriorityEncoder(rspBeSendVec)
+  val rspBeSendVec   = entrys.map { case p => p.isRspBeSend }
+  entrySendRspID     := PriorityEncoder(rspBeSendVec)
 
   txRsp.valid        := rspBeSendVec.reduce(_ | _)
   txRsp.bits         := DontCare
-  txRsp.bits.Opcode  := Mux(entrys(rspSelId).chiMes.isRsp, entrys(rspSelId).chiMes.opcode,                  CompDBIDResp)
-  txRsp.bits.TgtID   := Mux(entrys(rspSelId).chiMes.isRsp, getFullNodeID(entrys(rspSelId).chiIndex.nodeID), getFullNodeID(entrys(rspSelId).chiIndex.nodeID))
-  txRsp.bits.SrcID   := Mux(entrys(rspSelId).chiMes.isRsp, io.hnfID,                                        io.hnfID)
-  txRsp.bits.TxnID   := Mux(entrys(rspSelId).chiMes.isRsp, entrys(rspSelId).chiIndex.txnID,                 entrys(rspSelId).chiIndex.txnID)
-  txRsp.bits.DBID    := Mux(entrys(rspSelId).chiMes.isRsp, rspSelId,                                        rspSelId)
-  txRsp.bits.Resp    := Mux(entrys(rspSelId).chiMes.isRsp, entrys(rspSelId).chiMes.resp,                    DontCare)
+  //                                                             req resp                                                                                                   dbid resp                                               read receipt
+  txRsp.bits.Opcode  := Mux(entrys(entrySendRspID).chiMes.isRsp, entrys(entrySendRspID).chiMes.opcode,                  Mux(isWriteX(entrys(entrySendRspID).chiMes.opcode), CompDBIDResp,                                           ReadReceipt))
+  txRsp.bits.TgtID   := Mux(entrys(entrySendRspID).chiMes.isRsp, getFullNodeID(entrys(entrySendRspID).chiIndex.nodeID), Mux(isWriteX(entrys(entrySendRspID).chiMes.opcode), getFullNodeID(entrys(entrySendRspID).chiIndex.nodeID),  getFullNodeID(entrys(entrySendRspID).chiIndex.nodeID)))
+  txRsp.bits.SrcID   := Mux(entrys(entrySendRspID).chiMes.isRsp, io.hnfID,                                              Mux(isWriteX(entrys(entrySendRspID).chiMes.opcode), io.hnfID,                                               io.hnfID))
+  txRsp.bits.TxnID   := Mux(entrys(entrySendRspID).chiMes.isRsp, entrys(entrySendRspID).chiIndex.txnID,                 Mux(isWriteX(entrys(entrySendRspID).chiMes.opcode), entrys(entrySendRspID).chiIndex.txnID,                  entrys(entrySendRspID).chiIndex.txnID))
+  txRsp.bits.DBID    := Mux(entrys(entrySendRspID).chiMes.isRsp, entrySendRspID,                                        Mux(isWriteX(entrys(entrySendRspID).chiMes.opcode), entrySendRspID,                                         DontCare))
+  txRsp.bits.Resp    := Mux(entrys(entrySendRspID).chiMes.isRsp, entrys(entrySendRspID).chiMes.resp,                    Mux(isWriteX(entrys(entrySendRspID).chiMes.opcode), ChiResp.I,                                              ChiResp.I))
 
 
 
