@@ -69,3 +69,43 @@ class SRAMSelector(implicit p: Parameters) extends ZJModule {
   idle1(io.out0) := false.B
   io.out1    := PriorityEncoder(idle1)
 }
+
+object CHIWState {
+  val width        = 3
+  val Free         = "b000".U
+  val SendWrReq    = "b001".U
+  val WaitDBID     = "b010".U
+  val SendWrData   = "b011".U
+  val SendCompAck  = "b100".U
+  val Comp         = "b101".U
+}
+
+object AXIWState{
+  val width       = 2
+  val Free        = "b00".U
+  val ReceiveData = "b01".U
+  val Comp        = "b10".U
+}
+
+class AXIWEntry(implicit p: Parameters) extends ZJBundle {
+    val addr            = UInt(raw.W)
+    val unalign         = Bool()
+    val burst           = UInt(BurstMode.width.W)
+    val awid            = UInt(8.W)
+    val state           = UInt(AXIWState.width.W)
+    val nid             = UInt(log2Ceil(zjParams.dmaParams.axiEntrySize).W)
+}
+
+class CHIWEntry(implicit p: Parameters) extends ZJBundle {
+  val areid        = UInt(log2Ceil(zjParams.dmaParams.axiEntrySize).W)
+  val dbid         = UInt(12.W)
+  val last         = Bool()
+  val full         = Bool()
+  val sendReqOrder = UInt(log2Ceil(zjParams.dmaParams.chiEntrySize).W)
+  val state        = UInt(CHIWState.width.W)
+  val tgtID        = UInt(niw.W)
+  val sendFull     = Bool()
+  val mmioReq      = Bool()
+  val sendAckOrder = UInt(log2Ceil(zjParams.dmaParams.chiEntrySize).W)
+  val haveRecComp  = Bool()
+}
