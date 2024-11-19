@@ -91,7 +91,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   val done_s3_g           = RegInit(0.U.asTypeOf(new OperationsBundle()))
   val done_s3_g_updMSHR   = RegInit(false.B)
   val done_s3_g_sfEvict   = RegInit(false.B)
-  val reqBeSend_s3        = Wire(Vec(6, new Req2IntfBundle()))
+  val reqBeSend_s3        = Wire(Vec(7, new Req2IntfBundle()))
 
 
   /*
@@ -414,7 +414,18 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
  /*
   * Send Flush to DCU
   */
-  assert(!todo_s3.flush | !valid_s3)
+  flush_s3                       := DontCare
+  flush_s3.chiIndex.beatOH       := "b11".U
+  flush_s3.chiMes.channel        := CHIChannel.REQ
+  flush_s3.chiMes.expCompAck     := false.B
+  flush_s3.chiMes.opcode         := FlushDCU
+  flush_s3.from                  := io.dcuID
+  flush_s3.to                    := IncoID.LOCALMST.U
+  flush_s3.pcuIndex.mshrWay      := task_s3_g.bits.taskMes.mshrWay
+  flush_s3.pcuMes.useAddr        := task_s3_g.bits.taskMes.useAddr
+  flush_s3.pcuMes.selfWay        := OHToUInt(dirRes_s3.bits.s.wayOH)
+  flush_s3.pcuMes.toDCU          := false.B
+
 
   /*
    * Send Commit to Intf
@@ -499,13 +510,14 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
    * Send Req to Node
    */
   val canSendReq    = valid_s3 & !todo_s3_retry
-  val reqDoneList   = Seq(done_s3_g.snoop, done_s3_g.readDown, done_s3_g.writeDown, done_s3_g.readDCU, done_s3_g.writeDCU, done_s3_g_sfEvict)
+  val reqDoneList   = Seq(done_s3_g.snoop, done_s3_g.readDown, done_s3_g.writeDown, done_s3_g.readDCU, done_s3_g.writeDCU, done_s3_g_sfEvict, done_s3_g.flush)
   val reqTodoList   = Seq(todo_s3.snoop     & !done_s3_g.snoop,
                           todo_s3.readDown  & !done_s3_g.readDown,
                           todo_s3.writeDown & !done_s3_g.writeDown,
                           todo_s3.readDCU   & !done_s3_g.readDCU,
                           todo_s3.writeDCU  & !done_s3_g.writeDCU,
-                          todo_s3_sfEvict   & !done_s3_g_sfEvict)
+                          todo_s3_sfEvict   & !done_s3_g_sfEvict,
+                          todo_s3.flush     & !done_s3_g.flush)
   val toBeSendId    = PriorityEncoder(reqTodoList)
   reqBeSend_s3(0)   := taskSnp_s3
   reqBeSend_s3(1)   := taskRD_s3
@@ -513,6 +525,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   reqBeSend_s3(3)   := readDCU_s3
   reqBeSend_s3(4)   := Mux(todo_s3_replace, taskRepl_s3, writeDCU_s3) // writeDCU transfer to taskRepl_s3
   reqBeSend_s3(5)   := taskSnpEvict_s3
+  reqBeSend_s3(6)   := flush_s3
   io.req2Intf.valid := canSendReq & reqTodoList.reduce(_ | _)
   io.req2Intf.bits  := reqBeSend_s3(toBeSendId)
   reqDoneList.zipWithIndex.foreach { case(d, i) => d := Mux(rstDone, false.B, d | (io.req2Intf.fire & toBeSendId === i.U)) }

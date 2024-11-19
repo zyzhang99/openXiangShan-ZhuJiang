@@ -93,6 +93,7 @@ object ReqOpcode {
 
   // Self Define
   val Replace = 0x7A.U(width.W)
+  val FlushDCU = 0x7B.U(width.W)
 
   def isReadX   (x: UInt): Bool = (ReadShared <= x & x <= ReadNoSnp) | x === ReadUnique | x === ReadNoSnpSep |
                                   (ReadOnceCleanInvalid <= x & x <= ReadNotSharedDirty) | x === ReadPreferUnique
@@ -105,6 +106,8 @@ object ReqOpcode {
   def isCMO     (x: UInt): Bool = x === CleanShared | x === CleanInvalid | x === MakeInvalid
   def isAtomicX (x: UInt): Bool = AtomicStoreADD <= x & x <= AtomicCompare
   def isReplace (x: UInt): Bool = x === Replace
+  def isFlush   (x: UInt): Bool = x === FlushDCU
+  def isCombinedWrite(x: UInt): Bool = WriteNoSnpFullCleanSh <= x & x <= WriteBackFullCleanInvPoPA
 }
 
 object RspOpcode {

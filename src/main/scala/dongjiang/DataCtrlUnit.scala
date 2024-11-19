@@ -30,6 +30,7 @@ object DCURState {
 
 class DCUREntry(implicit p: Parameters) extends DJBundle {
   val state             = UInt(DCURState.width.W)
+  val isFlush           = Bool()
   val dsIndex           = UInt(dsIndexBits.W)
   val dsBank            = UInt(dsBankBits.W)
   val srcID             = UInt(fullNodeIdBits.W)
@@ -38,6 +39,8 @@ class DCUREntry(implicit p: Parameters) extends DJBundle {
   val returnTxnID       = UInt(chiTxnIdBits.W)
   val resp              = UInt(ChiResp.width.W)
   val beatOH            = UInt(2.W)
+
+  def respOpcode        = Mux(isFlush, NonCopyBackWriteData, CompData)
 }
 
 
@@ -177,8 +180,10 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
   val rBufFreeVec           = rBufRegVec.map(_.state === DCURState.Free)
   val selRecWID             = PriorityEncoder(wBufFreeVec)
   val selRecRID             = PriorityEncoder(rBufFreeVec)
+  val reqIsR                = isReadX(rxReq.bits.Opcode)
   val reqIsW                = isWriteX(rxReq.bits.Opcode)
   val reqIsRepl             = isReplace(rxReq.bits.Opcode)
+  val reqIsFlush            = isFlush(rxReq.bits.Opcode)
   val beatOff               = parseDCUAddr(rxReq.bits.Addr)._1
   when(reqIsW | reqIsRepl) {
     rxReq.ready             := wBufFreeVec.reduce(_ | _)
@@ -242,7 +247,7 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
     */
   rRespQ.io.enq.valid         := sramRFire; assert(Mux(sramRFire, rRespQ.io.enq.ready, true.B))
   rRespQ.io.enq.bits          := DontCare
-  rRespQ.io.enq.bits.Opcode   := Mux(sramRead, CompData,                        NonCopyBackWriteData)
+  rRespQ.io.enq.bits.Opcode   := Mux(sramRead, rBufRegVec(sramRID).respOpcode,  NonCopyBackWriteData)
   rRespQ.io.enq.bits.TgtID    := Mux(sramRead, rBufRegVec(sramRID).returnNID,   ddrcNodeId.U)
   rRespQ.io.enq.bits.TxnID    := Mux(sramRead, rBufRegVec(sramRID).returnTxnID, wBufRegVec(sramReplID).returnTxnID)
   rRespQ.io.enq.bits.Resp     := Mux(sramRead, rBufRegVec(sramRID).resp,        0.U)
@@ -258,9 +263,10 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
     case (r, i) =>
       switch(r.state) {
         is(DCURState.Free) {
-          val hit       = rxReq.fire & !reqIsW & !reqIsRepl & selRecRID === i.U
+          val hit       = rxReq.fire & (reqIsR | reqIsFlush) & selRecRID === i.U
           when(hit) {
             r.state     := DCURState.ReadSram
+            r.isFlush   := reqIsFlush
             r.dsIndex   := parseDCUAddr(rxReq.bits.Addr)._2
             r.dsBank    := parseDCUAddr(rxReq.bits.Addr)._3
             r.srcID     := rxReq.bits.SrcID
@@ -403,7 +409,7 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
 
   assert(Mux(rDataQ.io.enq.valid, rDataQ.io.enq.ready, true.B))
 
-  assert(Mux(rxReq.valid, rxReq.bits.Opcode === ReadNoSnp | rxReq.bits.Opcode === WriteNoSnpFull | rxReq.bits.Opcode === Replace, true.B))
+  assert(Mux(rxReq.valid, rxReq.bits.Opcode === ReadNoSnp | rxReq.bits.Opcode === WriteNoSnpFull | rxReq.bits.Opcode === WriteNoSnpPtl | rxReq.bits.Opcode === Replace |  rxReq.bits.Opcode === FlushDCU, true.B))
 
 
 
