@@ -17,7 +17,7 @@ import dongjiang.chi.ChiState._
 import math.max
 
 object RespType {
-  val width         = 3
+  val width         = 4
   val NotResp       = "b0000".U
   val Snp           = "b0001".U
   val SnpFwd        = "b0010".U
