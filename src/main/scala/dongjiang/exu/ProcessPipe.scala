@@ -162,7 +162,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   /*
    * Parse Dir Result
    */
-  srcMetaID     := getMetaIDByNodeID(task_s3_g.bits.chiIndex.nodeID); assert(fromCcNode(task_s3_g.bits.chiIndex.nodeID) | !task_s3_g.valid)
+  srcMetaID     := getMetaIDByNodeID(task_s3_g.bits.chiIndex.nodeID); assert(fromCcNode(task_s3_g.bits.chiIndex.nodeID) | !task_s3_g.valid | (task_s3_g.bits.chiMes.opcode === SnpUniqueEvict & task_s3_g.bits.chiMes.isSnp))
   val srcHit    = dirRes_s3.bits.sf.hit & !dirRes_s3.bits.sf.metaVec(srcMetaID).isInvalid
   val srcState  = Mux(srcHit, dirRes_s3.bits.sf.metaVec(srcMetaID).state, ChiState.I)
 
