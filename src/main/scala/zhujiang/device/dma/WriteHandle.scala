@@ -97,8 +97,8 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
    * Sram start index pointer and end index pointer
    */
 
-  private val startIndex       = RegInit(0.U(log2Ceil(dmaParams.chiEntrySize).W))
-  private val endIndex         = RegInit(0.U(log2Ceil(dmaParams.chiEntrySize).W))
+  private val startIndex       = Reg(UInt(log2Ceil(dmaParams.chiEntrySize).W))
+  private val endIndex         = Reg(UInt(log2Ceil(dmaParams.chiEntrySize).W))
   private val maybeFull        = RegInit(false.B)
 
   when(chiEntrys(startIndex + 1.U).state === CHIWState.Free && startIndex =/= endIndex && chiEntrys(startIndex).state === CHIWState.Free){

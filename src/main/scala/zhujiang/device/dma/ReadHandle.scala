@@ -35,8 +35,6 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
   private val sramSelector   = Module(new SRAMSelector)
   private val readSram       = Module(new SRAMTemplate(gen = UInt(dw.W), set = dmaParams.chiEntrySize, singlePort = true))
 
-  private val sendDataReg    = RegInit(0.U(dw.W))
-  private val sendDataValid  = WireInit(false.B)
   private val dataTxnid      = WireInit(io.chi_rxdat.bits.TxnID(log2Ceil(dmaParams.chiEntrySize) - 1, 0))
   private val rspTxnid       = WireInit(io.chi_rxrsp.bits.TxnID(log2Ceil(dmaParams.chiEntrySize) - 1, 0))  
 
@@ -105,13 +103,11 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
   txReqFlit.Size   := Mux(sendHalfReq, "b101".U, "b110".U)
   txReqFlit.SrcID  := 1.U
 
-  private val sramWrDatValidReg = RegInit(false.B)
+  private val sramWrDatValidReg = RegNext(io.chi_rxdat.fire, false.B)
   private val sramWrDatReg      = RegEnable(io.chi_rxdat.bits.Data, io.chi_rxdat.fire)
-  private val sramWrSetReg      = RegInit(0.U(log2Ceil(dmaParams.chiEntrySize).W))
   private val sramWrSet         = Mux(io.chi_rxdat.bits.DataID === 2.U, chiEntrys(dataTxnid).next, dataTxnid)
+  private val sramWrSetReg      = RegNext(sramWrSet)
 
-  sramWrDatValidReg := io.chi_rxdat.fire
-  sramWrSetReg      := sramWrSet
 
   readSram.io.w.req.valid := sramWrDatValidReg
   readSram.io.w.req.bits.setIdx := sramWrSetReg
@@ -127,7 +123,7 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
   readSram.io.r.req.valid := chiSendDatVec.reduce(_|_) && !readSram.io.w.req.valid
   readSram.io.r.req.bits.setIdx := selSendDatChiEntry
   
-  private val sramRdDatReg     = RegInit(0.U(dw.W))
+  private val sramRdDatReg     = Reg(UInt(dw.W))
   sramRdDatReg        := readSram.io.r.resp.data(0)
   private val sramRdDatValid   = RegNext(RegNext(readSram.io.r.req.fire))
   private val sramRdSet        = RegNext(RegNext(selSendDatChiEntry))
