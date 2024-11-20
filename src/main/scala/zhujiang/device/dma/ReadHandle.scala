@@ -29,40 +29,39 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
   //---------------------------------------------------------------------------------------------------------------------------------//
   //---------------------------------------------------- Reg and Wire Define --------------------------------------------------------//
   //---------------------------------------------------------------------------------------------------------------------------------//
-  val axiEntrys      = RegInit(VecInit.fill(dmaParams.axiEntrySize)(0.U.asTypeOf(new AXIREntry)))
-  val sramSelector   = Module(new SRAMSelector)
-  val readSram       = Module(new SRAMTemplate(gen = UInt(dw.W), set = dmaParams.chiEntrySize, singlePort = true))
+  private val axiEntrys      = RegInit(VecInit.fill(dmaParams.axiEntrySize)(0.U.asTypeOf(new AXIREntry)))
+  private val chiEntrys      = RegInit(VecInit.fill(dmaParams.chiEntrySize)(0.U.asTypeOf(new CHIREntry)))
 
-  val chiEntrys      = RegInit(VecInit.fill(dmaParams.chiEntrySize)(0.U.asTypeOf(new CHIREntry)))
-  val sendDataReg    = RegInit(0.U(dw.W))
-  val sendDataValid  = WireInit(false.B)
-  val dataTxnid      = WireInit(io.chi_rxdat.bits.TxnID(log2Ceil(dmaParams.chiEntrySize) - 1, 0))
-  val rspTxnid       = WireInit(io.chi_rxrsp.bits.TxnID(log2Ceil(dmaParams.chiEntrySize) - 1, 0))  
+  private val sramSelector   = Module(new SRAMSelector)
+  private val readSram       = Module(new SRAMTemplate(gen = UInt(dw.W), set = dmaParams.chiEntrySize, singlePort = true))
+
+  private val dataTxnid      = WireInit(io.chi_rxdat.bits.TxnID(log2Ceil(dmaParams.chiEntrySize) - 1, 0))
+  private val rspTxnid       = WireInit(io.chi_rxrsp.bits.TxnID(log2Ceil(dmaParams.chiEntrySize) - 1, 0))  
 
   //---------------------------------------------------------------------------------------------------------------------------------//
   //----------------------------------------------------------- Logic ---------------------------------------------------------------//
   //---------------------------------------------------------------------------------------------------------------------------------//
-  val axiFreeVec      = axiEntrys.map(_.state === AXIRState.Free)
-  val selFreeAxiEntry = PriorityEncoder(axiFreeVec)
-  val axiSendVec      = axiEntrys.map(_.state === AXIRState.Send)
-  val selSendAxiEntry = PriorityEncoder(axiSendVec)
+  private val axiFreeVec      = axiEntrys.map(_.state === AXIRState.Free)
+  private val selFreeAxiEntry = PriorityEncoder(axiFreeVec)
+  private val axiSendVec      = axiEntrys.map(_.state === AXIRState.Send)
+  private val selSendAxiEntry = PriorityEncoder(axiSendVec)
 
-  val nidVec          = axiEntrys.map(a => a.arid === io.axi_ar.bits.id && a.state =/= AXIRState.Free)
+  private val nidVec          = axiEntrys.map(a => a.arid === io.axi_ar.bits.id && a.state =/= AXIRState.Free)
 
 
-  val chiFreeVec     = chiEntrys.map(_.state === CHIRState.Free)
-  val chiSendAckVec  = chiEntrys.map(_.state === CHIRState.sendCompAck)
-  val chiSendDatVec  = chiEntrys.map(c => c.state === CHIRState.SendData && c.num === 0.U && axiEntrys(c.areid).nid === 0.U)
+  private val chiFreeVec     = chiEntrys.map(_.state === CHIRState.Free)
+  private val chiSendAckVec  = chiEntrys.map(_.state === CHIRState.sendCompAck)
+  private val chiSendDatVec  = chiEntrys.map(c => c.state === CHIRState.SendData && c.num === 0.U && axiEntrys(c.areid).nid === 0.U)
 
-  val selSendAckChiEntry = PriorityEncoder(chiSendAckVec)
-  val selSendDatChiEntry = PriorityEncoder(chiSendDatVec)
+  private val selSendAckChiEntry = PriorityEncoder(chiSendAckVec)
+  private val selSendDatChiEntry = PriorityEncoder(chiSendDatVec)
 
 
   sramSelector.io.idle := chiFreeVec
 
-  val sendHalfReq    = io.chi_txreq.ready && axiSendVec.reduce(_|_) && sramSelector.io.idleNum >= 1.U && (axiEntrys(selSendAxiEntry).addr(5) &&
+  private val sendHalfReq    = io.chi_txreq.ready && axiSendVec.reduce(_|_) && sramSelector.io.idleNum >= 1.U && (axiEntrys(selSendAxiEntry).addr(5) &&
   axiEntrys(selSendAxiEntry).sendReqNum === 0.U || axiEntrys(selSendAxiEntry).len === axiEntrys(selSendAxiEntry).sendReqNum)
-  val sendFullReq    = io.chi_txreq.ready && axiSendVec.reduce(_|_) && sramSelector.io.idleNum >= 2.U && 
+  private val sendFullReq    = io.chi_txreq.ready && axiSendVec.reduce(_|_) && sramSelector.io.idleNum >= 2.U && 
   axiEntrys(selSendAxiEntry).sendReqNum + 1.U <= axiEntrys(selSendAxiEntry).len && !axiEntrys(selSendAxiEntry).addr(5)
 
   axiEntrys(selSendAxiEntry).sendReqNum := Mux(sendHalfReq, axiEntrys(selSendAxiEntry).sendReqNum + 1.U, 
@@ -94,7 +93,7 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
 
     axiEntrys(selSendAxiEntry).addr       := axiEntrys(selSendAxiEntry).addr + 32.U 
   }
-  val txReqFlit     = Wire(new ReqFlit)
+  private val txReqFlit     = Wire(new ReqFlit)
   txReqFlit        := 0.U.asTypeOf(txReqFlit)
   txReqFlit.Addr   := axiEntrys(selSendAxiEntry).addr
   txReqFlit.Opcode := Mux(axiEntrys(selSendAxiEntry).addr(raw - 1), ReqOpcode.ReadNoSnp, ReqOpcode.ReadOnce)
@@ -104,19 +103,17 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
   txReqFlit.Size   := Mux(sendHalfReq, "b101".U, "b110".U)
   txReqFlit.SrcID  := 1.U
 
-  val sramWrDatValidReg = RegInit(false.B)
-  val sramWrDatReg      = RegEnable(io.chi_rxdat.bits.Data, io.chi_rxdat.fire)
-  val sramWrSetReg      = RegInit(0.U(log2Ceil(dmaParams.chiEntrySize).W))
-  val sramWrSet         = Mux(io.chi_rxdat.bits.DataID === 2.U, chiEntrys(dataTxnid).next, dataTxnid)
+  private val sramWrDatValidReg = RegNext(io.chi_rxdat.fire, false.B)
+  private val sramWrDatReg      = RegEnable(io.chi_rxdat.bits.Data, io.chi_rxdat.fire)
+  private val sramWrSet         = Mux(io.chi_rxdat.bits.DataID === 2.U, chiEntrys(dataTxnid).next, dataTxnid)
+  private val sramWrSetReg      = RegNext(sramWrSet)
 
-  sramWrDatValidReg := io.chi_rxdat.fire
-  sramWrSetReg      := sramWrSet
 
   readSram.io.w.req.valid := sramWrDatValidReg
   readSram.io.w.req.bits.setIdx := sramWrSetReg
   readSram.io.w.req.bits.data(0) := sramWrDatReg
 
-  val txRspFlit = Wire(new RespFlit)
+  private val txRspFlit = Wire(new RespFlit)
   txRspFlit       := 0.U.asTypeOf(txRspFlit)
   txRspFlit.TxnID := chiEntrys(selSendAckChiEntry).dbid
   txRspFlit.SrcID := 1.U
@@ -126,12 +123,12 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
   readSram.io.r.req.valid := chiSendDatVec.reduce(_|_) && !readSram.io.w.req.valid
   readSram.io.r.req.bits.setIdx := selSendDatChiEntry
   
-  val sramRdDatReg     = RegInit(0.U(dw.W))
+  private val sramRdDatReg     = Reg(UInt(dw.W))
   sramRdDatReg        := readSram.io.r.resp.data(0)
-  val sramRdDatValid   = RegNext(RegNext(readSram.io.r.req.fire))
-  val sramRdSet        = RegNext(RegNext(selSendDatChiEntry))
+  private val sramRdDatValid   = RegNext(RegNext(readSram.io.r.req.fire))
+  private val sramRdSet        = RegNext(RegNext(selSendDatChiEntry))
 
-  val axiRFlit     = Wire(new RFlit(axiParams))
+  private val axiRFlit     = Wire(new RFlit(axiParams))
   axiRFlit        := 0.U.asTypeOf(axiRFlit)
   axiRFlit.data   := sramRdDatReg
   axiRFlit.id     := axiEntrys(chiEntrys(sramRdSet).areid).arid 
@@ -268,4 +265,5 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
   when(io.chi_rxrsp.fire && io.chi_rxrsp.bits.Opcode === RspOpcode.ReadReceipt){
     assert(!chiEntrys(rspTxnid).haveRecReceipt, "CHIEntrys haveRecReceipt logic is error")
   }
+  assert(dmaParams.axiEntrySize.U - PopCount(axiFreeVec) >= PopCount(chiSendDatVec), "Num of CHIEntrys is error")
 }

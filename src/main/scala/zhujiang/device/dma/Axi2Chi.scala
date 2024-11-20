@@ -8,8 +8,6 @@ import xijiang.router.base.DeviceIcnBundle
 import zhujiang.ZJModule
 import zhujiang.axi._
 import zhujiang.chi._
-import freechips.rocketchip.rocket.CSR.W
-import freechips.rocketchip.diplomacy.BufferParams.pipe
 
 case class DmaParams(
   chiEntrySize: Int = 32,
