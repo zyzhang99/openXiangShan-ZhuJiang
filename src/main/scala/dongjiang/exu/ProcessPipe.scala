@@ -176,7 +176,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   /*
    * Set Inst value
    */
-  val taskIsReqWri  = isWriteX(task_s3_g.bits.chiMes.opcode); assert(Mux(taskIsReqWri & task_s3_g.valid, task_s3_g.bits.respMes.slvResp.valid, true.B))
+  val taskIsReqWri  = isWriteX(task_s3_g.bits.chiMes.opcode) & task_s3_g.bits.chiMes.isReq; assert(Mux(taskIsReqWri & task_s3_g.valid, task_s3_g.bits.respMes.slvResp.valid, true.B))
   inst_s3.channel   := task_s3_g.bits.chiMes.channel
   inst_s3.opcode    := task_s3_g.bits.chiMes.opcode
   inst_s3.srcState  := Mux(task_s3_g.bits.taskMes.readDir, srcState, ChiState.I)
