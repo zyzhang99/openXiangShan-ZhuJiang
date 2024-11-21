@@ -229,8 +229,8 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule with HasPerfLogging {
             }.elsewhen(io.resp2Exu.bits.pcuMes.isReqResp) {
               m.respMes.mstResp.valid   := true.B
               m.respMes.mstResp.bits    := io.resp2Exu.bits.chiMes.resp
-              m.respMes.masDBID.valid   := io.resp2Exu.bits.pcuMes.hasData
-              m.respMes.masDBID.bits    := io.resp2Exu.bits.pcuIndex.dbID
+              m.respMes.mstDBID.valid   := io.resp2Exu.bits.pcuMes.hasData
+              m.respMes.mstDBID.bits    := io.resp2Exu.bits.pcuIndex.dbID
             }.elsewhen(io.resp2Exu.bits.pcuMes.isWriResp) {
               // Nothing to do and State Will be Free
               assert(m.respMes.noRespValid, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)

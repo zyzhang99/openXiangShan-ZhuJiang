@@ -29,9 +29,9 @@ object LocalReadDecode {
   def readNotSharedDirty: Seq[(UInt, UInt)] = Seq(
     // ----------------------------------------------------------- LOCAL REQ --------------------------------------------------------------//
     LocalReqInst(ReadNotSharedDirty, I, I,   I) -> (ReadDown | ReadOp(ReadNoSnp)),
-    LocalReqInst(ReadNotSharedDirty, I, UC,  I) -> (Snoop    | SnpOp(SnpNotSharedDirty) | RetToSrc),
-    LocalReqInst(ReadNotSharedDirty, I, UD,  I) -> (Snoop    | SnpOp(SnpNotSharedDirty) | RetToSrc),
-    LocalReqInst(ReadNotSharedDirty, I, SC,  I) -> (Snoop    | SnpOp(SnpNotSharedDirty) | RetToSrc),
+    LocalReqInst(ReadNotSharedDirty, I, UC,  I) -> (SnpOth   | SnpOp(SnpNotSharedDirty) | RetToSrc),
+    LocalReqInst(ReadNotSharedDirty, I, UD,  I) -> (SnpOth   | SnpOp(SnpNotSharedDirty) | RetToSrc),
+    LocalReqInst(ReadNotSharedDirty, I, SC,  I) -> (SnpOth   | SnpOp(SnpNotSharedDirty) | RetToSrc),
     LocalReqInst(ReadNotSharedDirty, I, I,  UC) -> (ReadDCU  | ReadOp(ReadNoSnp)        | Resp(ChiResp.UC)),
     LocalReqInst(ReadNotSharedDirty, I, I,  UD) -> (ReadDCU  | ReadOp(ReadNoSnp)        | Resp(ChiResp.UD_PD)),
     LocalReqInst(ReadNotSharedDirty, I, I,  SC) -> (ReadDCU  | ReadOp(ReadNoSnp)        | Resp(ChiResp.SC)),
@@ -79,20 +79,20 @@ object LocalReadDecode {
   def readUnique: Seq[(UInt, UInt)] = Seq(
     // ----------------------------------------------------------- LOCAL REQ ----------------------------------------------------------------//
     LocalReqInst(ReadUnique,  I, I,   I) -> (ReadDown | ReadOp(ReadNoSnp)),
-    LocalReqInst(ReadUnique,  I, UC,  I) -> (Snoop    | SnpOp(SnpUnique)  | RetToSrc),
-    LocalReqInst(ReadUnique,  I, UD,  I) -> (Snoop    | SnpOp(SnpUnique)  | RetToSrc),
-    LocalReqInst(ReadUnique,  I, SC,  I) -> (Snoop    | SnpOp(SnpUnique)  | RetToSrc),
+    LocalReqInst(ReadUnique,  I, UC,  I) -> (SnpOth   | SnpOp(SnpUnique)  | RetToSrc),
+    LocalReqInst(ReadUnique,  I, UD,  I) -> (SnpOth   | SnpOp(SnpUnique)  | RetToSrc),
+    LocalReqInst(ReadUnique,  I, SC,  I) -> (SnpOth   | SnpOp(SnpUnique)  | RetToSrc),
     LocalReqInst(ReadUnique,  I, I,  UC) -> (ReadDCU  | ReadOp(ReadNoSnp) | Resp(ChiResp.UC)),
     LocalReqInst(ReadUnique,  I, I,  UD) -> (ReadDCU  | ReadOp(ReadNoSnp) | Resp(ChiResp.UD_PD)),
     LocalReqInst(ReadUnique,  I, I,  SC) -> (ReadDCU  | ReadOp(ReadNoSnp) | Resp(ChiResp.UC)),
-    LocalReqInst(ReadUnique,  I, SC, SC) -> (Snoop    | SnpOp(SnpUnique)  | RetToSrc),
+    LocalReqInst(ReadUnique,  I, SC, SC) -> (SnpOth   | SnpOp(SnpUnique)  | RetToSrc),
     LocalReqInst(ReadUnique,  I, I,  SD) -> (ReadDCU  | ReadOp(ReadNoSnp) | Resp(ChiResp.UD_PD)),
-    LocalReqInst(ReadUnique,  I, SC, SD) -> (Snoop    | SnpOp(SnpUnique)  | RetToSrc),
+    LocalReqInst(ReadUnique,  I, SC, SD) -> (SnpOth   | SnpOp(SnpUnique)  | RetToSrc),
 
     LocalReqInst(ReadUnique, SC,  I,  I) -> (ReadDown | ReadOp(ReadNoSnp)),
-    LocalReqInst(ReadUnique, SC, SC,  I) -> (Snoop    | SnpOp(SnpUnique)  | RetToSrc),
-    LocalReqInst(ReadUnique, SC, SC, SC) -> (Snoop    | SnpOp(SnpUnique)  | RetToSrc),
-    LocalReqInst(ReadUnique, SC, SC, SD) -> (Snoop    | SnpOp(SnpUnique)  | RetToSrc),
+    LocalReqInst(ReadUnique, SC, SC,  I) -> (SnpOth   | SnpOp(SnpUnique)  | RetToSrc),
+    LocalReqInst(ReadUnique, SC, SC, SC) -> (SnpOth   | SnpOp(SnpUnique)  | RetToSrc),
+    LocalReqInst(ReadUnique, SC, SC, SD) -> (SnpOth   | SnpOp(SnpUnique)  | RetToSrc),
     LocalReqInst(ReadUnique, SC,  I, SC) -> (ReadDCU  | ReadOp(ReadNoSnp) | Resp(ChiResp.UC)),
     LocalReqInst(ReadUnique, SC,  I, SD) -> (ReadDCU  | ReadOp(ReadNoSnp) | Resp(ChiResp.UC_PD)),
 
@@ -146,9 +146,9 @@ object LocalReadDecode {
   def readOnce: Seq[(UInt, UInt)] = Seq(
     // ----------------------------------------------------------- LOCAL REQ ----------------------------------------------------------------//
     LocalReqInst(ReadOnce,  I, I,   I) -> (ReadDown | ReadOp(ReadNoSnp)),
-    LocalReqInst(ReadOnce,  I, UC,  I) -> (Snoop    | SnpOp(SnpOnce)    | RetToSrc),
-    LocalReqInst(ReadOnce,  I, UD,  I) -> (Snoop    | SnpOp(SnpOnce)    | RetToSrc),
-    LocalReqInst(ReadOnce,  I, SC,  I) -> (Snoop    | SnpOp(SnpOnce)    | RetToSrc),
+    LocalReqInst(ReadOnce,  I, UC,  I) -> (SnpOne   | SnpOp(SnpOnce)    | RetToSrc),
+    LocalReqInst(ReadOnce,  I, UD,  I) -> (SnpOne   | SnpOp(SnpOnce)    | RetToSrc),
+    LocalReqInst(ReadOnce,  I, SC,  I) -> (SnpOne   | SnpOp(SnpOnce)    | RetToSrc),
     LocalReqInst(ReadOnce,  I, I,  UC) -> (ReadDCU  | ReadOp(ReadNoSnp) | Resp(ChiResp.I)),
     LocalReqInst(ReadOnce,  I, I,  UD) -> (ReadDCU  | ReadOp(ReadNoSnp) | Resp(ChiResp.I)),
     LocalReqInst(ReadOnce,  I, I,  SC) -> (ReadDCU  | ReadOp(ReadNoSnp) | Resp(ChiResp.I)),
@@ -198,9 +198,9 @@ object LocalReadWithDCTDecode {
   def readNotSharedDirty: Seq[(UInt, UInt)] = Seq(
     // ----------------------------------------------------------- LOCAL REQ --------------------------------------------------------------//
     LocalReqInst(ReadNotSharedDirty, I, I,   I) -> (ReadDown | ReadOp(ReadNoSnp)),
-    LocalReqInst(ReadNotSharedDirty, I, UC,  I) -> (Snoop    | SnpOp(SnpNotSharedDirtyFwd) | RetToSrc),
-    LocalReqInst(ReadNotSharedDirty, I, UD,  I) -> (Snoop    | SnpOp(SnpNotSharedDirtyFwd) | RetToSrc),
-    LocalReqInst(ReadNotSharedDirty, I, SC,  I) -> (Snoop    | SnpOp(SnpNotSharedDirtyFwd)),
+    LocalReqInst(ReadNotSharedDirty, I, UC,  I) -> (SnpOth   | SnpOp(SnpNotSharedDirtyFwd) | RetToSrc),
+    LocalReqInst(ReadNotSharedDirty, I, UD,  I) -> (SnpOth   | SnpOp(SnpNotSharedDirtyFwd) | RetToSrc),
+    LocalReqInst(ReadNotSharedDirty, I, SC,  I) -> (SnpOth   | SnpOp(SnpNotSharedDirtyFwd)),
     LocalReqInst(ReadNotSharedDirty, I, I,  UC) -> (ReadDCU  | ReadOp(ReadNoSnp)        | Resp(ChiResp.UC)),
     LocalReqInst(ReadNotSharedDirty, I, I,  UD) -> (ReadDCU  | ReadOp(ReadNoSnp)        | Resp(ChiResp.UD_PD)),
     LocalReqInst(ReadNotSharedDirty, I, I,  SC) -> (ReadDCU  | ReadOp(ReadNoSnp)        | Resp(ChiResp.SC)),
@@ -241,20 +241,20 @@ object LocalReadWithDCTDecode {
   def readUnique: Seq[(UInt, UInt)] = Seq(
     // ----------------------------------------------------------- LOCAL REQ ----------------------------------------------------------------//
     LocalReqInst(ReadUnique,  I, I,   I) -> (ReadDown | ReadOp(ReadNoSnp)),
-    LocalReqInst(ReadUnique,  I, UC,  I) -> (Snoop    | SnpOp(SnpUniqueFwd)),
-    LocalReqInst(ReadUnique,  I, UD,  I) -> (Snoop    | SnpOp(SnpUniqueFwd)),
-    LocalReqInst(ReadUnique,  I, SC,  I) -> (Snoop    | SnpOp(SnpUniqueFwd)),
+    LocalReqInst(ReadUnique,  I, UC,  I) -> (SnpOth   | SnpOp(SnpUniqueFwd)),
+    LocalReqInst(ReadUnique,  I, UD,  I) -> (SnpOth   | SnpOp(SnpUniqueFwd)),
+    LocalReqInst(ReadUnique,  I, SC,  I) -> (SnpOth   | SnpOp(SnpUniqueFwd)),
     LocalReqInst(ReadUnique,  I, I,  UC) -> (ReadDCU  | ReadOp(ReadNoSnp) | Resp(ChiResp.UC)),
     LocalReqInst(ReadUnique,  I, I,  UD) -> (ReadDCU  | ReadOp(ReadNoSnp) | Resp(ChiResp.UD_PD)),
     LocalReqInst(ReadUnique,  I, I,  SC) -> (ReadDCU  | ReadOp(ReadNoSnp) | Resp(ChiResp.UC)),
-    LocalReqInst(ReadUnique,  I, SC, SC) -> (Snoop    | SnpOp(SnpUniqueFwd)),
+    LocalReqInst(ReadUnique,  I, SC, SC) -> (SnpOth   | SnpOp(SnpUniqueFwd)),
     LocalReqInst(ReadUnique,  I, I,  SD) -> (ReadDCU  | ReadOp(ReadNoSnp) | Resp(ChiResp.UD_PD)),
-    LocalReqInst(ReadUnique,  I, SC, SD) -> (Snoop    | SnpOp(SnpUnique)  | RetToSrc),
+    LocalReqInst(ReadUnique,  I, SC, SD) -> (SnpOth   | SnpOp(SnpUnique)  | RetToSrc),
 
     LocalReqInst(ReadUnique, SC,  I,  I) -> (ReadDown | ReadOp(ReadNoSnp)),
-    LocalReqInst(ReadUnique, SC, SC,  I) -> (Snoop    | SnpOp(SnpUniqueFwd)),
-    LocalReqInst(ReadUnique, SC, SC, SC) -> (Snoop    | SnpOp(SnpUniqueFwd)),
-    LocalReqInst(ReadUnique, SC, SC, SD) -> (Snoop    | SnpOp(SnpUnique)  | RetToSrc),
+    LocalReqInst(ReadUnique, SC, SC,  I) -> (SnpOth   | SnpOp(SnpUniqueFwd)),
+    LocalReqInst(ReadUnique, SC, SC, SC) -> (SnpOth   | SnpOp(SnpUniqueFwd)),
+    LocalReqInst(ReadUnique, SC, SC, SD) -> (SnpOth   | SnpOp(SnpUnique)  | RetToSrc),
     LocalReqInst(ReadUnique, SC,  I, SC) -> (ReadDCU  | ReadOp(ReadNoSnp) | Resp(ChiResp.UC)),
     LocalReqInst(ReadUnique, SC,  I, SD) -> (ReadDCU  | ReadOp(ReadNoSnp) | Resp(ChiResp.UC_PD)),
 
@@ -307,7 +307,7 @@ object LoaclDatalessDecode {
 
   def cleanShared: Seq[(UInt, UInt)] = Seq(
     // ----------------------------------------------------------- LOCAL REQ ----------------------------------------------------------------//
-    LocalReqInst(CleanShared, UD, I,   I) -> (Snoop  | SnpOp(SnpCleanShared)        | RetToSrc),
+    LocalReqInst(CleanShared, UD, I,   I) -> (SnpAll | SnpOp(SnpCleanShared)        | RetToSrc),
     LocalReqInst(CleanShared, UC, I,   I) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I)),
     LocalReqInst(CleanShared, SC, I,  SC) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I)),
     LocalReqInst(CleanShared, SC, I,  SD) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) | Flush | WSDir | HnState(SC)),
@@ -321,7 +321,7 @@ object LoaclDatalessDecode {
     LocalReqInst(CleanShared,  I,  I, UC) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I)),
     LocalReqInst(CleanShared,  I,  I, UD) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) | Flush | WSDir | HnState(UC)),
     LocalReqInst(CleanShared,  I, UC,  I) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I)),
-    LocalReqInst(CleanShared,  I, UD,  I) -> (Snoop  | SnpOp(SnpCleanShared)        | RetToSrc),
+    LocalReqInst(CleanShared,  I, UD,  I) -> (SnpAll | SnpOp(SnpCleanShared)        | RetToSrc),
     LocalReqInst(CleanShared,  I, SC,  I) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I)),
     LocalReqInst(CleanShared,  I, SC, SC) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I)),
     LocalReqInst(CleanShared,  I, SC, SD) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) | Flush | WSDir | HnState(SC)),
@@ -336,24 +336,24 @@ object LoaclDatalessDecode {
 
   def cleanInvalid: Seq[(UInt, UInt)] = Seq(
     // ----------------------------------------------------------- LOCAL REQ ----------------------------------------------------------------//
-    LocalReqInst(CleanInvalid, UD, I,   I) -> (Snoop  | SnpOp(SnpCleanInvalid)  | RetToSrc),
-    LocalReqInst(CleanInvalid, UC, I,   I) -> (Snoop  | SnpOp(SnpCleanInvalid)  | RetToSrc),
-    LocalReqInst(CleanInvalid, SC, I,  SC) -> (Snoop  | SnpOp(SnpCleanInvalid)  | RetToSrc),
-    LocalReqInst(CleanInvalid, SC, I,  SD) -> (Snoop  | SnpOp(SnpCleanInvalid)  | RetToSrc),
-    LocalReqInst(CleanInvalid, SC, SC,  I) -> (Snoop  | SnpOp(SnpCleanInvalid)  | RetToSrc),
-    LocalReqInst(CleanInvalid, SC, SC, SC) -> (Snoop  | SnpOp(SnpCleanInvalid)  | RetToSrc),
-    LocalReqInst(CleanInvalid, SC, SC, SD) -> (Snoop  | SnpOp(SnpCleanInvalid)  | RetToSrc),
+    LocalReqInst(CleanInvalid, UD, I,   I) -> (SnpAll | SnpOp(SnpCleanInvalid)  | RetToSrc),
+    LocalReqInst(CleanInvalid, UC, I,   I) -> (SnpAll | SnpOp(SnpCleanInvalid)  | RetToSrc),
+    LocalReqInst(CleanInvalid, SC, I,  SC) -> (SnpAll | SnpOp(SnpCleanInvalid)  | RetToSrc),
+    LocalReqInst(CleanInvalid, SC, I,  SD) -> (SnpAll | SnpOp(SnpCleanInvalid)  | RetToSrc),
+    LocalReqInst(CleanInvalid, SC, SC,  I) -> (SnpAll | SnpOp(SnpCleanInvalid)  | RetToSrc),
+    LocalReqInst(CleanInvalid, SC, SC, SC) -> (SnpAll | SnpOp(SnpCleanInvalid)  | RetToSrc),
+    LocalReqInst(CleanInvalid, SC, SC, SD) -> (SnpAll | SnpOp(SnpCleanInvalid)  | RetToSrc),
 
     LocalReqInst(CleanInvalid,  I,  I,  I) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I)),
     LocalReqInst(CleanInvalid,  I,  I, SC) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) | Flush | WSDir | HnState(I)),
     LocalReqInst(CleanInvalid,  I,  I, SD) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) | Flush | WSDir | HnState(I)),
     LocalReqInst(CleanInvalid,  I,  I, UC) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) | Flush | WSDir | HnState(I)),
     LocalReqInst(CleanInvalid,  I,  I, UD) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) | Flush | WSDir | HnState(I)),
-    LocalReqInst(CleanInvalid,  I, UC,  I) -> (Snoop  | SnpOp(SnpCleanInvalid)  | RetToSrc),
-    LocalReqInst(CleanInvalid,  I, UD,  I) -> (Snoop  | SnpOp(SnpCleanInvalid)  | RetToSrc),
-    LocalReqInst(CleanInvalid,  I, SC,  I) -> (Snoop  | SnpOp(SnpCleanInvalid)  | RetToSrc),
-    LocalReqInst(CleanInvalid,  I, SC, SC) -> (Snoop  | SnpOp(SnpCleanInvalid)  | RetToSrc),
-    LocalReqInst(CleanInvalid,  I, SC, SD) -> (Snoop  | SnpOp(SnpCleanInvalid)  | RetToSrc),
+    LocalReqInst(CleanInvalid,  I, UC,  I) -> (SnpAll | SnpOp(SnpCleanInvalid)  | RetToSrc),
+    LocalReqInst(CleanInvalid,  I, UD,  I) -> (SnpAll | SnpOp(SnpCleanInvalid)  | RetToSrc),
+    LocalReqInst(CleanInvalid,  I, SC,  I) -> (SnpAll | SnpOp(SnpCleanInvalid)  | RetToSrc),
+    LocalReqInst(CleanInvalid,  I, SC, SC) -> (SnpAll | SnpOp(SnpCleanInvalid)  | RetToSrc),
+    LocalReqInst(CleanInvalid,  I, SC, SD) -> (SnpAll | SnpOp(SnpCleanInvalid)  | RetToSrc),
 
     // ----------------------------------------------------------- LOCAL RESP ---------------------------------------------------------------//
     // UD  I  I
@@ -387,24 +387,24 @@ object LoaclDatalessDecode {
 
   def makeInvalid: Seq[(UInt, UInt)] = Seq(
     // ----------------------------------------------------------- LOCAL REQ ----------------------------------------------------------------//
-    LocalReqInst(MakeInvalid, UD, I,   I) -> (Snoop  | SnpOp(SnpMakeInvalid)),
-    LocalReqInst(MakeInvalid, UC, I,   I) -> (Snoop  | SnpOp(SnpMakeInvalid)),
-    LocalReqInst(MakeInvalid, SC, I,  SC) -> (Snoop  | SnpOp(SnpMakeInvalid)),
-    LocalReqInst(MakeInvalid, SC, I,  SD) -> (Snoop  | SnpOp(SnpMakeInvalid)),
-    LocalReqInst(MakeInvalid, SC, SC,  I) -> (Snoop  | SnpOp(SnpMakeInvalid)),
-    LocalReqInst(MakeInvalid, SC, SC, SC) -> (Snoop  | SnpOp(SnpMakeInvalid)),
-    LocalReqInst(MakeInvalid, SC, SC, SD) -> (Snoop  | SnpOp(SnpMakeInvalid)),
+    LocalReqInst(MakeInvalid, UD, I,   I) -> (SnpAll | SnpOp(SnpMakeInvalid)),
+    LocalReqInst(MakeInvalid, UC, I,   I) -> (SnpAll | SnpOp(SnpMakeInvalid)),
+    LocalReqInst(MakeInvalid, SC, I,  SC) -> (SnpAll | SnpOp(SnpMakeInvalid)),
+    LocalReqInst(MakeInvalid, SC, I,  SD) -> (SnpAll | SnpOp(SnpMakeInvalid)),
+    LocalReqInst(MakeInvalid, SC, SC,  I) -> (SnpAll | SnpOp(SnpMakeInvalid)),
+    LocalReqInst(MakeInvalid, SC, SC, SC) -> (SnpAll | SnpOp(SnpMakeInvalid)),
+    LocalReqInst(MakeInvalid, SC, SC, SD) -> (SnpAll | SnpOp(SnpMakeInvalid)),
 
     LocalReqInst(MakeInvalid,  I,  I,  I) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I)),
     LocalReqInst(MakeInvalid,  I,  I, SC) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) | Flush | WSDir | HnState(I)),
     LocalReqInst(MakeInvalid,  I,  I, SD) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) | Flush | WSDir | HnState(I)),
     LocalReqInst(MakeInvalid,  I,  I, UC) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) | Flush | WSDir | HnState(I)),
     LocalReqInst(MakeInvalid,  I,  I, UD) -> (Commit | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.I) | Flush | WSDir | HnState(I)),
-    LocalReqInst(MakeInvalid,  I, UC,  I) -> (Snoop  | SnpOp(SnpMakeInvalid)),
-    LocalReqInst(MakeInvalid,  I, UD,  I) -> (Snoop  | SnpOp(SnpMakeInvalid)),
-    LocalReqInst(MakeInvalid,  I, SC,  I) -> (Snoop  | SnpOp(SnpMakeInvalid)),
-    LocalReqInst(MakeInvalid,  I, SC, SC) -> (Snoop  | SnpOp(SnpMakeInvalid)),
-    LocalReqInst(MakeInvalid,  I, SC, SD) -> (Snoop  | SnpOp(SnpMakeInvalid)),
+    LocalReqInst(MakeInvalid,  I, UC,  I) -> (SnpAll | SnpOp(SnpMakeInvalid)),
+    LocalReqInst(MakeInvalid,  I, UD,  I) -> (SnpAll | SnpOp(SnpMakeInvalid)),
+    LocalReqInst(MakeInvalid,  I, SC,  I) -> (SnpAll | SnpOp(SnpMakeInvalid)),
+    LocalReqInst(MakeInvalid,  I, SC, SC) -> (SnpAll | SnpOp(SnpMakeInvalid)),
+    LocalReqInst(MakeInvalid,  I, SC, SD) -> (SnpAll | SnpOp(SnpMakeInvalid)),
 
     // ----------------------------------------------------------- LOCAL RESP ---------------------------------------------------------------//
     // UD  I  I
@@ -458,19 +458,19 @@ object LoaclDatalessDecode {
   def makeUnique: Seq[(UInt, UInt)] = Seq(
     // ----------------------------------------------------------- LOCAL REQ ----------------------------------------------------------------//
     LocalReqInst(MakeUnique,  I,  I,  I) -> (Commit | WSFDir |         RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.UC) |  SrcState(UD) | OthState(I) | HnState(I)),
-    LocalReqInst(MakeUnique,  I, SC,  I) -> (Snoop  | SnpOp(SnpMakeInvalid)),
-    LocalReqInst(MakeUnique,  I, SC, SC) -> (Snoop  | SnpOp(SnpMakeInvalid)),
-    LocalReqInst(MakeUnique,  I, SC, SD) -> (Snoop  | SnpOp(SnpMakeInvalid)),
-    LocalReqInst(MakeUnique,  I, UC,  I) -> (Snoop  | SnpOp(SnpMakeInvalid)),
-    LocalReqInst(MakeUnique,  I, UD,  I) -> (Snoop  | SnpOp(SnpMakeInvalid)),
+    LocalReqInst(MakeUnique,  I, SC,  I) -> (SnpOth | SnpOp(SnpMakeInvalid)),
+    LocalReqInst(MakeUnique,  I, SC, SC) -> (SnpOth | SnpOp(SnpMakeInvalid)),
+    LocalReqInst(MakeUnique,  I, SC, SD) -> (SnpOth | SnpOp(SnpMakeInvalid)),
+    LocalReqInst(MakeUnique,  I, UC,  I) -> (SnpOth | SnpOp(SnpMakeInvalid)),
+    LocalReqInst(MakeUnique,  I, UD,  I) -> (SnpOth | SnpOp(SnpMakeInvalid)),
     LocalReqInst(MakeUnique,  I,  I, SC) -> (Commit | WSFDir | WSDir | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.UC) |  SrcState(UD) | OthState(I) | HnState(I)),
     LocalReqInst(MakeUnique,  I,  I, SD) -> (Commit | WSFDir | WSDir | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.UC) |  SrcState(UD) | OthState(I) | HnState(I)),
     LocalReqInst(MakeUnique,  I,  I, UC) -> (Commit | WSFDir | WSDir | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.UC) |  SrcState(UD) | OthState(I) | HnState(I)),
     LocalReqInst(MakeUnique,  I,  I, UD) -> (Commit | WSFDir | WSDir | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.UC) |  SrcState(UD) | OthState(I) | HnState(I)),
     LocalReqInst(MakeUnique, SC,  I,  I) -> (Commit | WSFDir |         RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.UC) |  SrcState(UD) | OthState(I) | HnState(I)),
-    LocalReqInst(MakeUnique, SC, SC,  I) -> (Snoop  | SnpOp(SnpMakeInvalid)),
-    LocalReqInst(MakeUnique, SC, SC, SC) -> (Snoop  | SnpOp(SnpMakeInvalid)),
-    LocalReqInst(MakeUnique, SC, SC, SD) -> (Snoop  | SnpOp(SnpMakeInvalid)),
+    LocalReqInst(MakeUnique, SC, SC,  I) -> (SnpOth | SnpOp(SnpMakeInvalid)),
+    LocalReqInst(MakeUnique, SC, SC, SC) -> (SnpOth | SnpOp(SnpMakeInvalid)),
+    LocalReqInst(MakeUnique, SC, SC, SD) -> (SnpOth | SnpOp(SnpMakeInvalid)),
     LocalReqInst(MakeUnique, SC,  I, SC) -> (Commit | WSFDir | WSDir | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.UC) |  SrcState(UD) | OthState(I) | HnState(I)),
     LocalReqInst(MakeUnique, SC,  I, SD) -> (Commit | WSFDir | WSDir | RespOp(Comp) | RespChnl(RSP) | Resp(ChiResp.UC) |  SrcState(UD) | OthState(I) | HnState(I)),
 
@@ -525,11 +525,11 @@ object LoaclWriteDecode {
   def writeUniqueFull: Seq[(UInt, UInt)] = Seq(
     // ----------------------------------------------------------- LOCAL REQ ----------------------------------------------------------------//
     LocalReqInst(WriteUniqueFull,  I,  I,  I, HasData)      -> (WriteDown | WriOp(WriteNoSnpFull)),
-    LocalReqInst(WriteUniqueFull,  I, UC,  I, HasData)      -> (WriteDCU  | WriOp(WriteNoSnpFull) | Snoop | SnpOp(SnpMakeInvalid)),
-    LocalReqInst(WriteUniqueFull,  I, UD,  I, HasData)      -> (WriteDCU  | WriOp(WriteNoSnpFull) | Snoop | SnpOp(SnpMakeInvalid)),
-    LocalReqInst(WriteUniqueFull,  I, SC,  I, HasData)      -> (WriteDCU  | WriOp(WriteNoSnpFull) | Snoop | SnpOp(SnpMakeInvalid)),
-    LocalReqInst(WriteUniqueFull,  I, SC, SC, HasData)      -> (WriteDCU  | WriOp(WriteNoSnpFull) | Snoop | SnpOp(SnpMakeInvalid)),
-    LocalReqInst(WriteUniqueFull,  I, SC, SD, HasData)      -> (WriteDCU  | WriOp(WriteNoSnpFull) | Snoop | SnpOp(SnpMakeInvalid)),
+    LocalReqInst(WriteUniqueFull,  I, UC,  I, HasData)      -> (WriteDCU  | WriOp(WriteNoSnpFull) | SnpAll| SnpOp(SnpMakeInvalid)),
+    LocalReqInst(WriteUniqueFull,  I, UD,  I, HasData)      -> (WriteDCU  | WriOp(WriteNoSnpFull) | SnpAll| SnpOp(SnpMakeInvalid)),
+    LocalReqInst(WriteUniqueFull,  I, SC,  I, HasData)      -> (WriteDCU  | WriOp(WriteNoSnpFull) | SnpAll| SnpOp(SnpMakeInvalid)),
+    LocalReqInst(WriteUniqueFull,  I, SC, SC, HasData)      -> (WriteDCU  | WriOp(WriteNoSnpFull) | SnpAll| SnpOp(SnpMakeInvalid)),
+    LocalReqInst(WriteUniqueFull,  I, SC, SD, HasData)      -> (WriteDCU  | WriOp(WriteNoSnpFull) | SnpAll| SnpOp(SnpMakeInvalid)),
     LocalReqInst(WriteUniqueFull,  I,  I, SC, HasData)      -> (WriteDCU  | WriOp(WriteNoSnpFull) | WSDir | HnState(UD)),
     LocalReqInst(WriteUniqueFull,  I,  I, SD, HasData)      -> (WriteDCU  | WriOp(WriteNoSnpFull) | WSDir | HnState(UD)),
     LocalReqInst(WriteUniqueFull,  I,  I, UC, HasData)      -> (WriteDCU  | WriOp(WriteNoSnpFull) | WSDir | HnState(UD)),
@@ -552,11 +552,11 @@ object LoaclWriteDecode {
   def writeUniquePtl: Seq[(UInt, UInt)] = Seq(
     // ----------------------------------------------------------- LOCAL REQ ----------------------------------------------------------------//
     LocalReqInst(WriteUniquePtl,  I,  I,  I, HasData)       -> (WriteDown | WriOp(WriteNoSnpPtl)),
-    LocalReqInst(WriteUniquePtl,  I, UC,  I, HasData)       -> (Snoop     | SnpOp(SnpUnique)     | RetToSrc),
-    LocalReqInst(WriteUniquePtl,  I, UD,  I, HasData)       -> (Snoop     | SnpOp(SnpUnique)     | RetToSrc),
-    LocalReqInst(WriteUniquePtl,  I, SC,  I, HasData)       -> (Snoop     | SnpOp(SnpUnique)     | RetToSrc),
-    LocalReqInst(WriteUniquePtl,  I, SC, SC, HasData)       -> (WriteDCU  | WriOp(WriteNoSnpPtl) | Snoop | SnpOp(SnpUnique)),
-    LocalReqInst(WriteUniquePtl,  I, SC, SD, HasData)       -> (WriteDCU  | WriOp(WriteNoSnpPtl) | Snoop | SnpOp(SnpUnique)),
+    LocalReqInst(WriteUniquePtl,  I, UC,  I, HasData)       -> (SnpAll    | SnpOp(SnpUnique)     | RetToSrc),
+    LocalReqInst(WriteUniquePtl,  I, UD,  I, HasData)       -> (SnpAll    | SnpOp(SnpUnique)     | RetToSrc),
+    LocalReqInst(WriteUniquePtl,  I, SC,  I, HasData)       -> (SnpAll    | SnpOp(SnpUnique)     | RetToSrc),
+    LocalReqInst(WriteUniquePtl,  I, SC, SC, HasData)       -> (WriteDCU  | WriOp(WriteNoSnpPtl) | SnpAll| SnpOp(SnpUnique)),
+    LocalReqInst(WriteUniquePtl,  I, SC, SD, HasData)       -> (WriteDCU  | WriOp(WriteNoSnpPtl) | SnpAll| SnpOp(SnpUnique)),
     LocalReqInst(WriteUniquePtl,  I,  I, SC, HasData)       -> (WriteDCU  | WriOp(WriteNoSnpPtl) | WSDir | HnState(UD)),
     LocalReqInst(WriteUniquePtl,  I,  I, SD, HasData)       -> (WriteDCU  | WriOp(WriteNoSnpPtl) | WSDir | HnState(UD)),
     LocalReqInst(WriteUniquePtl,  I,  I, UC, HasData)       -> (WriteDCU  | WriOp(WriteNoSnpPtl) | WSDir | HnState(UD)),
@@ -579,8 +579,77 @@ object LoaclWriteDecode {
 }
 
 
+object LoaclAtomicDecode {
+  def atomicX: Seq[(UInt, UInt)] = Seq(
+    // ----------------------------------------------------------- LOCAL REQ ----------------------------------------------------------------//
+    LocalReqInst(AtomicLoadADD, UD, I,   I, HasData) -> (SnpAll    | SnpOp(SnpUnique) | RetToSrc),
+    LocalReqInst(AtomicLoadADD, UC, I,   I, HasData) -> (SnpAll    | SnpOp(SnpUnique) | RetToSrc),
+    LocalReqInst(AtomicLoadADD, SC, I,  SC, HasData) -> (SnpAll    | SnpOp(SnpUnique) | RetToSrc),
+    LocalReqInst(AtomicLoadADD, SC, I,  SD, HasData) -> (SnpAll    | SnpOp(SnpUnique) | RetToSrc),
+    LocalReqInst(AtomicLoadADD, SC, SC,  I, HasData) -> (SnpAll    | SnpOp(SnpUnique) | RetToSrc),
+    LocalReqInst(AtomicLoadADD, SC, SC, SC, HasData) -> (SnpAll    | SnpOp(SnpUnique) | RetToSrc),
+    LocalReqInst(AtomicLoadADD, SC, SC, SD, HasData) -> (SnpAll    | SnpOp(SnpUnique) | RetToSrc),
+
+    LocalReqInst(AtomicLoadADD,  I,  I,  I, HasData) -> (ReadDown  | ReadOp(ReadNoSnp)),
+    LocalReqInst(AtomicLoadADD,  I,  I, SC, HasData) -> (ReadDCU   | ReadOp(ReadNoSnp)),
+    LocalReqInst(AtomicLoadADD,  I,  I, SD, HasData) -> (ReadDCU   | ReadOp(ReadNoSnp)),
+    LocalReqInst(AtomicLoadADD,  I,  I, UC, HasData) -> (ReadDCU   | ReadOp(ReadNoSnp)),
+    LocalReqInst(AtomicLoadADD,  I,  I, UD, HasData) -> (ReadDCU   | ReadOp(ReadNoSnp)),
+    LocalReqInst(AtomicLoadADD,  I, UC,  I, HasData) -> (SnpAll    | SnpOp(SnpUnique) | RetToSrc),
+    LocalReqInst(AtomicLoadADD,  I, UD,  I, HasData) -> (SnpAll    | SnpOp(SnpUnique) | RetToSrc),
+    LocalReqInst(AtomicLoadADD,  I, SC,  I, HasData) -> (SnpAll    | SnpOp(SnpUnique) | RetToSrc),
+    LocalReqInst(AtomicLoadADD,  I, SC, SC, HasData) -> (SnpAll    | SnpOp(SnpUnique) | RetToSrc),
+    LocalReqInst(AtomicLoadADD,  I, SC, SD, HasData) -> (SnpAll    | SnpOp(SnpUnique) | RetToSrc),
+
+    // ----------------------------------------------------------- LOCAL RESP ---------------------------------------------------------------//
+    // UD  I  I
+    LocalRespInst(REQ, AtomicLoadADD, UD,  I,  I, Snp,  HasData, rn = ChiResp.I_PD)   -> (Commit | RDB2Src | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+    // UC  I  I
+    LocalRespInst(REQ, AtomicLoadADD, UC,  I,  I, Snp,  HasData, rn = ChiResp.I_PD)   -> (Commit | RDB2Src | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+    LocalRespInst(REQ, AtomicLoadADD, UC,  I,  I, Snp,  HasData, rn = ChiResp.I)      -> (Commit | RDB2Src | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+    // SC  I SC
+    LocalRespInst(REQ, AtomicLoadADD, SC,  I, SC, Snp,  HasData, rn = ChiResp.I)      -> (Commit | RDB2Src | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+    // SC  I SD
+    LocalRespInst(REQ, AtomicLoadADD, SC,  I, SD, Snp,  HasData, rn = ChiResp.I)      -> (Commit | RDB2Src | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+    // SC SC  I
+    LocalRespInst(REQ, AtomicLoadADD, SC, SC,  I, Snp,  HasData, rn = ChiResp.I)      -> (Commit | RDB2Src | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+    // SC SC SC
+    LocalRespInst(REQ, AtomicLoadADD, SC, SC, SC, Snp,  HasData, rn = ChiResp.I)      -> (Commit | RDB2Src | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+    // SC SC SD
+    LocalRespInst(REQ, AtomicLoadADD, SC, SC, SD, Snp,  HasData, rn = ChiResp.I)      -> (Commit | RDB2Src | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+    //  I  I  I
+    LocalRespInst(REQ, AtomicLoadADD,  I,  I,  I, Read, HasData, sn = ChiResp.UC)     -> (Commit | RDB2Src |          WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+    //  I  I SC
+    LocalRespInst(REQ, AtomicLoadADD,  I,  I, SC, Read, HasData, sn = ChiResp.SC)     -> (Commit | RDB2Src |          WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+    //  I  I SD
+    LocalRespInst(REQ, AtomicLoadADD,  I,  I, SD, Read, HasData, sn = ChiResp.SD)     -> (Commit | RDB2Src |          WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+    //  I  I UC
+    LocalRespInst(REQ, AtomicLoadADD,  I,  I, UC, Read, HasData, sn = ChiResp.UC)     -> (Commit | RDB2Src |          WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+    //  I  I UD
+    LocalRespInst(REQ, AtomicLoadADD,  I,  I, UD, Read, HasData, sn = ChiResp.UD_PD)  -> (Commit | RDB2Src |                  RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+    //  I UC  I
+    LocalRespInst(REQ, AtomicLoadADD,  I, UC,  I, Snp,  HasData, rn = ChiResp.I_PD)   -> (Commit | RDB2Src | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+    LocalRespInst(REQ, AtomicLoadADD,  I, UC,  I, Snp,  HasData, rn = ChiResp.I)      -> (Commit | RDB2Src | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+    //  I UD  I
+    LocalRespInst(REQ, AtomicLoadADD,  I, UD,  I, Snp,  HasData, rn = ChiResp.I_PD)   -> (Commit | RDB2Src | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+    //  I SC  I
+    LocalRespInst(REQ, AtomicLoadADD,  I, SC,  I, Snp,  HasData, rn = ChiResp.I)      -> (Commit | RDB2Src | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+    //  I SC SC
+    LocalRespInst(REQ, AtomicLoadADD,  I, SC, SC, Snp,  HasData, rn = ChiResp.I)      -> (Commit | RDB2Src | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+    //  I SC SD
+    LocalRespInst(REQ, AtomicLoadADD,  I, SC, SD, Snp,  HasData, rn = ChiResp.I_PD)   -> (Commit | RDB2Src | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I) | SrcState(I) | OthState(I) | HnState(UD) | WriteDCU | WriOp(WriteNoSnpFull)),
+  )
+
+  def table: Seq[(UInt, UInt)] = atomicX
+}
+
+
 object LoaclSnpUniqueEvictDecode {
   def snpUniqueEvict: Seq[(UInt, UInt)] = Seq(
+    LocalSnpInst(SnpUniqueEvict,  I,  I,  I)    -> ERROE,
+    LocalSnpInst(SnpUniqueEvict,  I,  I, SC)    -> ERROE,
+    LocalSnpInst(SnpUniqueEvict,  I,  I, SD)    -> ERROE,
+    LocalSnpInst(SnpUniqueEvict,  I,  I,  I)    -> ERROE,
     // ----------------------------------------------------------- LOCAL RESP ------------------------------------------------------------//
     LocalRespInst(SNP, SnpUniqueEvict,  I,  I,  I, Snp,  HasData, rn = ChiResp.I)    -> (WSDir | HnState(UC) | WriteDCU | WriOp(WriteNoSnpFull)),
     LocalRespInst(SNP, SnpUniqueEvict,  I,  I, SC, Snp,  HasData, rn = ChiResp.I)    -> (WSDir | HnState(UC) | CleanDB),

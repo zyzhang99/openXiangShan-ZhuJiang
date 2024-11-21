@@ -23,7 +23,7 @@ class ExuRespMesBundle(implicit p: Parameters) extends DJBundle {
     val mstResp         = Valid(UInt(ChiResp.width.W))
     val fwdState        = Valid(UInt(ChiResp.width.W))
     val slvDBID         = Valid(UInt(dbIdBits.W))
-    val masDBID         = Valid(UInt(dbIdBits.W))
+    val mstDBID         = Valid(UInt(dbIdBits.W))
 
     def noRespValid     = !slvResp.valid & !mstResp.valid
 }

@@ -30,6 +30,10 @@ import xs.utils.perf.{DebugOptions, DebugOptionsKey, HasPerfLogging}
  * Write:                 [Free]  -----> [GetDBID] -----> [WaitDBID] -----> [DBIDResp2Node] -----> [WaitData] -----> [Req2Exu] -----> [WaitExuAck] --receive--> [Resp2Node] -----> [WaitCompAck] -----> [Free]
  *
  *
+ * Amotic Retry:          [Free]  -----> [GetDBID] -----> [WaitDBID] -----> [DBIDResp2Node] -----> [WaitData] -----> [Req2Exu] -----> [WaitExuAck] ---retry---> [Req2Exu]
+ * Amotic:                [Free]  -----> [GetDBID] -----> [WaitDBID] -----> [DBIDResp2Node] -----> [WaitData] -----> [Req2Exu] -----> [WaitExuAck] --receive--> [Free]
+ *
+ *
  * CopyBack Retry:        [Free]  -----> [GetDBID] -----> [WaitDBID] -----> [DBIDResp2Node] -----> [WaitData] -----> [Req2Exu] -----> [WaitExuAck] ---retry---> [Req2Exu]
  * CopyBack:              [Free]  -----> [GetDBID] -----> [WaitDBID] -----> [DBIDResp2Node] -----> [WaitData] -----> [Req2Exu] -----> [WaitExuAck] --receive--> [Free]
  * CopyBack Nest By Snp case:       ^                ^                 ^                      ^                 ^                ^
@@ -185,7 +189,8 @@ class RSEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle  {
     val getBeatNum    = UInt(1.W)
     val getSnpRespOH  = UInt(nrCcNode.W)
     val snpFwdWaitAck = Bool() // CompAck
-    val needSendRRec  = Bool()
+    val needSendRRec  = Bool() // Need send ReadReceipt
+    val swapFst       = Bool() // Only use in atomic
     val nestMes       = new Bundle {
       val waitWBDone  = Bool()
       val trans2Snp   = Bool()
@@ -317,7 +322,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
       when((rxReq.fire | io.req2Intf.fire | io.resp2Intf.fire) & entryFreeID === i.U) {
         pcuIdx          := entrySave.pcuIndex
       // Receive DBID From DataBuffer
-      }.elsewhen(io.dbSigs.dbidResp.fire & entryRecDBID === i.U) {
+      }.elsewhen(io.dbSigs.dbidResp.fire & io.dbSigs.dbidResp.bits.receive & entryRecDBID === i.U) {
         pcuIdx.dbID     := io.dbSigs.dbidResp.bits.dbID
         assert(entrys(i).state === RSState.WaitDBID, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
       }
@@ -420,16 +425,18 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
           val hit       = entryFreeID === i.U
           val reqHit    = rxReq.fire & !isWriteX(rxReq.bits.Opcode) & hit
           val cbOrWriHit= rxReq.fire & isWriteX(rxReq.bits.Opcode) & hit
+          val atomicHit = rxReq.fire & isAtomicX(rxReq.bits.Opcode) & hit
           val snpHit    = io.req2Intf.fire & hit
           val respHit   = io.resp2Intf.fire & hit
           val snpHasDBID= io.req2Intf.bits.pcuMes.hasPcuDBID
           val ret2Src   = io.req2Intf.bits.chiMes.retToSrc
           state         := Mux(reqHit, RSState.Req2Exu,
-                            Mux(snpHit & snpHasDBID, RSState.Snp2Node,
-                              Mux(snpHit & ret2Src, RSState.GetDBID,
-                                Mux(snpHit & !ret2Src, RSState.Snp2Node,
-                                  Mux(cbOrWriHit, RSState.GetDBID,
-                                      Mux(respHit, RSState.Resp2Node, state))))))
+                            Mux(atomicHit, RSState.GetDBID,
+                              Mux(snpHit & snpHasDBID, RSState.Snp2Node,
+                                Mux(snpHit & ret2Src, RSState.GetDBID,
+                                  Mux(snpHit & !ret2Src, RSState.Snp2Node,
+                                    Mux(cbOrWriHit, RSState.GetDBID,
+                                        Mux(respHit, RSState.Resp2Node, state)))))))
           assert(PopCount(Seq(reqHit, cbOrWriHit, snpHit, respHit)) <= 1.U, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
         }
         // State: Req2Exu
@@ -472,7 +479,8 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
         // State: WaitDBID
         is(RSState.WaitDBID) {
           val hit       = io.dbSigs.dbidResp.fire & entryRecDBID === i.U
-          state         := Mux(hit, Mux(entrys(i).chiMes.isSnp, RSState.Snp2Node, RSState.DBIDResp2Node), state)
+          val rec       = io.dbSigs.dbidResp.bits.receive
+          state         := Mux(hit, Mux(rec, Mux(entrys(i).chiMes.isSnp, RSState.Snp2Node, RSState.DBIDResp2Node), RSState.GetDBID), state)
         }
         // State: DBIDResp2Node
         is(RSState.DBIDResp2Node) {
@@ -537,6 +545,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   entrySave.entryMes.dcuID        := Mux(respVal, io.resp2Intf.bits.from,               Mux(snpVal, io.req2Intf.bits.from,                parseFullAddr(rxReq.bits.Addr)._3))
   entrySave.entryMes.snpFwdWaitAck:= Mux(respVal, false.B,                              Mux(snpVal, isSnpXFwd(io.req2Intf.bits.chiMes.opcode), false.B))
   entrySave.entryMes.needSendRRec := Mux(respVal, false.B,                              Mux(snpVal, false.B,                              rxReq.bits.Opcode === ReadOnce))
+  entrySave.entryMes.swapFst      := Mux(respVal, false.B,                              Mux(snpVal, false.B,                              rxReq.bits.Addr(offsetBits -1 , 0)(rxReq.bits.Size).asBool))
   entrySave.pcuIndex.mshrWay      := Mux(respVal, DontCare,                             Mux(snpVal, io.req2Intf.bits.pcuIndex.mshrWay,    DontCare))
   entrySave.pcuIndex.dbID         := Mux(respVal, io.resp2Intf.bits.pcuIndex.dbID,      Mux(snpVal, io.req2Intf.bits.pcuIndex.dbID,       0.U))
   entrySave.chiIndex.txnID        := Mux(respVal, io.resp2Intf.bits.chiIndex.txnID,     Mux(snpVal, io.req2Intf.bits.chiIndex.txnID,      rxReq.bits.TxnID))
@@ -651,6 +660,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   io.dbSigs.dataTDB.bits.data     := rxDat.bits.Data
   io.dbSigs.dataTDB.bits.dataID   := Mux(entrys(entryRecChiDatID).chiIndex.secBeat, "b10".U, rxDat.bits.DataID)
   io.dbSigs.dataTDB.bits.mask     := rxDat.bits.BE
+  io.dbSigs.dataTDB.bits.atomicVal:= isAtomicX(entrys(entryRecChiDatID).chiMes.opcode)
 
   /*
    * Set ready value
@@ -668,7 +678,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
    * Send Get DBID Req To From DataBuffer
    */
   val entryGetDBIDVec         = entrys.map(_.isGetDBID)
-  entryGetDBID                := PriorityEncoder(entryGetDBIDVec)
+  entryGetDBID                := RREncoder(entryGetDBIDVec)
 
   /*
    * Set DataBuffer Req Value
@@ -676,7 +686,9 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   io.dbSigs.getDBID.valid           := entryGetDBIDVec.reduce(_ | _)
   io.dbSigs.getDBID.bits.from       := param.intfID.U
   io.dbSigs.getDBID.bits.entryID    := entryGetDBID
-  io.dbSigs.getDBID.bits.swapFirst  := false.B // TODO
+  io.dbSigs.getDBID.bits.atomicVal  := isAtomicX(entrys(entryGetDBID).chiMes.opcode)
+  io.dbSigs.getDBID.bits.atomicOp   := getAtomicOp(entrys(entryGetDBID).chiMes.opcode)
+  io.dbSigs.getDBID.bits.swapFst    := entrys(entryGetDBID).entryMes.swapFst
 
   /*
    * Receive DBID From DataBuffer
@@ -704,7 +716,6 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   val snpTgtID          = getNodeIDByMetaID(PriorityEncoder(snpBeSendVec)); assert(PriorityEncoder(snpBeSendVec) < nrCcNode.U | !txSnp.valid)
   snpIsLast             := PopCount(snpBeSendVec.asBools) === 1.U; dontTouch(snpIsLast)
   snpAlreadySendVecReg  := Mux(txSnp.fire, Mux(snpIsLast, 0.U, snpAlreadySendVecReg | UIntToOH(getMetaIDByNodeID(snpTgtID))), snpAlreadySendVecReg); assert(fromCcNode(snpTgtID) | !txSnp.valid)
-  assert(Mux(isSnpToShare(txSnp.bits.Opcode) & isSnpXFwd(txSnp.bits.Opcode) & txSnp.valid, PopCount(snpShouldSendVec) === 1.U, true.B))
 
   /*
    * Send Snp to Node
@@ -781,6 +792,8 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
            Mux(isWriXPtl(rxReq.bits.Opcode),    rxReq.bits.Size < chiFullSize.U, // WriteXPtl
            Mux(rxReq.bits.Opcode === ReadOnce,  rxReq.bits.Size <= chiFullSize.U, // ReadOnce
                                                 rxReq.bits.Size === chiFullSize.U)))) // Other
+    // Endian
+    assert(rxReq.bits.Endian.asUInt === 0.U) // Must be Little Endian
   }
 
 // -------------------------------------------------- Perf Counter ------------------------------------------------------ //

@@ -27,7 +27,7 @@ trait HasToIncoID extends DJBundle { this: Bundle => val to = UInt(max(IncoID.wi
 
 trait HasIncoID extends DJBundle with HasFromIncoID with HasToIncoID
 
-trait HasDBID extends DJBundle { this: Bundle => val dbID = UInt(dbIdBits.W) }
+trait HasDBID extends DJBundle { this: Bundle => val dbID = UInt(dbIdBits.W); def apuEID = ((djparam.nrDatBuf - 1).U - dbID)(apuIdBits - 1, 0) }
 
 trait HasUseAddr extends DJBundle {this: Bundle =>
   val useAddr     = UInt(useAddrBits.W)
@@ -160,11 +160,11 @@ trait HasMask extends DJBundle { this: Bundle =>
   val mask          = UInt(maskBits.W)
 }
 // DataBuffer Read/Clean Req
-class DBRCReq     (implicit p: Parameters)   extends DJBundle with HasDBRCOp with HasDBID with HasToIncoID { val rBeatOH = UInt(2.W) }
-class GetDBID     (implicit p: Parameters)   extends DJBundle                             with HasFromIncoID with HasIntfEntryID { val swapFirst = Bool() }
-class DBIDResp    (implicit p: Parameters)   extends DJBundle                with HasDBID with HasToIncoID   with HasIntfEntryID
+class DBRCReq     (implicit p: Parameters)   extends DJBundle with HasDBRCOp with HasDBID with HasToIncoID                       { val rBeatOH = UInt(2.W); val exuAtomic = Bool() }
+class GetDBID     (implicit p: Parameters)   extends DJBundle                             with HasFromIncoID with HasIntfEntryID { val atomicVal = Bool();  val atomicOp = UInt(AtomicOp.width.W); val swapFst = Bool(); }
+class DBIDResp    (implicit p: Parameters)   extends DJBundle                with HasDBID with HasToIncoID   with HasIntfEntryID { val retry = Bool();      def receive = !retry }
 class NodeFDBData (implicit p: Parameters)   extends DJBundle with HasDBData with HasDBID with HasToIncoID   with HasMask
-class NodeTDBData (implicit p: Parameters)   extends DJBundle with HasDBData with HasDBID                    with HasMask
+class NodeTDBData (implicit p: Parameters)   extends DJBundle with HasDBData with HasDBID                    with HasMask        { val atomicVal = Bool() }
 
 class DBBundle(hasDBRCReq: Boolean = false)(implicit p: Parameters) extends DJBundle {
   val dbRCReqOpt  = if(hasDBRCReq) Some(Decoupled(new DBRCReq)) else None

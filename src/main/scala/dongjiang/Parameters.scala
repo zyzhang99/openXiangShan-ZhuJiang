@@ -49,6 +49,7 @@ case class DJParam(
                   dcuExtraHold:       Boolean = true,
                   // --------------------------- Data Buffer Base Mes ------------------- //
                   nrDatBuf:           Int = 24, // The number of Data Buffer entries Per PCU
+                  nrAPU:              Int = 8, // The number of Atomic Process entries Per PCU
                   // ------------------------ EXU Base Mes Per Bank ------------------ //
                   nrPipeTaskQueue:    Int = 4,
                   nrExuReqQueue:      Int = 4,
@@ -74,6 +75,7 @@ case class DJParam(
   require(min(selfSets, sfDirSets) >= nrMSHRSets)
   require(isPow2(nrDirBank))
   require(isPow2(nrMSHRSets))
+  require(nrDatBuf <= nrDatBuf)
   require(nrDCURespQ >= 0)
   require(nrPipeTaskQueue > 0)
   require(nrExuReqQueue > 0)
@@ -253,6 +255,8 @@ trait HasDJParam extends HasParseZJParam {
 
   // DataBuffer entry Id Bits
   lazy val dbIdBits         = log2Ceil(djparam.nrDatBuf)
+  lazy val apuIdBits        = log2Ceil(djparam.nrAPU)
+  lazy val nrDBWithoutAPUs  = djparam.nrDatBuf - djparam.nrAPU
   require(dbIdBits <= chiTxnIdBits)
 
   // SELF DIR Parameters: [useAddr] = [sTag] + [sSet] + [dirBank]

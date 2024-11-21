@@ -9,6 +9,7 @@ import dongjiang.pcu._
 import dongjiang.chi._
 import chisel3._
 import chisel3.util._
+import dongjiang.utils.Encoder.RREncoder
 import org.chipsalliance.cde.config._
 import dongjiang.utils.FastArb._
 import xijiang.Node
@@ -223,7 +224,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
       /*
        * Receive DBID From DataBuffer
        */
-      }.elsewhen(io.dbSigs.dbidResp.fire & entryRecDBID === i.U) {
+      }.elsewhen(io.dbSigs.dbidResp.fire & io.dbSigs.dbidResp.bits.receive & entryRecDBID === i.U) {
         entry.entryMes.hasData      := true.B
         entry.pcuIndex.dbID         := io.dbSigs.dbidResp.bits.dbID
         assert(entry.state === SMState.WaitDBID, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
@@ -292,7 +293,8 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
         // State: WaitDBID
         is(SMState.WaitDBID) {
           val hit       = io.dbSigs.dbidResp.fire & entryRecDBID === i.U
-          entry.state   := Mux(hit, SMState.Req2Node, entry.state)
+          val rec       = io.dbSigs.dbidResp.bits.receive
+          entry.state   := Mux(hit, Mux(rec, SMState.Req2Node, SMState.GetDBID), entry.state)
         }
         // State: Req2Node
         is(SMState.Req2Node) {
@@ -389,15 +391,15 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
    * Send Get DBID Req To From DataBuffer
    */
   val entryGetDBIDVec                 = entrys.map(_.isGetDBID)
-  entryGetDBID                        := PriorityEncoder(entryGetDBIDVec)
+  entryGetDBID                        := RREncoder(entryGetDBIDVec)
 
   /*
    * Set DataBuffer Req Value
    */
   io.dbSigs.getDBID.valid             := entryGetDBIDVec.reduce(_ | _)
+  io.dbSigs.getDBID.bits              := DontCare
   io.dbSigs.getDBID.bits.from         := param.intfID.U
   io.dbSigs.getDBID.bits.entryID      := entryGetDBID
-  io.dbSigs.getDBID.bits.swapFirst    := DontCare
 
   /*
    * Receive DBID From DataBuffer
@@ -450,6 +452,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   io.dbSigs.dbRCReq.bits.dbID       := entrys(entryRCDBID).pcuIndex.dbID
   io.dbSigs.dbRCReq.bits.to         := param.intfID.U
   io.dbSigs.dbRCReq.bits.rBeatOH    := entrys(entryRCDBID).chiIndex.beatOH
+  io.dbSigs.dbRCReq.bits.exuAtomic  := false.B
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //
@@ -459,29 +462,30 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   val entrySendDatID            = PriorityEncoder(entrySendDatVec)
   assert(Mux(txDat.valid, PopCount(entrySendDatVec) === 1.U, true.B))
 
-  txDat.valid            := io.dbSigs.dataFDB.valid
-  txDat.bits             := DontCare
-  txDat.bits.Opcode      := NonCopyBackWriteData
-  txDat.bits.TgtID       := entrys(entrySendDatID).fullTgtID(io.fIDVec)
-  txDat.bits.SrcID       := io.hnfID
-  txDat.bits.TxnID       := entrys(entrySendDatID).chiIndex.txnID
-  txDat.bits.DataID      := io.dbSigs.dataFDB.bits.dataID
-  txDat.bits.Data        := io.dbSigs.dataFDB.bits.data
-  txDat.bits.BE          := io.dbSigs.dataFDB.bits.mask
+  txDat.valid             := io.dbSigs.dataFDB.valid
+  txDat.bits              := DontCare
+  txDat.bits.Opcode       := NonCopyBackWriteData
+  txDat.bits.TgtID        := entrys(entrySendDatID).fullTgtID(io.fIDVec)
+  txDat.bits.SrcID        := io.hnfID
+  txDat.bits.TxnID        := entrys(entrySendDatID).chiIndex.txnID
+  txDat.bits.DataID       := io.dbSigs.dataFDB.bits.dataID
+  txDat.bits.Data         := io.dbSigs.dataFDB.bits.data
+  txDat.bits.BE           := io.dbSigs.dataFDB.bits.mask
 
-  io.dbSigs.dataFDB.ready       := txDat.ready
+  io.dbSigs.dataFDB.ready := txDat.ready
 
 // ---------------------------------------------------------------------------------------------------------------------- //
 // --------------------------------- Receive Data From CHI DAT And Send It To DataBuffer -------------------------------- //
 // ---------------------------------------------------------------------------------------------------------------------- //
-  val entryRecChiDatID          = rxDat.bits.TxnID(param.entryIdBits-1, 0)
+  val entryRecChiDatID              = rxDat.bits.TxnID(param.entryIdBits-1, 0)
 
-  io.dbSigs.dataTDB.valid       := rxDat.valid
-  io.dbSigs.dataTDB.bits.dbID   := entrys(entryRecChiDatID).pcuIndex.dbID
-  io.dbSigs.dataTDB.bits.data   := rxDat.bits.Data
-  io.dbSigs.dataTDB.bits.dataID := Mux(entrys(entryRecChiDatID).chiIndex.secBeat, "b10".U, rxDat.bits.DataID)
-  io.dbSigs.dataTDB.bits.mask   := rxDat.bits.BE
-  rxDat.ready                   := io.dbSigs.dataTDB.ready
+  io.dbSigs.dataTDB.valid           := rxDat.valid
+  io.dbSigs.dataTDB.bits.dbID       := entrys(entryRecChiDatID).pcuIndex.dbID
+  io.dbSigs.dataTDB.bits.data       := rxDat.bits.Data
+  io.dbSigs.dataTDB.bits.dataID     := Mux(entrys(entryRecChiDatID).chiIndex.secBeat, "b10".U, rxDat.bits.DataID)
+  io.dbSigs.dataTDB.bits.mask       := rxDat.bits.BE
+  io.dbSigs.dataTDB.bits.atomicVal  := false.B
+  rxDat.ready                       := io.dbSigs.dataTDB.ready
   assert(Mux(rxDat.valid, rxDat.bits.TxnID <= param.nrEntry.U, true.B))
 
 
