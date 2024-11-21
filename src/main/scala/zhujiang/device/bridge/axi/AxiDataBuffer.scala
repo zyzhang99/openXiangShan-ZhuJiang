@@ -46,7 +46,7 @@ class AxiDataBufferFreelist(ctrlSize: Int, bufferSize: Int)(implicit p: Paramete
     val req = Flipped(Decoupled(new AxiDataBufferAllocReq(ctrlSize)))
     val resp = Valid(new AxiDataBufferCtrlEntry(bufferSize))
     val release = Input(Valid(new AxiDataBufferCtrlEntry(bufferSize)))
-    val empty = Output(Bool())
+    val idle = Output(Bool())
   })
   private val freelist = RegInit(VecInit(Seq.tabulate(bufferSize)(_.U(log2Ceil(bufferSize).W))))
   private val headPtr = RegInit(AxiDataBufferFreelistPtr(f = false.B, v = 0.U))
@@ -67,7 +67,7 @@ class AxiDataBufferFreelist(ctrlSize: Int, bufferSize: Int)(implicit p: Paramete
   io.resp.valid := io.req.fire
   io.resp.bits.recvMax := reqNum - 1.U
   io.resp.bits.recvCnt := 0.U
-  io.empty := headPtr === tailPtr
+  io.idle := headPtr.value === tailPtr.value && headPtr.flag =/= headPtr.flag
 
   private val allocNum = Mux(io.req.fire, reqNum, 0.U)
   private val relNum = Mux(io.release.valid, io.release.bits.recvMax + 1.U, 0.U)
@@ -190,9 +190,14 @@ class AxiDataBuffer(axiParams: AxiParams, ctrlSize: Int, bufferSize: Int)(implic
   dataBuffer.io.writeData.valid := io.icn.valid
   io.icn.ready := dataBuffer.io.writeData.ready
   dataBuffer.io.writeData.bits := io.icn.bits
-  private val dataId = io.icn.bits.DataID(log2Ceil(icnSelCtrl.buf.length) - 1, 0)
-  private val bufIdx = if(dw == 256) dataId >> 1 else dataId
-  dataBuffer.io.writeData.bits.TxnID := icnSelCtrl.buf(bufIdx.asUInt)
+  private val bufIdx = if(dw == 128) {
+    io.icn.bits.DataID
+  } else if(dw == 256) {
+    (io.icn.bits.DataID >> 1).asUInt(log2Ceil(ctrlSelReg.buf.length) - 1, 0)
+  } else {
+    0.U
+  }
+  dataBuffer.io.writeData.bits.TxnID := icnSelCtrl.buf(bufIdx)
 
   dataBuffer.io.readDataReq.valid := txReqValid
   dataBuffer.io.readDataReq.bits.set := ctrlSelReg.buf(txReqCntReg(log2Ceil(ctrlSelReg.buf.length) - 1, 0))
@@ -202,7 +207,7 @@ class AxiDataBuffer(axiParams: AxiParams, ctrlSize: Int, bufferSize: Int)(implic
   private val ramStop = RegInit(true.B)
   when(freelist.io.resp.valid) {
     ramStop := false.B
-  }.elsewhen(io.axi.fire && freelist.io.empty) {
+  }.elsewhen(io.axi.fire && freelist.io.idle) {
     ramStop := true.B
   }
   dataBuffer.io.stop := ramStop
