@@ -69,6 +69,7 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
   rIdQueue.io.enq.valid   := RegNext(readSram.io.r.req.fire, false.B)
   rIdQueue.io.enq.bits.areid := chiEntrys(selSendDatChiEReg).areid
   rIdQueue.io.enq.bits.rid   := axiEntrys(chiEntrys(selSendDatChiEReg).areid).arid
+  rIdQueue.io.enq.bits.last  := axiEntrys(chiEntrys(selSendDatChiEReg).areid).sendDatNum === axiEntrys(chiEntrys(selSendDatChiEReg).areid).len + 1.U
   rIdQueue.io.deq.ready      := io.axi_r.ready
 
   /* 
@@ -85,8 +86,7 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
     chiEntrys(sramSelector.io.out0).areid := selSendAxiEntry
     chiEntrys(sramSelector.io.out0).full  := false.B
     chiEntrys(sramSelector.io.out0).last  := true.B
-    chiEntrys(sramSelector.io.out0).num   := axiEntrys(selSendAxiEntry).sendReqNum - axiEntrys(selSendAxiEntry).sendDatNum - (io.axi_r.fire && 
-    io.axi_r.bits.id === axiEntrys(selSendAxiEntry).arid && axiEntrys(selSendAxiEntry).nid === 0.U).asUInt
+    chiEntrys(sramSelector.io.out0).num   := axiEntrys(selSendAxiEntry).sendReqNum - axiEntrys(selSendAxiEntry).sendDatNum - (readSram.io.r.req.fire && chiEntrys(selSendDatChiEntry).areid === selSendAxiEntry).asUInt
     chiEntrys(sramSelector.io.out0).state := CHIRState.Wait
     
     axiEntrys(selSendAxiEntry).addr       := axiEntrys(selSendAxiEntry).addr + 32.U
@@ -94,16 +94,14 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
     chiEntrys(sramSelector.io.out0).areid := selSendAxiEntry
     chiEntrys(sramSelector.io.out0).full  := true.B
     chiEntrys(sramSelector.io.out0).last  := false.B
-    chiEntrys(sramSelector.io.out0).num   := axiEntrys(selSendAxiEntry).sendReqNum - axiEntrys(selSendAxiEntry).sendDatNum - (io.axi_r.fire && 
-    io.axi_r.bits.id === axiEntrys(selSendAxiEntry).arid && axiEntrys(selSendAxiEntry).nid === 0.U).asUInt
+    chiEntrys(sramSelector.io.out0).num   := axiEntrys(selSendAxiEntry).sendReqNum - axiEntrys(selSendAxiEntry).sendDatNum - (readSram.io.r.req.fire && chiEntrys(selSendDatChiEntry).areid === selSendAxiEntry).asUInt
     chiEntrys(sramSelector.io.out0).next  := sramSelector.io.out1
     chiEntrys(sramSelector.io.out0).state := CHIRState.Wait
 
     chiEntrys(sramSelector.io.out1).areid := selSendAxiEntry
     chiEntrys(sramSelector.io.out1).full  := true.B
     chiEntrys(sramSelector.io.out1).last  := true.B
-    chiEntrys(sramSelector.io.out1).num   := axiEntrys(selSendAxiEntry).sendReqNum + 1.U - axiEntrys(selSendAxiEntry).sendDatNum - (io.axi_r.fire &&
-    io.axi_r.bits.id === axiEntrys(selSendAxiEntry).arid && axiEntrys(selSendAxiEntry).nid === 0.U).asUInt
+    chiEntrys(sramSelector.io.out1).num   := axiEntrys(selSendAxiEntry).sendReqNum + 1.U - axiEntrys(selSendAxiEntry).sendDatNum - (readSram.io.r.req.fire && chiEntrys(selSendDatChiEntry).areid === selSendAxiEntry).asUInt
     chiEntrys(sramSelector.io.out1).state := CHIRState.Wait
 
     axiEntrys(selSendAxiEntry).addr       := axiEntrys(selSendAxiEntry).addr + 64.U
@@ -147,7 +145,7 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
   axiRFlit        := 0.U.asTypeOf(axiRFlit)
   axiRFlit.data   := rDataQueue.io.deq.bits
   axiRFlit.id     := rIdQueue.io.deq.bits.rid
-  axiRFlit.last   := axiEntrys(rIdQueue.io.deq.bits.areid).sendDatNum === axiEntrys(rIdQueue.io.deq.bits.areid).len
+  axiRFlit.last   := rIdQueue.io.deq.bits.last
 
   when(io.chi_rxdat.fire && io.chi_rxdat.bits.DataID === 2.U){
     chiEntrys(chiEntrys(dataTxnid).next).state := CHIRState.SendData
@@ -202,7 +200,7 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
         }
         is(AXIRState.Send){
           val compHit = (a.sendReqNum === (a.len + 1.U)) && selSendAxiEntry === i.U
-          val datNumAdd = io.axi_r.fire && io.axi_r.bits.id === a.arid && a.nid === 0.U
+          val datNumAdd = readSram.io.r.req.fire && readSramAreid === i.U
           when(compHit){
             a.state := AXIRState.Comp
           }
@@ -210,7 +208,7 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
         }
         is(AXIRState.Comp){
           val hit = io.axi_r.fire && io.axi_r.bits.id === a.arid && a.nid === 0.U && io.axi_r.bits.last
-          val datNumAdd = io.axi_r.fire && io.axi_r.bits.id === a.arid && a.nid === 0.U
+          val datNumAdd = readSram.io.r.req.fire && readSramAreid === i.U
           a.sendDatNum := Mux(datNumAdd, a.sendDatNum + 1.U, a.sendDatNum)
           when(hit){
             a := 0.U.asTypeOf(a)
