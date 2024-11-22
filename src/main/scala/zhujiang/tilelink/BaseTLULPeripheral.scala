@@ -32,13 +32,12 @@ abstract class BaseTLULPeripheral(tlParams: TilelinkParams) extends Module {
     withClockAndReset(myclock, myreset) {
       val pregSeq = for((name, read, write, addr, writeMask, readMask) <- regSeq) yield {
         val width = read.getWidth
-        require(width <= tlParams.dataBits)
         val regSize = if(width == 8) 0
         else if(width == 16) 1
         else if(width == 32) 2
         else if(width == 64) 3
         else 4
-        require(regSize < 4)
+        require(regSize < 4, s"illegal reg width $width of reg $name")
         val checkAlignMask = (0x1L << regSize) - 1
         require((addr & checkAlignMask) == 0)
         val maxByteIdx = addr + (width / 8) - 1
@@ -46,17 +45,18 @@ abstract class BaseTLULPeripheral(tlParams: TilelinkParams) extends Module {
       }
       val maxByte = pregSeq.map(r => r._8).max + 1
       val busBytes = tlParams.dataBits / 8
-      val readMatrixRow = maxByte / busBytes
+      val readMatrixRow = (maxByte + busBytes - 1) / busBytes
       val readMatrix = Wire(Vec(readMatrixRow, Vec(busBytes, UInt(8.W))))
       readMatrix := 0.U.asTypeOf(readMatrix)
       dontTouch(readMatrix)
 
       val addrMatchVec = pregSeq.map(elm => elm._4(tlParams.addrBits - 1, log2Ceil(busBytes)) === addr(tlParams.addrBits - 1, log2Ceil(busBytes)))
       val addrMatch = WireInit(Cat(addrMatchVec).orR)
-      val readLegalData = WireInit(readMatrix(addr(log2Ceil(readMatrixRow * busBytes) - 1, log2Ceil(busBytes))).asUInt)
+      val addrRow = if(readMatrixRow == 1) 0.U else addr(log2Ceil(readMatrixRow * busBytes) - 1, log2Ceil(busBytes))
+      val readLegalData = WireInit(readMatrix(addrRow).asUInt)
       dontTouch(addrMatch)
       dontTouch(readLegalData)
-      accessPipe.io.enq.bits.data := Mux(addr < readMatrixRow.U, readLegalData, 0.U)
+      accessPipe.io.enq.bits.data := Mux(addrRow < readMatrixRow.U, readLegalData, 0.U)
       accessPipe.io.enq.bits.corrupt := !addrMatch
 
       (for(idx <- regSeq.indices) yield {
@@ -82,7 +82,7 @@ abstract class BaseTLULPeripheral(tlParams: TilelinkParams) extends Module {
         val srcDataLanes = src.asTypeOf(Vec(lanes, UInt(8.W)))
         for(l <- srcDataLanes.indices) {
           val laneAddr = regAddr + l.U
-          val row = laneAddr(log2Ceil(readMatrixRow * busBytes) - 1, log2Ceil(busBytes))
+          val row = if(readMatrixRow == 1) 0.U else laneAddr(log2Ceil(readMatrixRow * busBytes) - 1, log2Ceil(busBytes))
           val off = laneAddr(log2Ceil(busBytes) - 1, 0)
           readMatrix(row)(off) := rmaskByLanes(l) & srcDataLanes(l)
         }
