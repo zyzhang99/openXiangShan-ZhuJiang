@@ -349,8 +349,8 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
    * AXI interface
    */
   io.axi_aw.ready     := axiFreeVec.reduce(_|_)
-  io.axi_w.ready      := !(block && mergeComp)
-  io.axi_b.valid      := sendAxiBValid
+  io.axi_w.ready      := !(block && mergeComp) && axiBusyVec.reduce(_|_)
+  io.axi_b.valid      := sendAxiBValid 
   io.axi_b.bits       := 0.U.asTypeOf(io.axi_b.bits)
   io.axi_b.bits.id    := axiEntrys(selCompAxiEntry).awid
 

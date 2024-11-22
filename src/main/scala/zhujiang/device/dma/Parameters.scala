@@ -57,6 +57,7 @@ object CHIRState {
 class IDBundle(implicit p : Parameters) extends ZJBundle {
   val areid      = UInt(log2Ceil(zjParams.dmaParams.axiEntrySize).W)
   val rid        = UInt(zjParams.dmaParams.idBits.W)
+  val last       = Bool()
 }
 
 class SRAMSelector(implicit p: Parameters) extends ZJModule {
