@@ -43,18 +43,22 @@ class CHIREntry(implicit p : Parameters) extends ZJBundle {
   val homeNid        = UInt(niw.W)
   val dbid           = UInt(12.W)
   val haveRecReceipt = Bool()
-  val haveRecDataFir = Bool()
-  val haveRecDataSec = Bool()
+  val haveRecData    = Bool()
 }
 
 object CHIRState {
-  val width        = 3
-  val Free         = "b000".U
-  val Wait         = "b001".U
-  val sendCompAck  = "b010".U
-  val SendData     = "b011".U
-  val Comp         = "b100".U
+  val width        = 2
+  val Free         = "b00".U
+  val Wait         = "b01".U
+  val SendData     = "b10".U
+  val Comp         = "b11".U
 }
+
+class IDBundle(implicit p : Parameters) extends ZJBundle {
+  val areid      = UInt(log2Ceil(zjParams.dmaParams.axiEntrySize).W)
+  val rid        = UInt(zjParams.dmaParams.idBits.W)
+}
+
 class SRAMSelector(implicit p: Parameters) extends ZJModule {
   private val dmaParams = zjParams.dmaParams
   val io = IO(new Bundle() {
