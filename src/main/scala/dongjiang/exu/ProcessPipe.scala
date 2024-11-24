@@ -505,7 +505,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   io.updMSHR.bits.hasNewReq   := todo_s3_replace | todo_s3_sfEvict
   io.updMSHR.bits.opcode      := Mux(todo_s3_replace, Replace,            SnpUniqueEvict)
   io.updMSHR.bits.channel     := Mux(todo_s3_replace, CHIChannel.REQ,     CHIChannel.SNP)
-  io.updMSHR.bits.lockDirSet  := todo_s3_replace
+  io.updMSHR.bits.needUpdLock := todo_s3_replace
   // Common
   io.updMSHR.valid            := valid_s3 & (todo_s3_retry | todo_s3_updateMSHR | todo_s3_cleanMSHR) & !done_s3_g_updMSHR
   done_s3_g_updMSHR           := Mux(rstDone, false.B, done_s3_g_updMSHR | io.updMSHR.fire)
@@ -593,7 +593,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
    * Update MshrLockVec:
    * 1. S3 done but task dont need to commit
    */
-  io.updLockMSHR.valid  := valid_s3 & canGo_s3 & task_s3_g.bits.taskMes.readDir
+  io.updLockMSHR.valid  := valid_s3 & canGo_s3 & task_s3_g.bits.taskMes.readDir & !io.updMSHR.bits.needUpdLock
   io.updLockMSHR.bits   := task_s3_g.bits.taskMes.minDirSet
 
 
