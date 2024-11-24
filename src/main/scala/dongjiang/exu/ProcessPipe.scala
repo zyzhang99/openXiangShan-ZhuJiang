@@ -175,6 +175,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   /*
    * Set Inst value
    */
+
   val taskIsWriPtl    = isWriXPtl(task_s3_g.bits.chiMes.opcode) & task_s3_g.bits.chiMes.isReq
   val taskIsCMO       = isCMO(task_s3_g.bits.chiMes.opcode)     & task_s3_g.bits.chiMes.isReq
   val taskIsCB        = isCBX(task_s3_g.bits.chiMes.opcode)     & task_s3_g.bits.chiMes.isReq
@@ -206,6 +207,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   inst_req_s3.othState  := inst_s3.othState
   inst_req_s3.hnState   := inst_s3.hnState
   inst_req_s3.respType  := RespType.NotResp
+
 
   /*
    * Get Decode Result

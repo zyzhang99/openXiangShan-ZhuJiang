@@ -10,48 +10,6 @@ import zhujiang.chi._
 import zhujiang.axi._
 import xs.utils.sram._
 
-object WRState {
-  val width        = 3
-  val Free         = "b000".U
-  val SendWrReq    = "b001".U
-  val WaitDBID     = "b010".U
-  val SendWrData   = "b011".U
-  val SendCompAck  = "b100".U
-  val Complete     = "b101".U
-}
-
-object AWState {
-  val width       = 2
-  val Free        = "b00".U
-  val ReceiveData = "b01".U
-  val Comp        = "b10".U
-}
-
-class AWEntry(implicit p: Parameters) extends ZJBundle {
-    val addr            = UInt(raw.W)
-    val unalign         = Bool()
-    val burst           = UInt(BurstMode.width.W)
-    val size            = UInt(3.W)
-    val awid            = UInt(8.W)
-    val state           = UInt(AWState.width.W)
-    val nid             = UInt(zjParams.dmaParams.nidBits.W)
-}
-
-class WrStateEntry(implicit p: Parameters) extends ZJBundle {
-  val areid        = UInt(log2Ceil(zjParams.dmaParams.entrySize).W)
-  val dbid         = UInt(12.W)
-  val last         = Bool()
-  val full         = Bool()
-  val separate     = Bool()
-  val sendReqOrder = UInt(6.W)
-  val state        = UInt(WRState.width.W)
-  val tgtID        = UInt(niw.W)
-  val sendFull     = Bool()
-  val mmioReq      = Bool()
-  val sendAckOrder = UInt(log2Ceil(zjParams.dmaParams.entrySize).W)
-  val haveRecComp  = Bool()
-}
-
 class WriteHandle(implicit p: Parameters) extends ZJModule{
   
   private val dmaParams = zjParams.dmaParams
@@ -70,295 +28,244 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
     val chi_txdat = Decoupled(new DataFlit)
   })
 
-  
-
   //---------------------------------------------------------------------------------------------------------------------------------//
   //-------------------------------------------------- Reg and Wire Define ----------------------------------------------------------//
   //---------------------------------------------------------------------------------------------------------------------------------//
-  val awEntrys           = RegInit(VecInit.fill(dmaParams.entrySize)(0.U.asTypeOf(new AWEntry)))
-  val dataSram           = Module(new SRAMTemplate(gen = UInt(dw.W), set = dmaParams.bufferSize, singlePort = true))
-  val wrStateEntrys      = RegInit(VecInit.fill(dmaParams.bufferSize)(0.U.asTypeOf(new WrStateEntry)))
-  val maskSram           = Module(new SRAMTemplate(gen = UInt(bew.W), set = dmaParams.bufferSize, singlePort = true))
-
-  val mergeDataReg       = RegInit(0.U(dw.W))
-  val mergeMaskReg       = RegInit(0.U(bew.W))
+  private val axiEntrys     = RegInit(VecInit.fill(dmaParams.axiEntrySize)(0.U.asTypeOf(new AXIWEntry)))
+  private val chiEntrys     = RegInit(VecInit.fill(dmaParams.chiEntrySize)(0.U.asTypeOf(new CHIWEntry)))
+  private val dataSram      = Module(new SRAMTemplate(gen = UInt(dw.W), set = dmaParams.chiEntrySize, singlePort = true))
+  private val maskSram      = Module(new SRAMTemplate(gen = UInt(bew.W), set = dmaParams.chiEntrySize, singlePort = true))
   
+
   //---------------------------------------------------------------------------------------------------------------------------------//
   //---------------------------------------------------------- Logic ----------------------------------------------------------------//
   //---------------------------------------------------------------------------------------------------------------------------------//
-  val awFreeVec         = awEntrys.map(_.state === AWState.Free)
-  val selFreeAWEntry    = PriorityEncoder(awFreeVec)
-  val awBusyVec         = awEntrys.map(_.state =/= AWState.Free)
-  val awWrDataVec       = awEntrys.map(a => a.state === AWState.ReceiveData && a.nid === 0.U)
-  val selWrDataEntry    = PriorityEncoder(awWrDataVec)
-  val wrBe              = io.axi_w.bits.strb.asTypeOf(Vec(dw/8, UInt(1.W)))
-  val mask              = RegInit(VecInit(Seq.fill(dw/8){0.U(8.W)}))
-  val data              = RegInit(0.U(dw.W))
-  val strbReg           = RegInit(0.U(bew.W))
-  val rxRspTxnid        = WireInit(io.chi_rxrsp.bits.TxnID(log2Ceil(dmaParams.bufferSize) - 1, 0))
-  val txReqTxnid        = WireInit(io.chi_txreq.bits.TxnID(log2Ceil(dmaParams.bufferSize) - 1, 0))
+
+  private val rxRspTxnid     = Wire(UInt(log2Ceil(dmaParams.chiEntrySize).W))
+  private val txReqTxnid     = Wire(UInt(log2Ceil(dmaParams.chiEntrySize).W))
+  private val rxRspTxnidNext = Wire(UInt(log2Ceil(dmaParams.chiEntrySize).W))
+
+  txReqTxnid                := io.chi_txreq.bits.TxnID(log2Ceil(dmaParams.chiEntrySize) - 1, 0)
+  rxRspTxnid                := io.chi_rxrsp.bits.TxnID(log2Ceil(dmaParams.chiEntrySize) - 1, 0)
+  rxRspTxnidNext            := rxRspTxnid + 1.U
   
   /* 
-  Sram start Index pointer and End Index pointer
+   * axiEntrys state vector and select
    */
 
-  val startIndex        = RegInit(0.U(log2Ceil(dmaParams.bufferSize).W))
-  val endIndex          = RegInit(0.U(log2Ceil(dmaParams.bufferSize).W))
-  
+  private val axiFreeVec    = axiEntrys.map(_.state === AXIWState.Free)
+  private val axiBusyVec    = axiEntrys.map(_.state === AXIWState.ReceiveData)
+  private val axiWrDataVec  = axiEntrys.map(a => a.state === AXIWState.ReceiveData && a.nid === 0.U)
+  private val axiCompVec    = axiEntrys.map(_.state === AXIWState.Comp)
+
+  private val selFreeAxiEntry   = PriorityEncoder(axiFreeVec)
+  private val selWrDataAxiEntry = PriorityEncoder(axiWrDataVec)
+  private val selCompAxiEntry   = PriorityEncoder(axiCompVec)
 
   /* 
-  judge is ready to send AXI B Response
+   * chiEntrys state vector and select
    */
 
-  val awCompVec         = awEntrys.map(_.state === AWState.Comp)
-  val selCompEntry      = PriorityEncoder(awCompVec)
-  val wrStateAreidVec   = wrStateEntrys.map(w => w.state =/= WRState.Free && w.areid === selCompEntry)
+  private val chiBusyVec     = chiEntrys.map(c => c.state =/= CHIWState.Free && c.areid === selCompAxiEntry)
+  private val chiSendDataVec = chiEntrys.map(_.state === CHIWState.SendWrData)
+  private val chiSendReqVec  = chiEntrys.map(c => c.sendReqOrder === 0.U && c.state === CHIWState.SendWrReq)
+  private val chiSendAckVec  = chiEntrys.map(c => c.state === CHIWState.SendCompAck && c.haveRecComp && c.sendAckOrder === 0.U)
 
-  val sendAxiBValid     = awCompVec.reduce(_|_) && !wrStateAreidVec.reduce(_|_)
+  private val selSendReqChiEntry  = PriorityEncoder(chiSendReqVec)
+  private val selSendAckChiEntry  = PriorityEncoder(chiSendAckVec)
+  private val selSendDataChiEntry = PriorityEncoder(chiSendDataVec)
 
   /* 
-  merge Data and Mask logic
+   * chi flit define
+   */
+  private val txReqFlit         = Wire(new ReqFlit)
+  private val txDatFlit         = Reg(new DataFlit)
+  private val txRspFlit         = Wire(new RespFlit)
+
+
+  /* 
+   * merge reg or wire
    */
 
-  val mergeValid_s1     = RegInit(false.B)
-  val judgeSendReq      = RegInit(true.B)
-  mergeValid_s1        := io.axi_w.fire
+  private val wrBe             = io.axi_w.bits.strb.asTypeOf(VecInit.fill(dw/8)(0.U(1.W)))
+  private val expendMask       = WireInit(VecInit.fill(dw/8)(0.U(8.W)))
+  private val mergeDataReg     = RegInit(0.U(dw.W))
+  private val mergeStrbReg     = RegInit(0.U(bew.W))
+  private val shouldSendFull   = mergeStrbReg.andR
 
-  when(io.axi_w.fire){
-    data    := io.axi_w.bits.data
-    strbReg := io.axi_w.bits.strb
+  /* 
+   * Sram start index pointer and end index pointer
+   */
+
+  private val startIndex       = Reg(UInt(log2Ceil(dmaParams.chiEntrySize).W))
+  private val endIndex         = Reg(UInt(log2Ceil(dmaParams.chiEntrySize).W))
+  private val maybeFull        = RegInit(false.B)
+
+  when(chiEntrys(startIndex + 1.U).state === CHIWState.Free && startIndex =/= endIndex && chiEntrys(startIndex).state === CHIWState.Free){
+    startIndex := startIndex + 1.U
+    maybeFull      := false.B
   }
-  
+
+  /* 
+   * judge is ready to send axi b response
+   */
+
+  private val sendAxiBValid    = !chiBusyVec.reduce(_|_) && axiEntrys(selCompAxiEntry).state === AXIWState.Comp
+
+  /* 
+   * merge Data and Mask logic
+   */
 
   when(io.axi_w.fire){
-    mask.zip(wrBe).foreach{
-    case(m, b) =>
-      when(b === 1.U){
-        m := 255.U
-      }.otherwise{
-        m := 0.U   }
+    expendMask.zip(wrBe).foreach{
+      case(m,b) =>
+        when(b === 1.U){
+          m := 255.U
+        }.otherwise{
+          m := 0.U
+        }
     }
   }
-  val lastWrData        = RegNext(RegNext(io.axi_w.bits.last && io.axi_w.fire))
-  val maskValid         = mergeMaskReg(bew - 1) || lastWrData
-  
-  when(mergeValid_s1 && !mergeMaskReg(bew - 1)){
-  mergeDataReg         := (mask.asTypeOf(UInt(dw.W)) & data) | mergeDataReg
-  mergeMaskReg         := strbReg | mergeMaskReg
-  }.elsewhen(mergeMaskReg(bew - 1) && mergeValid_s1){
-  mergeDataReg         := mask.asTypeOf(UInt(dw.W)) & data
-  mergeMaskReg         := strbReg
-  }.elsewhen(lastWrData && mergeValid_s1){
-  mergeDataReg         := mask.asTypeOf(UInt(dw.W)) & data
-  mergeMaskReg         := strbReg
-  }.elsewhen(!mergeValid_s1 && lastWrData){
-    mergeDataReg       := 0.U
-    mergeMaskReg       := 0.U
-  }
-  val mergeValid_s2     = RegNext(mergeValid_s1)
+  private val mergeLast     = RegInit(false.B)
+  private val mergeComp     = WireInit((mergeStrbReg(bew - 1) || mergeLast )&& RegNext(io.axi_w.fire))
+  private val block         = WireInit(maybeFull && (endIndex === startIndex))
+  private val judgeSendReq  = RegInit(true.B)
+  private val sendReqNum    = chiEntrys.map(c => c.areid === selWrDataAxiEntry && (c.state === CHIWState.SendWrReq || c.state === CHIWState.WaitDBID) && !(c.full && c.last))
+  private val waitCompEntryVec = chiEntrys.map(c => c.state =/= CHIWState.Free && !(c.full && c.last))
 
- 
-  dataSram.io.w.req.valid        := Mux(maskValid & mergeValid_s2, true.B, false.B)
+  when(io.axi_w.fire && io.axi_w.bits.last){
+    mergeLast := true.B
+  }.elsewhen(io.axi_w.fire){
+    mergeLast := false.B
+  }
+  when(io.axi_w.fire && !mergeComp){
+    mergeDataReg         := mergeDataReg | (expendMask.asTypeOf(UInt(dw.W)) & io.axi_w.bits.data)
+    mergeStrbReg         := mergeStrbReg | io.axi_w.bits.strb
+  }.elsewhen(io.axi_w.fire && mergeComp){
+    mergeDataReg         := expendMask.asTypeOf(UInt(dw.W)) & io.axi_w.bits.data
+    mergeStrbReg         := io.axi_w.bits.strb
+  }.elsewhen(!io.axi_w.fire && mergeComp && !block){
+    mergeDataReg         := 0.U.asTypeOf(mergeDataReg)
+    mergeStrbReg         := 0.U.asTypeOf(mergeStrbReg)
+  }
+  
+  when(!block && mergeComp){
+    chiEntrys(endIndex).areid    := selWrDataAxiEntry
+    chiEntrys(endIndex).sendFull := shouldSendFull
+    chiEntrys(endIndex).state    := Mux(judgeSendReq, CHIWState.SendWrReq, CHIWState.WaitDBID)
+    chiEntrys(endIndex).full     := Mux(mergeLast && judgeSendReq || axiEntrys(selWrDataAxiEntry).unalign, false.B, true.B)
+    chiEntrys(endIndex).last     := Mux(axiEntrys(selWrDataAxiEntry).unalign || mergeLast || !judgeSendReq, true.B, false.B)
+    chiEntrys(endIndex).mmioReq  := axiEntrys(selWrDataAxiEntry).addr(raw - 1)
+    chiEntrys(endIndex).sendReqOrder := PopCount(sendReqNum) - (io.chi_rxrsp.fire && chiEntrys(rxRspTxnid).areid ===selWrDataAxiEntry && (io.chi_rxrsp.bits.Opcode === RspOpcode.DBIDResp ||
+    io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp)).asUInt 
+    chiEntrys(endIndex).sendAckOrder := PopCount(waitCompEntryVec) - (io.chi_txrsp.fire).asUInt
+
+    endIndex     := endIndex + 1.U
+    maybeFull    := true.B
+    judgeSendReq := Mux(mergeLast || axiEntrys(selWrDataAxiEntry).unalign || !judgeSendReq, true.B, false.B)
+  }
+
+  
+  /* 
+   * sram interface
+   */
+  dataSram.io.r.req.valid       := chiSendDataVec.reduce(_|_) && !dataSram.io.w.req.valid
+  dataSram.io.r.req.bits.setIdx := selSendDataChiEntry
+  maskSram.io.r.req.valid       := chiSendDataVec.reduce(_|_) && !maskSram.io.w.req.valid
+  maskSram.io.r.req.bits.setIdx := selSendDataChiEntry
+
+  dataSram.io.w.req.valid        := Mux(!block && mergeComp, true.B, false.B)
   dataSram.io.w.req.bits.setIdx  := endIndex
   dataSram.io.w.req.bits.data(0) := mergeDataReg
-
-  maskSram.io.w.req.valid        := Mux(maskValid & mergeValid_s2, true.B, false.B)
+  maskSram.io.w.req.valid        := Mux(!block && mergeComp, true.B, false.B)
   maskSram.io.w.req.bits.setIdx  := endIndex
-  maskSram.io.w.req.bits.data(0) := mergeMaskReg
-
-
-  val sendReqNum                  = wrStateEntrys.map(w => w.areid === selWrDataEntry && (w.state === WRState.SendWrReq || w.state === WRState.WaitDBID && (w.full && !w.last || !w.full)))
-  val shouldSendFull              = mergeMaskReg.andR
-
-  //Compute the count of sending compAck
-  val waitCompEntryVec            = wrStateEntrys.map(w => w.state =/= WRState.Free && !w.mmioReq && !(w.full && w.last))
-
-  when(mergeMaskReg(bew - 1) && !lastWrData && judgeSendReq && mergeValid_s2){ 
-    wrStateEntrys(endIndex).areid := selWrDataEntry
-    wrStateEntrys(endIndex).sendFull := shouldSendFull
-    wrStateEntrys(endIndex).state := WRState.SendWrReq
-    wrStateEntrys(endIndex).full  := Mux(awEntrys(selWrDataEntry).unalign, false.B, true.B)
-    wrStateEntrys(endIndex).last  := Mux(awEntrys(selWrDataEntry).unalign, true.B, false.B)
-    wrStateEntrys(endIndex).mmioReq := awEntrys(selWrDataEntry).addr(raw - 1)
-    wrStateEntrys(endIndex).sendReqOrder := PopCount(sendReqNum) - (io.chi_rxrsp.fire && 
-    (io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp || io.chi_rxrsp.bits.Opcode === RspOpcode.DBIDResp)).asUInt
-    wrStateEntrys(endIndex).sendAckOrder := PopCount(waitCompEntryVec) - (io.chi_txrsp.fire).asUInt
-
-    endIndex := endIndex + 1.U
-    judgeSendReq := Mux(awEntrys(selWrDataEntry).unalign, true.B, false.B)
-
-  }.elsewhen(mergeMaskReg(bew - 1) && !lastWrData && !judgeSendReq && mergeValid_s2){
-    wrStateEntrys(endIndex).areid := selWrDataEntry
-    wrStateEntrys(endIndex).sendFull := shouldSendFull
-    wrStateEntrys(endIndex).state := Mux(awEntrys(selWrDataEntry).unalign, WRState.SendWrReq, WRState.WaitDBID)
-    wrStateEntrys(endIndex).full  := Mux(awEntrys(selWrDataEntry).unalign, false.B, true.B)
-    wrStateEntrys(endIndex).last  := true.B
-    wrStateEntrys(endIndex).mmioReq      := awEntrys(selWrDataEntry).addr(raw - 1)
-    wrStateEntrys(endIndex).sendReqOrder := PopCount(sendReqNum) - (io.chi_rxrsp.fire && 
-    (io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp || io.chi_rxrsp.bits.Opcode === RspOpcode.DBIDResp)).asUInt
-    wrStateEntrys(endIndex).sendAckOrder := PopCount(waitCompEntryVec) - (io.chi_txrsp.fire).asUInt
-
-    endIndex := endIndex + 1.U
-    judgeSendReq := true.B
-  }.elsewhen(lastWrData && judgeSendReq  && mergeValid_s2){
-    wrStateEntrys(endIndex).areid := selWrDataEntry
-    wrStateEntrys(endIndex).sendFull := shouldSendFull
-    wrStateEntrys(endIndex).state := WRState.SendWrReq
-    wrStateEntrys(endIndex).full  := false.B
-    wrStateEntrys(endIndex).last  := true.B
-    wrStateEntrys(endIndex).mmioReq      := awEntrys(selWrDataEntry).addr(raw - 1)
-    wrStateEntrys(endIndex).sendReqOrder := PopCount(sendReqNum) - (io.chi_rxrsp.fire && 
-    (io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp || io.chi_rxrsp.bits.Opcode === RspOpcode.DBIDResp)).asUInt
-    wrStateEntrys(endIndex).sendAckOrder := PopCount(waitCompEntryVec) - (io.chi_txrsp.fire).asUInt
-
-    endIndex := endIndex + 1.U
-    judgeSendReq := true.B
-  }.elsewhen(lastWrData && !judgeSendReq  && mergeValid_s2){
-    wrStateEntrys(endIndex).areid := selWrDataEntry
-    wrStateEntrys(endIndex).sendFull := shouldSendFull
-    wrStateEntrys(endIndex).state := WRState.WaitDBID
-    wrStateEntrys(endIndex).full  := true.B
-    wrStateEntrys(endIndex).last  := true.B
-    wrStateEntrys(endIndex).mmioReq      := awEntrys(selWrDataEntry).addr(raw - 1)
-    wrStateEntrys(endIndex).sendReqOrder := PopCount(sendReqNum) - (io.chi_rxrsp.fire && 
-    (io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp || io.chi_rxrsp.bits.Opcode === RspOpcode.DBIDResp)).asUInt
-    wrStateEntrys(endIndex).sendAckOrder := PopCount(waitCompEntryVec) - (io.chi_txrsp.fire).asUInt
-
-    endIndex := endIndex + 1.U
-    judgeSendReq := true.B
-  }
-
+  maskSram.io.w.req.bits.data(0) := mergeStrbReg
 
   /* 
-  select Entry to send WriteUnique and Send Request Flit to HN
-   */
+   * state information
+   */  
+  when(io.chi_rxrsp.fire && chiEntrys(rxRspTxnid).full && (io.chi_rxrsp.bits.Opcode === RspOpcode.DBIDResp || io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp)){
+    chiEntrys(rxRspTxnidNext).state := CHIWState.SendWrData
+    chiEntrys(rxRspTxnidNext).dbid  := io.chi_rxrsp.bits.DBID
+    chiEntrys(rxRspTxnidNext).tgtID := io.chi_rxrsp.bits.SrcID
+  }
 
-  val sramSendReqVec    = wrStateEntrys.map(w => w.sendReqOrder === 0.U && w.state === WRState.SendWrReq)
-  val txWrReqValid      = sramSendReqVec.reduce(_|_)
-  val selSendReqEntry   = PriorityEncoder(sramSendReqVec)
-  val txReqFlit         = Wire(new ReqFlit)
-  txReqFlit            := 0.U.asTypeOf(txReqFlit)
-  val txReqOpcode       = WireInit(0.U(7.W))
-  when(wrStateEntrys(selSendReqEntry).mmioReq && wrStateEntrys(selSendReqEntry).sendFull){
+  private val recDBIDAreid           = WireInit(chiEntrys(rxRspTxnid).areid)
+
+  /* 
+   * txFlit assignment
+   */
+  private val txReqOpcode    = WireInit(0.U.asTypeOf(UInt(7.W)))
+  when(chiEntrys(selSendReqChiEntry).mmioReq && chiEntrys(selSendReqChiEntry).sendFull){
     txReqOpcode        := ReqOpcode.WriteNoSnpFull
-  }.elsewhen(wrStateEntrys(selSendReqEntry).mmioReq && !wrStateEntrys(selSendReqEntry).sendFull){
+  }.elsewhen(chiEntrys(selSendReqChiEntry).mmioReq && !chiEntrys(selSendReqChiEntry).sendFull){
     txReqOpcode        := ReqOpcode.WriteNoSnpPtl
-  }.elsewhen(wrStateEntrys(selSendReqEntry).sendFull){
+  }.elsewhen(chiEntrys(selSendReqChiEntry).sendFull){
     txReqOpcode        := ReqOpcode.WriteUniqueFull
-  }.elsewhen(!wrStateEntrys(selSendReqEntry).sendFull){
+  }.elsewhen(!chiEntrys(selSendReqChiEntry).sendFull){
     txReqOpcode        := ReqOpcode.WriteUniquePtl
   }
-
-  txReqFlit.Addr       := awEntrys(wrStateEntrys(selSendReqEntry).areid).addr
+  txReqFlit            := 0.U.asTypeOf(txReqFlit)
+  txReqFlit.Addr       := axiEntrys(chiEntrys(selSendReqChiEntry).areid).addr
   txReqFlit.ExpCompAck := true.B
-  txReqFlit.Opcode     := txReqOpcode
-  txReqFlit.Order      := "b10".U
   txReqFlit.SrcID      := 1.U
-  txReqFlit.TxnID      := selSendReqEntry
-  txReqFlit.Size       := Mux(wrStateEntrys(selSendReqEntry).full, 6.U, 5.U)
+  txReqFlit.Opcode     := txReqOpcode
+  txReqFlit.TxnID      := selSendReqChiEntry
+  txReqFlit.Size       := Mux(chiEntrys(selSendReqChiEntry).full, 6.U, 5.U)
+  txReqFlit.Order      := "b10".U
 
-  val txnid               = io.chi_rxrsp.bits.TxnID(log2Ceil(dmaParams.bufferSize) - 1, 0) + 1.U
-
-  when(io.chi_rxrsp.fire && wrStateEntrys(rxRspTxnid).full && (io.chi_rxrsp.bits.Opcode === RspOpcode.DBIDResp || io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp)){
-    wrStateEntrys(txnid).state := WRState.SendWrData
-    wrStateEntrys(txnid).dbid  := io.chi_rxrsp.bits.DBID
-    wrStateEntrys(txnid).tgtID := io.chi_rxrsp.bits.SrcID
-    wrStateEntrys(txnid).separate := Mux(io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp, false.B, true.B)
-  }
-
-  when(wrStateEntrys(startIndex + 1.U).state === WRState.Free && startIndex =/= endIndex && wrStateEntrys(startIndex).state === WRState.Free){
-    startIndex := startIndex + 1.U
-  }
-
-  /* 
-  select Entry which should send data to HN and send WriteData to HN
-   */
-
-  val sendDataVec      = wrStateEntrys.map(_.state === WRState.SendWrData)
-  val sendDataValid    = sendDataVec.reduce(_|_)
-  val selSendDataEntry = PriorityEncoder(sendDataVec)
-
-  val txDatFlit        = RegInit(0.U.asTypeOf(new DataFlit))
-
-  dataSram.io.r.req.valid       := sendDataValid & !dataSram.io.w.req.valid
-  dataSram.io.r.req.bits.setIdx := selSendDataEntry
-  maskSram.io.r.req.valid       := sendDataValid & !maskSram.io.w.req.valid
-  maskSram.io.r.req.bits.setIdx := selSendDataEntry
-
-  
-
-  val selSendReg   = RegInit(0.U(log2Ceil(dmaParams.bufferSize).W))
-  selSendReg       := selSendDataEntry
-
+  private val selSendDataDelay = RegNext(selSendDataChiEntry)
   when(RegNext(dataSram.io.r.req.fire)){
-    txDatFlit.Opcode := Mux(wrStateEntrys(selSendReg).separate || wrStateEntrys(selSendReg).mmioReq, DatOpcode.NonCopyBackWriteData, DatOpcode.NCBWrDataCompAck)
-    txDatFlit.SrcID  := 1.U
-    txDatFlit.DataID := Mux(wrStateEntrys(selSendReg).full &&  wrStateEntrys(selSendReg).last, 2.U, 0.U)
-    txDatFlit.TxnID  := wrStateEntrys(selSendReg).dbid
-    txDatFlit.TgtID  := wrStateEntrys(selSendReg).tgtID
-    txDatFlit.Data   := dataSram.io.r.resp.data(0)
-    txDatFlit.BE     := maskSram.io.r.resp.data(0)
+    txDatFlit         := 0.U.asTypeOf(txDatFlit)
+    txDatFlit.Opcode  := DatOpcode.NonCopyBackWriteData
+    txDatFlit.SrcID   := 1.U
+    txDatFlit.DataID  := Mux(chiEntrys(selSendDataDelay).full && chiEntrys(selSendDataDelay).last, 2.U, 0.U)
+    txDatFlit.TxnID   := chiEntrys(selSendDataDelay).dbid
+    txDatFlit.TgtID   := chiEntrys(selSendDataDelay).tgtID
+    txDatFlit.Data    := dataSram.io.r.resp.data(0)
+    txDatFlit.BE      := maskSram.io.r.resp.data(0)
   }
-
-  /* 
-  select Entry which is ready to send compack to HN and send CHI_RSP Flit to HN
-   */
-
-   val sendCompAckVec      = wrStateEntrys.map(w => w.state === WRState.SendCompAck && w.haveRecComp && w.sendAckOrder === 0.U)
-   val sendCompAckValid    = sendCompAckVec.reduce(_|_)
-   val selSendCompAckEntry = PriorityEncoder(sendCompAckVec)
-
-   val txRspFlit           = WireInit(0.U.asTypeOf(new RespFlit))
-   when(sendCompAckValid){
-    txRspFlit.Opcode   := RspOpcode.CompAck
-    txRspFlit.SrcID    := 1.U
-    txRspFlit.TgtID    := wrStateEntrys(selSendCompAckEntry).tgtID
-    txRspFlit.TxnID    := wrStateEntrys(selSendCompAckEntry).dbid
-   }
-   wrStateEntrys.foreach{
-    case(a) =>
-      when(a.state =/= WRState.Free && a.sendAckOrder =/= 0.U && io.chi_txrsp.fire){
-        a.sendAckOrder := a.sendAckOrder - 1.U
-      }
-   }
-   wrStateEntrys.zipWithIndex.foreach{
-    case(w, i) =>
-      when(io.chi_rxrsp.fire && io.chi_rxrsp.bits.TxnID === i.U && (io.chi_rxrsp.bits.Opcode === RspOpcode.Comp || io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp)){
-        w.haveRecComp := true.B
-      }
-   }
-
+  txRspFlit           := 0.U.asTypeOf(txRspFlit)
+  txRspFlit.Opcode    := RspOpcode.CompAck
+  txRspFlit.SrcID     := 1.U
+  txRspFlit.TgtID     := chiEntrys(selSendAckChiEntry).tgtID
+  txRspFlit.TxnID     := chiEntrys(selSendAckChiEntry).dbid
   //---------------------------------------------------------------------------------------------------------------------------------//
   //---------------------------------------------------------- FSM ------------------------------------------------------------------//
   //---------------------------------------------------------------------------------------------------------------------------------//
-  awEntrys.zipWithIndex.foreach{
+  axiEntrys.zipWithIndex.foreach{
     case(a, i) =>
       switch(a.state){
-        is(AWState.Free){
-          val hit = io.axi_aw.fire && selFreeAWEntry === i.U
+        is(AXIWState.Free){
+          val hit = io.axi_aw.fire && selFreeAxiEntry === i.U
           when(hit){
-            a.state   := AWState.ReceiveData
+            a.state   := AXIWState.ReceiveData
             a.addr    := io.axi_aw.bits.addr & (~31.U(48.W))
             a.unalign := io.axi_aw.bits.addr(5)
             a.burst   := io.axi_aw.bits.burst
-            a.size    := io.axi_aw.bits.size
-            a.nid     := PopCount(awBusyVec) - (io.axi_b.fire).asUInt
+            a.nid     := PopCount(axiBusyVec) - (mergeLast && RegNext(io.axi_w.fire)).asUInt
             a.awid    := io.axi_aw.bits.id
           }
         }
-        is(AWState.ReceiveData){
-          val hit       = a.nid === 0.U && lastWrData  
-          val reduceNid = a.nid =/= 0.U && lastWrData
-          val addrIncr  = wrStateEntrys(txReqTxnid).areid  === i.U && io.chi_txreq.fire
-          val alignHit  = a.nid === 0.U && mergeValid_s2
-          a.unalign := Mux(alignHit, false.B, a.unalign)
-          a.state   := Mux(hit, AWState.Comp, a.state)
-          a.nid     := Mux(reduceNid, a.nid - 1.U, a.nid)
-          a.addr    := Mux(addrIncr && io.chi_txreq.bits.Size === 5.U, a.addr + 32.U, Mux(addrIncr && io.chi_txreq.bits.Size === 6.U, a.addr + 64.U, a.addr))
+        is(AXIWState.ReceiveData){
+          val hit       = a.nid === 0.U && mergeLast && RegNext(io.axi_w.fire)
+          val reduceNid = a.nid =/= 0.U && mergeLast && RegNext(io.axi_w.fire)
+          val addrIncr  = chiEntrys(txReqTxnid).areid === i.U && io.chi_txreq.fire
+          val alignHit  = a.nid === 0.U && RegNext(io.axi_w.fire)
+          a.addr       := Mux(addrIncr && io.chi_txreq.bits.Size === 5.U, a.addr + 32.U, Mux(addrIncr && io.chi_txreq.bits.Size === 6.U, a.addr + 64.U, a.addr))
+          when(alignHit){
+            a.unalign := false.B
+          }
+          when(hit){
+            a.state := AXIWState.Comp
+          }
+          when(reduceNid){
+            a.nid := a.nid - 1.U
+          }
         }
-        is(AWState.Comp){
-          val hit       = a.nid === 0.U && io.axi_b.bits.id === a.awid && io.axi_b.fire
-          val addrIncr  = wrStateEntrys(txReqTxnid).areid  === i.U && io.chi_txreq.fire
+        is(AXIWState.Comp){
+          val hit       = a.nid === 0.U && io.axi_b.bits.id === a.awid && io.axi_b.fire 
+          val addrIncr  = chiEntrys(txReqTxnid).areid === i.U && io.chi_txreq.fire
           a.addr       := Mux(addrIncr && io.chi_txreq.bits.Size === 5.U, a.addr + 32.U, Mux(addrIncr && io.chi_txreq.bits.Size === 6.U, a.addr + 64.U, a.addr))
           when(hit){
             a := 0.U.asTypeOf(a)
@@ -366,74 +273,94 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
         }
       }
   }
+  chiEntrys.foreach{
+    case(c) =>
+      when(c.state =/= CHIWState.Free && c.sendAckOrder =/= 0.U && io.chi_txrsp.fire){
+        c.sendAckOrder := c.sendAckOrder - 1.U
+      }
+  }
+  chiEntrys.zipWithIndex.foreach{
+    case(c, i) =>
+      when(c.state =/= CHIWState.Free && io.chi_rxrsp.fire && io.chi_rxrsp.bits.TxnID === i.U && (io.chi_rxrsp.bits.Opcode === RspOpcode.Comp || io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp)){
+        c.haveRecComp := true.B
+      }
+  }
 
-  wrStateEntrys.zipWithIndex.foreach{
-    case(w, i) =>
-      switch(w.state){
-        is(WRState.SendWrReq){
-          val hit = io.chi_txreq.fire && io.chi_txreq.bits.TxnID === i.U
-          val reduceHit = io.chi_rxrsp.fire && (io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp || io.chi_rxrsp.bits.Opcode === RspOpcode.DBIDResp) && (awEntrys(w.areid).nid === 0.U)  && (w.sendReqOrder =/= 0.U)
+  chiEntrys.zipWithIndex.foreach{
+    case(c, i) =>
+      switch(c.state){
+        is(CHIWState.SendWrReq){
+          val hit = selSendReqChiEntry === i.U && io.chi_txreq.fire
+          val reduceHit = io.chi_rxrsp.fire && recDBIDAreid === c.areid &&c.sendReqOrder =/= 0.U && (io.chi_rxrsp.bits.Opcode === RspOpcode.DBIDResp || io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp)
           when(hit){
-            w.state := WRState.WaitDBID
+            c.state := CHIWState.WaitDBID
           }
           when(reduceHit){
-            w.sendReqOrder  := w.sendReqOrder - 1.U
+            c.sendReqOrder := c.sendReqOrder - 1.U
           }
+        }
+        is(CHIWState.WaitDBID){
+          val hit = io.chi_rxrsp.fire && io.chi_rxrsp.bits.TxnID === i.U && (io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp || io.chi_rxrsp.bits.Opcode === RspOpcode.DBIDResp)
+          when(hit){
+            c.state    := CHIWState.SendWrData
+            c.dbid     := io.chi_rxrsp.bits.DBID
+            c.tgtID    := io.chi_rxrsp.bits.SrcID
+          }
+        }
+        is(CHIWState.SendWrData){
+          val hit = dataSram.io.r.req.fire && dataSram.io.r.req.bits.setIdx === i.U
+          when(hit){
+            c.state := Mux(c.full && c.last, CHIWState.Comp, CHIWState.SendCompAck)
+          }
+        }
+        is(CHIWState.SendCompAck){
+          val hit = io.chi_txrsp.fire && io.chi_txrsp.bits.TxnID === c.dbid && c.sendAckOrder === 0.U && c.haveRecComp 
+          when(hit){
+            c := 0.U.asTypeOf(c)
+          }
+        }
 
-        }
-        is(WRState.WaitDBID){
-          val aggHit    = io.chi_rxrsp.fire && io.chi_rxrsp.bits.TxnID === i.U && io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp
-          val sepHit    = io.chi_rxrsp.fire && io.chi_rxrsp.bits.TxnID === i.U && io.chi_rxrsp.bits.Opcode === RspOpcode.DBIDResp
-          
-
-          when(aggHit || sepHit){
-            w.state    := WRState.SendWrData
-            w.dbid     := io.chi_rxrsp.bits.DBID
-            w.tgtID    := io.chi_rxrsp.bits.SrcID
-            w.separate := Mux(sepHit, true.B, false.B)
-          }
-        }
-        is(WRState.SendWrData){
-          val hit    = dataSram.io.r.req.fire && dataSram.io.r.req.bits.setIdx === i.U
+        is(CHIWState.Comp){
+          val hit = io.chi_txdat.fire && io.chi_txdat.bits.TxnID === c.dbid &&
+          (io.chi_txdat.bits.DataID === 0.U && !(c.full && c.last) || io.chi_txdat.bits.DataID === 2.U && c.last && c.full)
           when(hit){
-            w.state   := Mux(!w.separate || w.mmioReq || w.full && w.last, WRState.Complete, WRState.SendCompAck)
-          }
-        }
-        is(WRState.SendCompAck){
-          val hit = io.chi_txrsp.fire && io.chi_txrsp.bits.TxnID === w.dbid && w.sendAckOrder === 0.U && w.haveRecComp
-          when(hit){
-            w := 0.U.asTypeOf(w)
-          }
-        }
-        is(WRState.Complete){
-          val hit = io.chi_txdat.fire && io.chi_txdat.bits.TxnID === w.dbid &&
-           (io.chi_txdat.bits.DataID === 0.U && !w.full || w.full && io.chi_txdat.bits.DataID === 0.U && !w.last ||
-          io.chi_txdat.bits.DataID === 2.U && w.last && w.full)
-          when(hit){
-            w := 0.U.asTypeOf(w)
+            c := 0.U.asTypeOf(c)
           }
         }
       }
   }
-
   //---------------------------------------------------------------------------------------------------------------------------------//
   //--------------------------------------------------------- IO Logic --------------------------------------------------------------//
   //---------------------------------------------------------------------------------------------------------------------------------//
-  //CHI interface
 
-  io.chi_txrsp.valid := sendCompAckValid
-  io.chi_txrsp.bits  := txRspFlit
-  io.chi_txreq.valid := txWrReqValid
-  io.chi_txreq.bits  := txReqFlit
-  io.chi_txdat.valid := RegNext(RegNext(dataSram.io.r.req.fire))
-  io.chi_txdat.bits  := txDatFlit
-  io.chi_rxrsp.ready := true.B
-
-  //AXI interface
-  io.axi_aw.ready    := awFreeVec.reduce(_|_)
-  io.axi_w.ready     := endIndex + 1.U =/= startIndex
-  io.axi_b.valid     := sendAxiBValid
-  io.axi_b.bits      := 0.U.asTypeOf(io.axi_b.bits)
-  io.axi_b.bits.id   := awEntrys(selCompEntry).awid
+  /* 
+   * CHI interface
+   */
+  io.chi_txreq.bits   := txReqFlit
+  io.chi_txreq.valid  := chiSendReqVec.reduce(_|_)
+  io.chi_txdat.valid  := RegNext(RegNext(dataSram.io.r.req.fire))
+  io.chi_txdat.bits   := txDatFlit
+  io.chi_rxrsp.ready  := true.B
+  io.chi_txrsp.valid  := chiSendAckVec.reduce(_|_)
+  io.chi_txrsp.bits   := txRspFlit
   
+
+  /* 
+   * AXI interface
+   */
+  io.axi_aw.ready     := axiFreeVec.reduce(_|_)
+  io.axi_w.ready      := !(block && mergeComp)
+  io.axi_b.valid      := sendAxiBValid
+  io.axi_b.bits       := 0.U.asTypeOf(io.axi_b.bits)
+  io.axi_b.bits.id    := axiEntrys(selCompAxiEntry).awid
+
+  //---------------------------------------------------------------------------------------------------------------------------------//
+  //--------------------------------------------------------- Assertion -------------------------------------------------------------//
+  //---------------------------------------------------------------------------------------------------------------------------------//
+  assert(dmaParams.axiEntrySize.U - PopCount(axiFreeVec) >= PopCount(chiSendAckVec), "sendAckOrder is error")
+  assert(dmaParams.axiEntrySize.U - PopCount(axiFreeVec) >= PopCount(chiSendReqVec), "sendReqOrder is error")
+  when(io.chi_rxrsp.fire && (io.chi_rxrsp.bits.Opcode === RspOpcode.Comp || io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp)){
+    assert(!chiEntrys(rxRspTxnid).haveRecComp, "haveRecComp logic is error, chiEntry: %d", rxRspTxnid)
+  }
+
 }
