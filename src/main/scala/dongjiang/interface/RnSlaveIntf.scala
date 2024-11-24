@@ -760,7 +760,8 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
 // ---------------------------  Assertion  -------------------------------- //
   val cntReg = RegInit(VecInit(Seq.fill(param.nrEntry) { 0.U(64.W) }))
   cntReg.zip(entrys).zipWithIndex.foreach { case((c, p), i) => c := Mux(p.isFree | (io.reqAck2Intf.fire & io.reqAck2Intf.bits.entryID === i.U) , 0.U, c + 1.U) }
-  cntReg.zipWithIndex.foreach { case(c, i) => assert(c < TIMEOUT_RSINTF.U, "RNSLV ENTRY[0x%x] STATE[0x%x] ADDR[0x%x] CHANNEL[%x] OP[0x%x] TIMEOUT", i.U, entrys(i).entryMes.state, entrys(i).fullAddr(io.pcuID), entrys(i).chiMes.channel, entrys(i).chiMes.opcode) }
+  cntReg.zipWithIndex.foreach { case(c, i) => assert(Mux(entrys(i).chiMes.isReq, c < TIMEOUT_RSINTF_REQ.U, Mux(entrys(i).chiMes.isSnp, c < TIMEOUT_RSINTF_SNP.U, c < TIMEOUT_RSINTF_RSP.U)),
+    "RNSLV ENTRY[0x%x] STATE[0x%x] ADDR[0x%x] CHANNEL[%x] OP[0x%x] TIMEOUT", i.U, entrys(i).entryMes.state, entrys(i).fullAddr(io.pcuID), entrys(i).chiMes.channel, entrys(i).chiMes.opcode) }
 
   when(rxReq.valid) {
     // [1:cacheable] [2:ccxChipID] [3:dcuBank] [4:pcuBank] [5:offset] [6:useAddr]
