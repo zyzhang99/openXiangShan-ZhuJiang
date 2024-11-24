@@ -53,6 +53,8 @@ class ReqFlit(implicit p: Parameters) extends Flit {
   def PrefetchTgtHint = StashNIDValid
   def StashNID = ReturnNID
   def DataTarget = ReturnNID
+  def fullSize = Size === 6.U
+  def beatOH = Mux(fullSize, "b11".U, Cat(Addr(5), !Addr(5)))
 
   require(this.getWidth == reqFlitBits, s"Illegal request FLIT width ${this.getWidth}, expected $reqFlitBits!")
 }

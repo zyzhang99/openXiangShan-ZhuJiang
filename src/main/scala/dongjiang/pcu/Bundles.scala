@@ -27,7 +27,7 @@ trait HasToIncoID extends DJBundle { this: Bundle => val to = UInt(max(IncoID.wi
 
 trait HasIncoID extends DJBundle with HasFromIncoID with HasToIncoID
 
-trait HasDBID extends DJBundle { this: Bundle => val dbID = UInt(dbIdBits.W) }
+trait HasDBID extends DJBundle { this: Bundle => val dbID = UInt(dbIdBits.W); def apuEID = ((djparam.nrDatBuf - 1).U - dbID)(apuIdBits - 1, 0) }
 
 trait HasUseAddr extends DJBundle {this: Bundle =>
   val useAddr     = UInt(useAddrBits.W)
@@ -39,7 +39,7 @@ trait HasUseAddr extends DJBundle {this: Bundle =>
   def sfSet       = parseSFAddr(useAddr)._2
   def dirBank     = parseSFAddr(useAddr)._3
   def minDirSet   = useAddr(minDirSetBits - 1, 0)
-  def fullAddr(d: UInt, p:UInt) = getFullAddr(useAddr, d, p)
+  def fullAddr(d: UInt, p:UInt, sec: Bool = false.B) = getFullAddr(useAddr, d, p, sec)
   def snpAddr (d: UInt, p:UInt) = fullAddr(d, p)(fullAddrBits - 1, 3)
 }
 
@@ -63,7 +63,11 @@ trait HasDcuID extends DJBundle { this: Bundle => val dcuID = UInt(dcuBankBits.W
 class ChiIndexBundle(implicit p: Parameters) extends DJBundle {
   val nodeID          = UInt(useNodeIdBits.W)
   val txnID           = UInt(chiTxnIdBits.W)
+  val beatOH          = UInt(2.W)
   def snpCcMetaVec    = nodeID(nrCcNode - 1 ,0)
+  def fullSize        = beatOH === "b11".U
+  def fstBeat         = beatOH === "b01".U
+  def secBeat         = beatOH === "b10".U
 }
 
 class ChiMesBundle(implicit p: Parameters) extends DJBundle with HasCHIChannel {
@@ -101,6 +105,7 @@ class Resp2IntfBundle(implicit p: Parameters) extends DJBundle with HasIncoID {
   val chiIndex      = new ChiIndexBundle()
   val chiMes        = new ChiMesBundle()
   val pcuIndex      = new PcuIndexBundle()
+  val pcuMes        = new DJBundle with HasUseAddr
 }
 
 
@@ -114,6 +119,8 @@ class Req2IntfBundle(implicit p: Parameters) extends DJBundle with HasIncoID {
     val doDMT       = Bool()
     val selfWay     = UInt(sWayBits.W)
     val toDCU       = Bool()
+    // only use in local rn slave interface
+    val hasPcuDBID  = Bool() // already get DBID in Write
   }
 
   def addrWithDcuID = Cat(pcuMes.useAddr, from)
@@ -150,13 +157,15 @@ trait HasDBData extends DJBundle { this: Bundle =>
   def beatNum: UInt = toBeatNum(dataID)
   def isLast:  Bool = beatNum === (nrBeat - 1).U
 }
-
+trait HasMask extends DJBundle { this: Bundle =>
+  val mask          = UInt(maskBits.W)
+}
 // DataBuffer Read/Clean Req
-class DBRCReq     (implicit p: Parameters)   extends DJBundle with HasDBRCOp with HasDBID with HasToIncoID
-class GetDBID     (implicit p: Parameters)   extends DJBundle                             with HasFromIncoID with HasIntfEntryID
-class DBIDResp    (implicit p: Parameters)   extends DJBundle                with HasDBID with HasToIncoID   with HasIntfEntryID
-class NodeFDBData (implicit p: Parameters)   extends DJBundle with HasDBData with HasDBID with HasToIncoID
-class NodeTDBData (implicit p: Parameters)   extends DJBundle with HasDBData with HasDBID
+class DBRCReq     (implicit p: Parameters)   extends DJBundle with HasDBRCOp with HasDBID with HasToIncoID                       { val rBeatOH = UInt(2.W); val exuAtomic = Bool() }
+class GetDBID     (implicit p: Parameters)   extends DJBundle                             with HasFromIncoID with HasIntfEntryID { val atomicVal = Bool();  val atomicOp = UInt(AtomicOp.width.W); val swapFst = Bool(); }
+class DBIDResp    (implicit p: Parameters)   extends DJBundle                with HasDBID with HasToIncoID   with HasIntfEntryID { val retry = Bool();      def receive = !retry }
+class NodeFDBData (implicit p: Parameters)   extends DJBundle with HasDBData with HasDBID with HasToIncoID   with HasMask
+class NodeTDBData (implicit p: Parameters)   extends DJBundle with HasDBData with HasDBID                    with HasMask        { val atomicVal = Bool() }
 
 class DBBundle(hasDBRCReq: Boolean = false)(implicit p: Parameters) extends DJBundle {
   val dbRCReqOpt  = if(hasDBRCReq) Some(Decoupled(new DBRCReq)) else None

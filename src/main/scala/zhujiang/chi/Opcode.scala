@@ -93,12 +93,27 @@ object ReqOpcode {
 
   // Self Define
   val Replace = 0x7A.U(width.W)
+  val FlushDCU = 0x7B.U(width.W)
 
-  def isReadX   (x: UInt): Bool = (ReadShared <= x & x <= ReadNoSnp) | x === ReadUnique | x === ReadNoSnpSep |
-                                  (ReadOnceCleanInvalid <= x & x <= ReadNotSharedDirty) | x === ReadPreferUnique
-  def isWriteX  (x: UInt): Bool = (WriteEvictFull <= x & x <= WriteUniquePtlStash) | (WriteEvictOrEvict <= x & x <= WriteNoSnpZero) |
-                                  (WriteNoSnpDef <= x & x <= WriteBackFullCleanInvPoPA)
-  def isReplace (x: UInt): Bool = x === Replace
+  // Judge req type
+  def isReadX         (x: UInt): Bool = (ReadShared <= x & x <= ReadNoSnp) | x === ReadUnique | x === ReadNoSnpSep |
+                                        (ReadOnceCleanInvalid <= x & x <= ReadNotSharedDirty) | x === ReadPreferUnique
+  def isDatalessX     (x: UInt): Bool = (CleanShared <= x & x <= Evict) | x === CleanSharedPersistSep | (StashOnceShared <= x & x <= StashOnceUnique) | x === CleanSharedPersist | (StashOnceSepShared <= x & x <= StashOnceSepUnique) | x === CleanInvalidPoPAa
+  def isWriteX        (x: UInt): Bool = (WriteEvictFull <= x & x <= WriteUniquePtlStash) | (WriteEvictOrEvict <= x & x <= WriteNoSnpZero) |
+                                        (WriteNoSnpDef <= x & x <= WriteBackFullCleanInvPoPA)
+  def isCBX           (x: UInt): Bool = x === WriteBackFull | x === WriteBackPtl | x === WriteCleanFull | x === WriteEvictFull | x === WriteEvictOrEvict // is CopyBack
+  def isWriUniX       (x: UInt): Bool = x === WriteUniqueFull | x === WriteUniquePtl
+  def isWriXPtl       (x: UInt): Bool = x === WriteUniquePtl | x === WriteNoSnpPtl
+  def isWriXFull      (x: UInt): Bool = x === WriteUniqueFull | x === WriteBackFull
+  def isCMO           (x: UInt): Bool = x === CleanShared | x === CleanInvalid | x === MakeInvalid
+  def isAtomicX       (x: UInt): Bool = AtomicStoreADD <= x & x <= AtomicCompare
+  def isAtomicStoreX  (x: UInt): Bool = AtomicStoreADD <= x & x <= AtomicStoreUMIN
+  def isReplace       (x: UInt): Bool = x === Replace
+  def isFlush         (x: UInt): Bool = x === FlushDCU
+  def isCombinedWrite (x: UInt): Bool = WriteNoSnpFullCleanSh <= x & x <= WriteBackFullCleanInvPoPA
+
+  // Get Atomic type expect AmoticStoreX
+  def getAtomicOp     (x: UInt): UInt = x(3, 0)
 }
 
 object RspOpcode {
@@ -171,35 +186,16 @@ object SnpOpcode {
   val SnpUniqueEvict = 0x18.U(width.W)
 
   def isSnpXFwd        (x: UInt): Bool = x >= SnpSharedFwd & x =/= SnpPreferUnique
-  def isSnpToInvalid   (x: UInt): Bool = x === SnpUnique | x === SnpUniqueFwd | x === SnpMakeInvalid | x === SnpUniqueEvict
-  def isSnpToShare     (x: UInt): Bool = x === SnpNotSharedDirty | x === SnpNotSharedDirtyFwd
-  def isLegalSnpOpInPCU(x: UInt): Bool = isSnpToShare(x) | isSnpToInvalid(x)
-
-  def getSnpOp(x: UInt): UInt = {
-    val snpOp = WireInit(0.U(width.W))
-    switch(x) {
-      is(ReqOpcode.ReadNotSharedDirty) { snpOp := SnpNotSharedDirty }
-      is(ReqOpcode.ReadUnique)         { snpOp := SnpUnique }
-      is(ReqOpcode.MakeUnique)         { snpOp := SnpMakeInvalid }
-    }
-    snpOp
-  }
-
-  def getSnpFwdOp(x: UInt): UInt = {
-    val snpOp = WireInit(0.U(width.W))
-    switch(x) {
-      is(ReqOpcode.ReadNotSharedDirty) { snpOp := SnpNotSharedDirtyFwd }
-      is(ReqOpcode.ReadUnique)         { snpOp := SnpUniqueFwd }
-      is(ReqOpcode.MakeUnique)         { snpOp := 0x1F.U }
-    }
-    snpOp
-  }
 
   def getNoFwdSnpOp(x: UInt): UInt = {
     val snpOp = WireInit(0.U(width.W))
     when(isSnpXFwd(x)) {
       switch(x) {
-        is(SnpNotSharedDirtyFwd) { snpOp := SnpNotSharedDirty}
+        is(SnpSharedFwd)         { snpOp := SnpShared }
+        is(SnpCleanFwd)          { snpOp := SnpClean }
+        is(SnpOnceFwd)           { snpOp := SnpOnce }
+        is(SnpNotSharedDirtyFwd) { snpOp := SnpNotSharedDirty }
+        is(SnpPreferUniqueFwd)   { snpOp := SnpPreferUnique }
         is(SnpUniqueFwd)         { snpOp := SnpUnique }
       }
     }.otherwise {
