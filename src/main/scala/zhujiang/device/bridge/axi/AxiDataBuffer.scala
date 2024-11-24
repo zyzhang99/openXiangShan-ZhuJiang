@@ -67,7 +67,7 @@ class AxiDataBufferFreelist(ctrlSize: Int, bufferSize: Int)(implicit p: Paramete
   io.resp.valid := io.req.fire
   io.resp.bits.recvMax := reqNum - 1.U
   io.resp.bits.recvCnt := 0.U
-  io.idle := headPtr.value === tailPtr.value && headPtr.flag =/= headPtr.flag
+  io.idle := headPtr.value === tailPtr.value && headPtr.flag =/= tailPtr.flag
 
   private val allocNum = Mux(io.req.fire, reqNum, 0.U)
   private val relNum = Mux(io.release.valid, io.release.bits.recvMax + 1.U, 0.U)
