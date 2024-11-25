@@ -344,7 +344,8 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
         // State: Flush2Node
         is(SMState.Flush2Node) {
           val hit       = txReq.fire & entryReq2NodeID === i.U; assert(!hit | txReq.bits.Opcode === FlushDCU, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
-          entry.state   := Mux(hit, SMState.WaitNodeDBID, entry.state)
+          val waitComp  = !(entry.getAllComp | (rxRsp.fire & rxRsp.bits.TxnID === i.U & rxRsp.bits.Opcode === Comp))
+          entry.state   := Mux(hit, Mux(waitComp, SMState.WaitNodeComp, SMState.Free), entry.state)
         }
       }
   }
