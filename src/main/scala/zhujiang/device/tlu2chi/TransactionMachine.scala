@@ -130,20 +130,21 @@ class TransactionMachine(node: Node, tlParams: TilelinkParams, outstanding: Int)
       val rspIsComp = rxrsp.bits.Opcode === RspOpcode.Comp
       val rspIsDBID = rxrsp.bits.Opcode === RspOpcode.DBIDResp
       val rspIsCompDBID = rxrsp.bits.Opcode === RspOpcode.CompDBIDResp
+      val rspIsDBIDOrd  = rxrsp.bits.Opcode === RspOpcode.DBIDRespOrd
 
-      // Transaction combination: Comp + DBIDResp, DBIDResp + Comp, CompDBIDResp
-      when(rxrsp.fire && (rspIsComp || rspIsDBID || rspIsCompDBID)) {
+      // Transaction combination: Comp + DBIDResp, DBIDResp + Comp, CompDBIDResp, DBIDRespOrd
+      when(rxrsp.fire && (rspIsComp || rspIsDBID || rspIsCompDBID || rspIsDBIDOrd)) {
         assert(rxrsp.bits.RespErr === RespErr.NormalOkay, "TODO: handle error")
 
         rspGetComp := rspGetComp || rspIsComp || rspIsCompDBID
-        rspGetDBID := rspGetDBID || rspIsDBID
+        rspGetDBID := rspGetDBID || rspIsDBID || rspIsDBIDOrd
 
-        when(rspIsDBID || rspIsCompDBID) {
+        when(rspIsDBID || rspIsCompDBID || rspIsDBIDOrd) {
           rspDBID := rxrsp.bits.DBID
           rspSrcID := rxrsp.bits.SrcID
         }
 
-        when(rspIsCompDBID || (rspIsComp && rspGetDBID) || (rspIsDBID && rspGetComp)) {
+        when(rspIsCompDBID || (rspIsComp && rspGetDBID) || (rspIsDBID && rspGetComp) || rspIsDBIDOrd) {
           nextState := MachineState.SEND_DAT
         }
       }
