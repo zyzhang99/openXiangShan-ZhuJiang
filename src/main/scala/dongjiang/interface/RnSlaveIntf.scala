@@ -36,11 +36,6 @@ import xs.utils.perf.{DebugOptions, DebugOptionsKey, HasPerfLogging}
  *
  * Snoop Need Data:       [Free]  -----> [GetDBID] -----> [WaitDBID] -----> [Snp2Node] -----> ([Snp2NodeIng]) -----> [WaitSnpResp] -----> [Resp2Exu]
  * Snoop No Need Data:    [Free]                   ----->                   [Snp2Node] -----> ([Snp2NodeIng]) -----> [WaitSnpResp] -----> [Resp2Exu]
- * Snoop Nest CopyBack 0: [XXXX]                   ----->                   [Snp2Node] -----> ([Snp2NodeIng]) -----> [WaitSnpResp] -----> [Resp2Exu]
- * Snoop Nest CopyBack 1: [XXXX]                   ----->                                                                                 [Resp2Exu] * only need to snp one node
- *                                                   ^
- *                                                trans2Snp
- *
  *
  *
  * ************************************************************** Entry Transfer ********************************************************************************
@@ -222,7 +217,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   val dmtCompVal        = Wire(Bool())
   // HitVec
   val snp2IntfHitVec    = Wire(Vec(param.nrEntry, Bool())); dontTouch(snp2IntfHitVec)
-  val resp2ExuHitVec    = Wire(Vec(param.nrEntry, Bool())); dontTouch(resp2ExuHitVec)
+  val snpResp2ExuHitVec = Wire(Vec(param.nrEntry, Bool())); dontTouch(snpResp2ExuHitVec)
   val reqAckHitVec      = Wire(Vec(param.nrEntry, Bool())); dontTouch(reqAckHitVec)
   val compAckHitVec     = Wire(Vec(param.nrEntry, Bool())); dontTouch(compAckHitVec)
   // MatchVec
@@ -482,16 +477,20 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   val reqAckAWD       = entrys(io.reqAck2Intf.bits.entryID).addrWithDcuID
   val compAckAWD      = entrys(rxRsp.bits.TxnID).addrWithDcuID
 
-  snp2IntfHitVec      := entrys.zipWithIndex.map { case(e, i) => !e.isFree & e.addrWithDcuID === snp2IntfAWD             & io.req2Intf.fire }
-  resp2ExuHitVec      := entrys.zipWithIndex.map { case(e, i) => !e.isFree & e.addrWithDcuID === resp2ExuAWD             & io.resp2Exu.fire    & !dmtCompVal }
-  reqAckHitVec        := entrys.zipWithIndex.map { case(e, i) => !e.isFree & e.addrWithDcuID === reqAckAWD               & io.reqAck2Intf.fire & !io.reqAck2Intf.bits.retry & io.reqAck2Intf.bits.entryID =/= i.U }
-  compAckHitVec       := entrys.zipWithIndex.map { case(e, i) => !e.isFree & e.addrWithDcuID === compAckAWD              & rxRsp.fire          & rxRsp.bits.Opcode === CompAck & !dmtCompVal }
-
-  reqMatchVec         := entrys.zipWithIndex.map { case(e, i) => !e.isFree & e.addrWithDcuID === entrySave.addrWithDcuID & (e.chiMes.isReq | e.chiMes.isSnp) }
   snpMatchVec         := entrys.zipWithIndex.map { case(e, i) => !e.isFree & e.addrWithDcuID === entrySave.addrWithDcuID & (e.chiMes.isRsp | e.chiMes.isDat) & e.chiMes.expCompAck }
+  reqMatchVec         := entrys.zipWithIndex.map { case(e, i) => !e.isFree & e.addrWithDcuID === entrySave.addrWithDcuID & (e.chiMes.isReq | e.chiMes.isSnp) }
+  val reqAckMatchReq  = reqAckAWD   === entrySave.addrWithDcuID & io.reqAck2Intf.fire & !io.reqAck2Intf.bits.retry
+  val compAckMatchReq = compAckAWD  === entrySave.addrWithDcuID & rxRsp.fire          & rxRsp.bits.Opcode === CompAck & !dmtCompVal
+  val snpRespMatchReq = resp2ExuAWD === entrySave.addrWithDcuID & io.resp2Exu.fire    & !dmtCompVal & io.resp2Exu.bits.pcuMes.isSnpResp
 
   val reqMatchNum     = PopCount(reqMatchVec)
   val snpMatchNum     = PopCount(snpMatchVec)
+
+  snp2IntfHitVec      := entrys.zipWithIndex.map { case(e, i) => !e.isFree & e.addrWithDcuID === snp2IntfAWD             & io.req2Intf.fire }
+  snpResp2ExuHitVec   := entrys.zipWithIndex.map { case(e, i) => !e.isFree & e.addrWithDcuID === resp2ExuAWD             & io.resp2Exu.fire    & !dmtCompVal & io.resp2Exu.bits.pcuMes.isSnpResp }
+  reqAckHitVec        := entrys.zipWithIndex.map { case(e, i) => !e.isFree & e.addrWithDcuID === reqAckAWD               & io.reqAck2Intf.fire & !io.reqAck2Intf.bits.retry & io.reqAck2Intf.bits.entryID =/= i.U }
+  compAckHitVec       := entrys.zipWithIndex.map { case(e, i) => !e.isFree & e.addrWithDcuID === compAckAWD              & rxRsp.fire          & rxRsp.bits.Opcode === CompAck & !dmtCompVal }
+
 
   entrys.map(_.entryMes.nID).zipWithIndex.foreach {
     case(nID, i) =>
@@ -502,18 +501,18 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
         // Resp always takes priority
         when(io.resp2Intf.fire)     { nID := 0.U }
         // Snp
-        .elsewhen(io.req2Intf.fire) { nID := snpMatchNum - compAckHitVec(i) ;                                     assert(snpMatchNum >= compAckHitVec(i), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x] NID[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) }
+        .elsewhen(io.req2Intf.fire) { nID := snpMatchNum - compAckMatchReq ;                                          assert(snpMatchNum >= compAckMatchReq.asUInt, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x] NID[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) }
         // Req
-        .elsewhen(rxReq.fire)       { nID := reqMatchNum - resp2ExuHitVec(i) - reqAckHitVec(i);                   assert(reqMatchNum >= resp2ExuHitVec(i) + reqAckHitVec(i), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x] NID[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) }
+        .elsewhen(rxReq.fire)       { nID := reqMatchNum - snpRespMatchReq - reqAckMatchReq;                          assert(reqMatchNum >= snpRespMatchReq.asTypeOf(UInt(2.W)) + reqAckMatchReq, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x] NID[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) }
       }
       /*
        * Modify NID
        */
       .elsewhen(!entrys(i).isFree) {
         // Snp
-        when(entrys(i).chiMes.isSnp)      { nID := nID - compAckHitVec(i);                                        assert(nID >= compAckHitVec(i), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x] NID[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) }
+        when(entrys(i).chiMes.isSnp)      { nID := nID - compAckHitVec(i);                                            assert(nID >= compAckHitVec(i), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x] NID[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) }
         // Req
-        .elsewhen(entrys(i).chiMes.isReq) { nID := nID + snp2IntfHitVec(i) - resp2ExuHitVec(i) - reqAckHitVec(i); assert(nID + snp2IntfHitVec(i) >= resp2ExuHitVec(i) + reqAckHitVec(i), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x] NID[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) }
+        .elsewhen(entrys(i).chiMes.isReq) { nID := nID + snp2IntfHitVec(i) - snpResp2ExuHitVec(i) - reqAckHitVec(i);  assert(nID + snp2IntfHitVec(i) >= snpResp2ExuHitVec(i).asTypeOf(UInt(2.W))  + reqAckHitVec(i), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x] NID[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) }
       }
   }
 
