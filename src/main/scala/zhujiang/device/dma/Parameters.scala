@@ -4,10 +4,24 @@ import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config._
 import org.chipsalliance.cde.config.Parameters
+import chisel3.util.RRArbiter
+import xs.utils.ResetRRArbiter
 import zhujiang._
 import zhujiang.chi._
 import zhujiang.axi._
 
+object Encoder {
+    def RREncoder(in: Seq[Bool]): UInt = {
+        val arb = Module(new ResetRRArbiter(UInt(log2Ceil(in.size).W), in.size))
+        arb.io.in.zipWithIndex.foreach {
+            case(a, i) =>
+                a.valid := in(i)
+                a.bits  := i.U
+        }
+        arb.io.out.ready := true.B
+        arb.io.out.bits
+    }
+}
 
 object BurstMode {
   val width        = 2
@@ -43,18 +57,23 @@ class CHIREntry(implicit p : Parameters) extends ZJBundle {
   val homeNid        = UInt(niw.W)
   val dbid           = UInt(12.W)
   val haveRecReceipt = Bool()
-  val haveRecDataFir = Bool()
-  val haveRecDataSec = Bool()
+  val haveRecData    = Bool()
 }
 
 object CHIRState {
-  val width        = 3
-  val Free         = "b000".U
-  val Wait         = "b001".U
-  val sendCompAck  = "b010".U
-  val SendData     = "b011".U
-  val Comp         = "b100".U
+  val width        = 2
+  val Free         = "b00".U
+  val Wait         = "b01".U
+  val SendData     = "b10".U
+  val Comp         = "b11".U
 }
+
+class IDBundle(implicit p : Parameters) extends ZJBundle {
+  val areid      = UInt(log2Ceil(zjParams.dmaParams.axiEntrySize).W)
+  val rid        = UInt(zjParams.dmaParams.idBits.W)
+  val last       = Bool()
+}
+
 class SRAMSelector(implicit p: Parameters) extends ZJModule {
   private val dmaParams = zjParams.dmaParams
   val io = IO(new Bundle() {
