@@ -50,14 +50,10 @@ abstract class BaseTLULPeripheral(tlParams: TilelinkParams) extends Module {
       readMatrix := 0.U.asTypeOf(readMatrix)
       dontTouch(readMatrix)
 
-      val addrMatchVec = pregSeq.map(elm => elm._4(tlParams.addrBits - 1, log2Ceil(busBytes)) === addr(tlParams.addrBits - 1, log2Ceil(busBytes)))
-      val addrMatch = WireInit(Cat(addrMatchVec).orR)
       val addrRow = if(readMatrixRow == 1) 0.U else addr(log2Ceil(readMatrixRow * busBytes) - 1, log2Ceil(busBytes))
       val readLegalData = WireInit(readMatrix(addrRow).asUInt)
-      dontTouch(addrMatch)
       dontTouch(readLegalData)
       accessPipe.io.enq.bits.data := Mux(addrRow < readMatrixRow.U, readLegalData, 0.U)
-      accessPipe.io.enq.bits.corrupt := !addrMatch
 
       (for(idx <- regSeq.indices) yield {
         val target = pregSeq(idx)
