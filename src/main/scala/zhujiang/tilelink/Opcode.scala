@@ -19,7 +19,7 @@ object DOpcode {
   val AccessAck = 0x0.U(width.W)
   val AccessAckData = 0x1.U(width.W)
   val HintAck = 0x2.U(width.W)
-  val Grant = 0x3.U(width.W)
-  val GrantData = 0x4.U(width.W)
-  val ReleaseAck = 0x5.U(width.W)
+  val Grant = 0x4.U(width.W)
+  val GrantData = 0x5.U(width.W)
+  val ReleaseAck = 0x6.U(width.W)
 }
