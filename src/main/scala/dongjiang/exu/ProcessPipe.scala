@@ -59,7 +59,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   val dirCanGo_s3         = Wire(Bool())
   val taskNext_s3         = WireInit(0.U.asTypeOf(new PipeTaskBundle()))
   val task_s3_g           = RegInit(0.U.asTypeOf(Valid(new PipeTaskBundle())))
-  val dirRes_s3           = WireInit(0.U.asTypeOf(Valid(new DirRespBundle())))
+  val dirRes_s3           = WireInit(0.U.asTypeOf(Valid(new DirRespBundle()))); dontTouch(dirRes_s3)
   val srcMetaID           = Wire(UInt((ccNodeIdBits+1).W))
   val rnHitVec            = Wire(Vec(nrCcNode, Bool()))
   val snpNodeVec          = Wire(Vec(nrCcNode, Bool()))
@@ -142,7 +142,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
    * Recieve dirRes
    */
   dirRes_s3.valid       := dirResQ.io.deq.valid
-  dirRes_s3.bits        := dirResQ.io.deq.bits
+  dirRes_s3.bits        := Mux(dirRes_s3.valid, dirResQ.io.deq.bits, 0.U.asTypeOf(dirResQ.io.deq.bits))
   dirResQ.io.deq.ready  := dirCanGo_s3
 
   /*
