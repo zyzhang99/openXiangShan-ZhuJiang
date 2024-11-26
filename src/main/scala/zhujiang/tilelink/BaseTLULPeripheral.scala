@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.util._
 
 abstract class BaseTLULPeripheral(tlParams: TilelinkParams) extends Module {
+  def addrBits:Int
   def regSeq: Seq[(String, Data, Data, Int, Option[UInt], Option[UInt])] //ReadSrc, WriteDst, Address, Write Mask, Read Mask
   val tls = IO(Flipped(new TLULBundle(tlParams)))
   val myclock = WireInit(clock)
@@ -43,8 +44,11 @@ abstract class BaseTLULPeripheral(tlParams: TilelinkParams) extends Module {
         val maxByteIdx = addr + (width / 8) - 1
         (name, read, write, addr.U(tlParams.addrBits.W), writeMask.getOrElse(Fill(width, true.B)), readMask.getOrElse(Fill(width, true.B)), regSize, maxByteIdx)
       }
+
       val maxByte = pregSeq.map(r => r._8).max + 1
       val busBytes = tlParams.dataBits / 8
+      val maxAddrBits = log2Ceil(maxByte)
+      val busOffBits = log2Ceil(busBytes)
       val readMatrixRow = (maxByte + busBytes - 1) / busBytes
       val readMatrix = Wire(Vec(readMatrixRow, Vec(busBytes, UInt(8.W))))
       readMatrix := 0.U.asTypeOf(readMatrix)
@@ -97,7 +101,12 @@ abstract class BaseTLULPeripheral(tlParams: TilelinkParams) extends Module {
         finalWdata.suggestName(s"${name}_write_data")
         finalWmask.suggestName(s"${name}_write_mask")
         regUpdate.suggestName(s"${name}_write_en")
-        regUpdate := wen && addr(tlParams.addrBits - 1, 3) === regAddr(tlParams.addrBits - 1, 3)
+        val addrMatch = if(maxAddrBits <= busOffBits) {
+          true.B
+        } else {
+          addr(maxAddrBits - 1, busOffBits) === regAddr(maxAddrBits - 1, busOffBits)
+        }
+        regUpdate := wen && addr(addrBits - 1, maxAddrBits) === 0.U && addrMatch
         when(regUpdate) {
           dst := ((finalWmask & finalWdata) | (keepMask & src.asUInt)).asTypeOf(dst)
         }
