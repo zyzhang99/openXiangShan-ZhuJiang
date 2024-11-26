@@ -1,14 +1,17 @@
-package zhujiang.device.dma
+  package zhujiang.device.dma
 
-import chisel3._
-import chisel3.util._
-import org.chipsalliance.cde.config._
-import freechips.rocketchip.amba.axi4._
-import org.chipsalliance.cde.config.Parameters
-import zhujiang._
-import zhujiang.chi._
-import zhujiang.axi._
-import xs.utils.sram._
+
+  import chisel3._
+  import chisel3.util._
+  import org.chipsalliance.cde.config._
+  import freechips.rocketchip.amba.axi4._
+  import org.chipsalliance.cde.config.Parameters
+  import zhujiang._
+  import zhujiang.chi._
+  import zhujiang.axi._
+  import xs.utils.sram._
+  import zhujiang.device.dma.Encoder._
+
 
 class WriteHandle(implicit p: Parameters) extends ZJModule{
   
@@ -35,7 +38,9 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
   private val chiEntrys     = RegInit(VecInit.fill(dmaParams.chiEntrySize)(0.U.asTypeOf(new CHIWEntry)))
   private val dataSram      = Module(new SRAMTemplate(gen = UInt(dw.W), set = dmaParams.chiEntrySize, singlePort = true))
   private val maskSram      = Module(new SRAMTemplate(gen = UInt(bew.W), set = dmaParams.chiEntrySize, singlePort = true))
-  
+  private val rDataQueue    = Module(new Queue(gen = UInt(dw.W), entries = dmaParams.queueSize, flow = false, pipe = false))
+  private val rMaskQueue    = Module(new Queue(gen = UInt(bew.W), entries = dmaParams.queueSize, flow = false, pipe = false))
+  private val selEntryQueue = Module(new Queue(gen = UInt(log2Ceil(dmaParams.chiEntrySize).W), entries = dmaParams.queueSize, flow = false, pipe = false))
 
   //---------------------------------------------------------------------------------------------------------------------------------//
   //---------------------------------------------------------- Logic ----------------------------------------------------------------//
@@ -73,13 +78,13 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
 
   private val selSendReqChiEntry  = PriorityEncoder(chiSendReqVec)
   private val selSendAckChiEntry  = PriorityEncoder(chiSendAckVec)
-  private val selSendDataChiEntry = PriorityEncoder(chiSendDataVec)
+  private val selSendDataChiEntry = RREncoder(chiSendDataVec)
 
   /* 
    * chi flit define
    */
   private val txReqFlit         = Wire(new ReqFlit)
-  private val txDatFlit         = Reg(new DataFlit)
+  private val txDatFlit         = Wire(new DataFlit)
   private val txRspFlit         = Wire(new RespFlit)
 
 
@@ -169,7 +174,7 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
   /* 
    * sram interface
    */
-  dataSram.io.r.req.valid       := chiSendDataVec.reduce(_|_) && !dataSram.io.w.req.valid
+  dataSram.io.r.req.valid       := chiSendDataVec.reduce(_|_) && !dataSram.io.w.req.valid && rDataQueue.io.deq.ready
   dataSram.io.r.req.bits.setIdx := selSendDataChiEntry
   maskSram.io.r.req.valid       := chiSendDataVec.reduce(_|_) && !maskSram.io.w.req.valid
   maskSram.io.r.req.bits.setIdx := selSendDataChiEntry
@@ -214,17 +219,31 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
   txReqFlit.Size       := Mux(chiEntrys(selSendReqChiEntry).full, 6.U, 5.U)
   txReqFlit.Order      := "b10".U
 
-  private val selSendDataDelay = RegNext(selSendDataChiEntry)
-  when(RegNext(dataSram.io.r.req.fire)){
-    txDatFlit         := 0.U.asTypeOf(txDatFlit)
-    txDatFlit.Opcode  := DatOpcode.NonCopyBackWriteData
-    txDatFlit.SrcID   := 1.U
-    txDatFlit.DataID  := Mux(chiEntrys(selSendDataDelay).full && chiEntrys(selSendDataDelay).last, 2.U, 0.U)
-    txDatFlit.TxnID   := chiEntrys(selSendDataDelay).dbid
-    txDatFlit.TgtID   := chiEntrys(selSendDataDelay).tgtID
-    txDatFlit.Data    := dataSram.io.r.resp.data(0)
-    txDatFlit.BE      := maskSram.io.r.resp.data(0)
-  }
+  /* 
+   * submodule interface
+   */
+  rDataQueue.io.enq.valid := RegNext(dataSram.io.r.req.fire, false.B)
+  rDataQueue.io.enq.bits  := dataSram.io.r.resp.data(0)
+  rDataQueue.io.deq.ready := io.chi_txdat.ready
+
+  rMaskQueue.io.enq.valid := RegNext(maskSram.io.r.req.fire, false.B)
+  rMaskQueue.io.enq.bits  := maskSram.io.r.resp.data(0)
+  rMaskQueue.io.deq.ready := io.chi_txdat.ready
+
+  selEntryQueue.io.enq.valid := RegNext(dataSram.io.r.req.fire, false.B)
+  selEntryQueue.io.enq.bits  := RegNext(selSendDataChiEntry)
+  selEntryQueue.io.deq.ready := io.chi_txdat.ready
+  
+
+  txDatFlit         := 0.U.asTypeOf(txDatFlit)
+  txDatFlit.Opcode  := DatOpcode.NonCopyBackWriteData
+  txDatFlit.SrcID   := 1.U
+  txDatFlit.DataID  := Mux(chiEntrys(selEntryQueue.io.deq.bits).full && chiEntrys(selEntryQueue.io.deq.bits).last, 2.U, 0.U)
+  txDatFlit.TxnID   := chiEntrys(selEntryQueue.io.deq.bits).dbid
+  txDatFlit.TgtID   := chiEntrys(selEntryQueue.io.deq.bits).tgtID
+  txDatFlit.Data    := rDataQueue.io.deq.bits
+  txDatFlit.BE      := rMaskQueue.io.deq.bits
+
   txRspFlit           := 0.U.asTypeOf(txRspFlit)
   txRspFlit.Opcode    := RspOpcode.CompAck
   txRspFlit.SrcID     := 1.U
@@ -338,7 +357,7 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
    */
   io.chi_txreq.bits   := txReqFlit
   io.chi_txreq.valid  := chiSendReqVec.reduce(_|_)
-  io.chi_txdat.valid  := RegNext(RegNext(dataSram.io.r.req.fire))
+  io.chi_txdat.valid  := selEntryQueue.io.deq.valid
   io.chi_txdat.bits   := txDatFlit
   io.chi_rxrsp.ready  := true.B
   io.chi_txrsp.valid  := chiSendAckVec.reduce(_|_)
