@@ -311,7 +311,7 @@ class DirectoryBase(
    */
   useWayVec           := metaResp_s3_g.map { case meta => mshrMes_s3_g.map { case mshr => mshr.valid & mshr.bits === meta.tag }.reduce(_ | _) }
   val replWayIsUsing  = useWayVec(replWay)
-  val selUnuseWay     = PriorityEncoder(useWayVec.map(!_))
+  val selUnuseWay     = PriorityEncoder(useWayVec.map(!_)) // TODO
   val replRetry       = useWayVec.asUInt.andR
   val unUseWayAddr    = Cat(metaResp_s3_g(selUnuseWay).tag, set_s3, io.dirBank); require(unUseWayAddr.getWidth == useAddrBits)
 

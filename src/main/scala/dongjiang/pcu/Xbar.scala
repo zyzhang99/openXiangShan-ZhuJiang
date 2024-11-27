@@ -79,14 +79,14 @@ class Xbar()(implicit p: Parameters) extends DJModule {
 
   interConnect(in = io.resp2Exu.in,     q0 = 0, q1 = 0, q2 = 0, out = io.resp2Exu.out)
 
-  io.dbSigs.out(0).dbRCReq <> fastArbDec(io.dbSigs.in0)
+  io.dbSigs.out(0).dbRCReq              <> fastArbDec(io.dbSigs.in0)
 
-  io.dbSigs.out(0).getDBID <> fastArbDec(io.dbSigs.in1.map(_.getDBID))
+  io.dbSigs.out(0).getDBID              <> fastArbDec(io.dbSigs.in1.map(_.getDBID))
 
   interConnect(in = io.dbSigs.out.map(_.dbidResp),  q0 = 0, q1 = 0, q2 = 0, out = io.dbSigs.in1.map(_.dbidResp))
 
   interConnect(in = io.dbSigs.out.map(_.dataFDB),   q0 = 0, q1 = 0, q2 = 0, out = io.dbSigs.in1.map(_.dataFDB))
 
-  io.dbSigs.out(0).dataTDB <> fastArbDec(io.dbSigs.in1.map(_.dataTDB))
+  io.dbSigs.out(0).dataTDB              <> fastArbDec(io.dbSigs.in1.map(_.dataTDB))
 
 }
