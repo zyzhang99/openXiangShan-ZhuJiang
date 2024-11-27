@@ -23,15 +23,17 @@ import chisel3.util._
  * It cant be (Commit / wSDir / wSFDir) and (Snoop / ReadDown / ReadDCU) at the same time
  */
 
-
+/*
+ * !!!!!!! Note: Caution is needed when Snp returns a RESP value with multiple possibilities !!!!!!!!!!
+ */
 
 object LocalReadDecode {
   def readNotSharedDirty: Seq[(UInt, UInt)] = Seq(
     // ----------------------------------------------------------- LOCAL REQ --------------------------------------------------------------//
     LocalReqInst(ReadNotSharedDirty, I, I,   I) -> (ReadDown | ReadOp(ReadNoSnp)),
-    LocalReqInst(ReadNotSharedDirty, I, UC,  I) -> (SnpOth   | SnpOp(SnpNotSharedDirty) | RetToSrc),
-    LocalReqInst(ReadNotSharedDirty, I, UD,  I) -> (SnpOth   | SnpOp(SnpNotSharedDirty) | RetToSrc),
-    LocalReqInst(ReadNotSharedDirty, I, SC,  I) -> (SnpOth   | SnpOp(SnpNotSharedDirty) | RetToSrc),
+    LocalReqInst(ReadNotSharedDirty, I, UC,  I) -> (SnpOne   | SnpOp(SnpNotSharedDirty) | RetToSrc),
+    LocalReqInst(ReadNotSharedDirty, I, UD,  I) -> (SnpOne   | SnpOp(SnpNotSharedDirty) | RetToSrc),
+    LocalReqInst(ReadNotSharedDirty, I, SC,  I) -> (SnpOne   | SnpOp(SnpNotSharedDirty) | RetToSrc),
     LocalReqInst(ReadNotSharedDirty, I, I,  UC) -> (ReadDCU  | ReadOp(ReadNoSnp)        | Resp(ChiResp.UC)),
     LocalReqInst(ReadNotSharedDirty, I, I,  UD) -> (ReadDCU  | ReadOp(ReadNoSnp)        | Resp(ChiResp.UD_PD)),
     LocalReqInst(ReadNotSharedDirty, I, I,  SC) -> (ReadDCU  | ReadOp(ReadNoSnp)        | Resp(ChiResp.SC)),
@@ -159,32 +161,31 @@ object LocalReadDecode {
     // ----------------------------------------------------------- LOCAL RESP ---------------------------------------------------------------//
     // TODO: Consider a variation of the SC/SD mapping as UC/SD In Local
     //  I  I  I
-    LocalRespInst(REQ, ReadOnce,  I,  I,  I, Read,   HasData, sn = ChiResp.I)     -> (Commit | RDB2Src | CleanDB |          RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
+    LocalRespInst(REQ, ReadOnce,  I,  I,  I, Read,   HasData, sn = ChiResp.I)     -> (Commit | RDB2Src | CleanDB | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
     LocalRespInst(REQ, ReadOnce,  I,  I,  I, Read,            sn = ChiResp.I)     -> NothingTODO,
     //  I UC  I
-    LocalRespInst(REQ, ReadOnce,  I, UC,  I, Snp,    HasData, rn = ChiResp.I)     -> (Commit | RDB2Src | CleanDB |          RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
-    LocalRespInst(REQ, ReadOnce,  I, UC,  I, Snp,    HasData, rn = ChiResp.I)     -> (Commit | RDB2Src | CleanDB | WSFDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)  | HnState(I)  | SrcState(I) | OthState(UD)),
+    LocalRespInst(REQ, ReadOnce,  I, UC,  I, Snp,    HasData, rn = ChiResp.UC)    -> (Commit | RDB2Src | CleanDB | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
     //  I UD  I
-    LocalRespInst(REQ, ReadOnce,  I, UD,  I, Snp,    HasData, rn = ChiResp.I)     -> (Commit | RDB2Src | CleanDB |          RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
+    LocalRespInst(REQ, ReadOnce,  I, UD,  I, Snp,    HasData, rn = ChiResp.UD)    -> (Commit | RDB2Src | CleanDB | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
     //  I SC  I
-    LocalRespInst(REQ, ReadOnce,  I, SC,  I, Snp,    HasData, rn = ChiResp.I)     -> (Commit | RDB2Src | CleanDB |          RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
+    LocalRespInst(REQ, ReadOnce,  I, SC,  I, Snp,    HasData, rn = ChiResp.SC)    -> (Commit | RDB2Src | CleanDB | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
     //  I  I UC
-    LocalRespInst(REQ, ReadOnce,  I,  I, UC, Read,   HasData, sn = ChiResp.I)     -> (Commit | RDB2Src | CleanDB |          RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
+    LocalRespInst(REQ, ReadOnce,  I,  I, UC, Read,   HasData, sn = ChiResp.I)     -> (Commit | RDB2Src | CleanDB | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
     LocalRespInst(REQ, ReadOnce,  I,  I, UC, Read,            sn = ChiResp.I)     -> NothingTODO,
     //  I  I UD
-    LocalRespInst(REQ, ReadOnce,  I,  I, UD, Read,   HasData, sn = ChiResp.I)     -> (Commit | RDB2Src | CleanDB |          RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
+    LocalRespInst(REQ, ReadOnce,  I,  I, UD, Read,   HasData, sn = ChiResp.I)     -> (Commit | RDB2Src | CleanDB | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
     LocalRespInst(REQ, ReadOnce,  I,  I, UD, Read,            sn = ChiResp.I)     -> NothingTODO,
     //  I  I SC
-    LocalRespInst(REQ, ReadOnce,  I,  I, SC, Read,   HasData, sn = ChiResp.I)     -> (Commit | RDB2Src | CleanDB |          RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
+    LocalRespInst(REQ, ReadOnce,  I,  I, SC, Read,   HasData, sn = ChiResp.I)     -> (Commit | RDB2Src | CleanDB | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
     LocalRespInst(REQ, ReadOnce,  I,  I, SC, Read,            sn = ChiResp.I)     -> NothingTODO,
     //  I SC SC
-    LocalRespInst(REQ, ReadOnce,  I, SC, SC, Read,   HasData, sn = ChiResp.I)     -> (Commit | RDB2Src | CleanDB |          RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
+    LocalRespInst(REQ, ReadOnce,  I, SC, SC, Read,   HasData, sn = ChiResp.I)     -> (Commit | RDB2Src | CleanDB | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
     LocalRespInst(REQ, ReadOnce,  I, SC, SC, Read,            sn = ChiResp.I)     -> NothingTODO,
     //  I  I SD
-    LocalRespInst(REQ, ReadOnce,  I,  I, SD, Read,   HasData, sn = ChiResp.I)     -> (Commit | RDB2Src | CleanDB |          RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
+    LocalRespInst(REQ, ReadOnce,  I,  I, SD, Read,   HasData, sn = ChiResp.I)     -> (Commit | RDB2Src | CleanDB | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
     LocalRespInst(REQ, ReadOnce,  I,  I, SD, Read,            sn = ChiResp.I)     -> NothingTODO,
     //  I SC SD
-    LocalRespInst(REQ, ReadOnce,  I, SC, SD, Read,   HasData, sn = ChiResp.I)     -> (Commit | RDB2Src | CleanDB |          RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
+    LocalRespInst(REQ, ReadOnce,  I, SC, SD, Read,   HasData, sn = ChiResp.I)     -> (Commit | RDB2Src | CleanDB | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
     LocalRespInst(REQ, ReadOnce,  I, SC, SD, Read,            sn = ChiResp.I)     -> NothingTODO,
   )
 

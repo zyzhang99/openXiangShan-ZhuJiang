@@ -259,7 +259,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   rnHitVec            := dirRes_s3.bits.sf.metaVec.map(!_.isInvalid)
   val rnHitWithoutSrc = rnHitVec.zipWithIndex.map { case(hit, i) => hit & i.U =/= srcMetaID }
   when(decode_req_s3.snpTgt === SnpTgt.ALL)       { snpNodeVec  := rnHitVec }
-  .elsewhen(decode_req_s3.snpTgt === SnpTgt.OTH)  { snpNodeVec  := rnHitWithoutSrc}
+  .elsewhen(decode_req_s3.snpTgt === SnpTgt.OTH)  { snpNodeVec  := rnHitWithoutSrc }
   .elsewhen(decode_req_s3.snpTgt === SnpTgt.ONE)  { snpNodeVec  := PriorityEncoderOH(rnHitWithoutSrc) } // TODO: Can be Optimized
   .otherwise {                                      snpNodeVec  := 0.U.asTypeOf(snpNodeVec) }
   // assert
