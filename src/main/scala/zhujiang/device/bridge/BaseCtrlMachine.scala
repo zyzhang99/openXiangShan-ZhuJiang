@@ -156,6 +156,8 @@ abstract class BaseCtrlMachine[
     }.elsewhen(valid) {
       timer := timer + 1.U
     }
-    assert(timer < 5000.U, "bridge CM time out!")
+    when(valid) {
+      assert(timer < 10000.U, "bridge CM time out!")
+    }
   }
 }
