@@ -207,7 +207,7 @@ class AxiDataBuffer(axiParams: AxiParams, ctrlSize: Int, bufferSize: Int)(implic
   private val ramStop = RegInit(true.B)
   when(freelist.io.resp.valid) {
     ramStop := false.B
-  }.elsewhen(io.axi.fire && freelist.io.idle) {
+  }.elsewhen(io.axi.fire && io.axi.bits.last && freelist.io.idle) {
     ramStop := true.B
   }
   dataBuffer.io.stop := ramStop
