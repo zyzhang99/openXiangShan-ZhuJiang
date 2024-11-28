@@ -789,11 +789,13 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
     assert(Mux(isWriUniX(rxReq.bits.Opcode),    rxReq.bits.Order === Order.OWO & rxReq.bits.ExpCompAck,
            Mux(rxReq.bits.Opcode === ReadOnce,  rxReq.bits.Order === Order.EndpointOrder, rxReq.bits.Order === Order.None)))
     // Size
-    assert(Mux(isWriXFull(rxReq.bits.Opcode),   rxReq.bits.Size === chiFullSize.U, true.B))
+    assert(Mux(isWriXFull(rxReq.bits.Opcode),   Mux(rxReq.bits.Opcode === WriteBackFull, rxReq.bits.Size === chiFullSize.U, true.B), true.B))
     assert(Mux(isAtomicX(rxReq.bits.Opcode),    rxReq.bits.Size <= chiHalfSize.U, // Atomic
-           Mux(isWriXPtl(rxReq.bits.Opcode),    rxReq.bits.Size < chiFullSize.U, // WriteXPtl
+           Mux(rxReq.bits.Opcode === WriteBackPtl,    rxReq.bits.Size < chiFullSize.U, // WriteXPtl
            Mux(rxReq.bits.Opcode === ReadOnce,  rxReq.bits.Size <= chiFullSize.U, // ReadOnce
-                                                rxReq.bits.Size === chiFullSize.U)))) // Other
+           Mux(rxReq.bits.Opcode === WriteUniquePtl, rxReq.bits.Size <= chiFullSize.U,
+           Mux(rxReq.bits.Opcode === WriteUniqueFull, rxReq.bits.Size <= chiFullSize.U,
+                                                rxReq.bits.Size === chiFullSize.U)))))) // Other
     // Endian
     assert(rxReq.bits.Endian.asUInt === 0.U) // Must be Little Endian
   }
