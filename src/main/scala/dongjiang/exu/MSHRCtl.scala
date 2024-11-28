@@ -158,12 +158,18 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule with HasPerfLogging {
    * Receive Req From Node and Determine if it needs retry
    * TODO: Setting blocking timer
    */
-  io.req2Exu.ready                := reqAck_s0_q.io.enq.ready
   reqAck_s0_q.io.enq.valid        := io.req2Exu.valid
   reqAck_s0_q.io.enq.bits.retry   := !canReceiveReq
   reqAck_s0_q.io.enq.bits.to      := io.req2Exu.bits.from
   reqAck_s0_q.io.enq.bits.entryID := io.req2Exu.bits.pcuIndex.entryID
   io.reqAck2Intf                  <> reqAck_s0_q.io.deq
+
+  /*
+   * Set ready value
+   */
+  io.updMSHR.ready  := true.B
+  io.resp2Exu.ready := mshrTableReg(io.resp2Exu.bits.pcuIndex.mshrSet)(io.resp2Exu.bits.pcuIndex.mshrWay).isWaitResp
+  io.req2Exu.ready  := reqAck_s0_q.io.enq.ready
 
 
   // ---------------------------------------------------------------------------------------------------------------------- //
@@ -176,10 +182,14 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule with HasPerfLogging {
     case(m, i) =>
       m.zipWithIndex.foreach {
         case(m, j) =>
+          val updMSHRHit  = io.updMSHR.fire & !io.updMSHR.bits.isRetry & io.updMSHR.bits.mshrMatch(i, j)
+          val resp2ExuHit = io.resp2Exu.fire & io.resp2Exu.bits.pcuIndex.mshrMatch(i, j)
+          val req2ExuHit  = io.req2Exu.fire & canReceiveReq & i.U === req2ExuMSet & j.U === nodeReqInvWay
+          assert(PopCount(Seq(updMSHRHit, resp2ExuHit, req2ExuHit)) <= 1.U)
           /*
            * Pipe Update mshrTable value
            */
-          when(io.updMSHR.valid & !io.updMSHR.bits.isRetry & io.updMSHR.bits.mshrMatch(i, j)) {
+          when(updMSHRHit) {
             // req
             when(io.updMSHR.bits.hasNewReq) {
               m                     := 0.U.asTypeOf(m)
@@ -196,8 +206,7 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule with HasPerfLogging {
             /*
              * Resp Update mshrTable value
              */
-          }.elsewhen(io.resp2Exu.valid & io.resp2Exu.bits.pcuIndex.mshrMatch(i, j)) {
-            assert(!io.resp2Exu.bits.pcuMes.isUpdate, "TODO")
+          }.elsewhen(resp2ExuHit) {
             // Recovery of pending intf identifiers
             m.mshrMes.waitIntfVec(io.resp2Exu.bits.from) := false.B
             // Record Resp Mes
@@ -237,7 +246,7 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule with HasPerfLogging {
             /*
              * Receive Node Req
              */
-          }.elsewhen(io.req2Exu.fire & canReceiveReq & i.U === req2ExuMSet & j.U === nodeReqInvWay) {
+          }.elsewhen(req2ExuHit) {
             m := 0.U.asTypeOf(m)
             m := mshrAlloc_s0
             assert(m.isFree, s"MSHR[0x%x][0x%x] ADDR[0x%x] CHANNEL[0x%x] OP[0x%x] STATE[0x%x]", i.U, j.U, m.fullAddr(i.U, io.dcuID, io.pcuID), m.chiMes.channel, m.chiMes.opcode, m.mshrMes.state)
@@ -249,13 +258,6 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule with HasPerfLogging {
           }
       }
   }
-
-
-  /*
-   * Set ready value
-   */
-  io.updMSHR.ready := true.B
-  io.resp2Exu.ready := true.B
 
 
   /*
