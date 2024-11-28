@@ -207,6 +207,8 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   val entryResp2ExuID   = Wire(UInt(param.entryIdBits.W))
   // ENTRY Send Resp To Node ID
   val entrySendRspID    = Wire(UInt(param.entryIdBits.W))
+  // ENTRY Rec Data From DB ID
+  val entryRecDataFDBID = Wire(UInt(param.entryIdBits.W))
   // req/resp from EXU or rxReq
   val entrySave         = WireInit(0.U.asTypeOf(new RSEntry(param)))
   // snp to node
@@ -315,12 +317,18 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
       // Receive New Req
       when((rxReq.fire | io.req2Intf.fire | io.resp2Intf.fire) & entryFreeID === i.U) {
         entryMes                := entrySave.entryMes
-      // Count CHI TX Dat
-      }.elsewhen(rxDat.fire & entryRecChiDatID === i.U) {
+      // Count CHI TX Dat Or Data From DB
+      }.elsewhen((rxDat.fire & entryRecChiDatID === i.U) | (io.dbSigs.dataFDB.fire & entryRecDataFDBID === i.U)) {
         val hitRespDat = rxDat.fire & entryRecChiDatID === i.U
-        entryMes.getBeatNum     := entryMes.getBeatNum + hitRespDat.asUInt
+        val hitFDB     = io.dbSigs.dataFDB.fire & entryRecDataFDBID === i.U
+        entryMes.getBeatNum     := entryMes.getBeatNum + hitRespDat.asUInt + hitFDB.asUInt
         entryMes.hasData        := true.B
-        assert(isWriteX(entrys(i).chiMes.opcode) | (entrys(i).chiMes.opcode === CompDBIDResp & entrys(i).chiMes.isRsp) | (entrys(i).chiMes.isSnp & entrys(i).chiMes.retToSrc))
+        assert(!(hitRespDat & hitFDB))
+        when(hitRespDat) {
+          assert(isWriteX(entrys(i).chiMes.opcode) | (entrys(i).chiMes.opcode === CompDBIDResp & entrys(i).chiMes.isRsp) | (entrys(i).chiMes.isSnp & entrys(i).chiMes.retToSrc))
+        }.elsewhen(hitFDB) {
+          assert(entrys(i).isDatBeSend)
+        }
       // Get CompAck
       }.elsewhen(rxRsp.fire & entryRecChiRspID === i.U & !rspIsDMTComp & rxRsp.bits.Opcode === CompAck) {
         entryMes.snpFwdWaitAck  := false.B
@@ -407,7 +415,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
         }
         // State: Resp2Node
         is(RSState.Resp2Node) {
-          val txDatHit  = txDat.fire & txDat.bits.DBID === i.U & toBeatNum(txDat.bits.DataID) === (nrBeat - 1).U
+          val txDatHit  = txDat.fire & entryRecDataFDBID === i.U & entrys(i).isLastBeat
           val txRspHit  = txRsp.fire & entrySendRspID === i.U; assert(txRsp.bits.Opcode === Comp | !txRspHit)
           val expAck    = entrys(i).chiMes.expCompAck
           state         := Mux(txDatHit | txRspHit, Mux(expAck, RSState.WaitCompAck, RSState.Free), state)
@@ -598,21 +606,19 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   /*
    * Select one Entry to Send RxDat
    */
-  val datBeSendVec  = entrys.map { case p => p.isDatBeSend & p.pcuIndex.dbID === io.dbSigs.dataFDB.bits.dbID }
-  val datSelId      = PriorityEncoder(datBeSendVec)
+  val datBeSendVec   = entrys.map { case p => p.isDatBeSend & io.dbSigs.dataFDB.valid & p.pcuIndex.dbID === io.dbSigs.dataFDB.bits.dbID }
+  entryRecDataFDBID  := PriorityEncoder(datBeSendVec)
+  assert(PopCount(datBeSendVec) <= 1.U)
 
   txDat.valid        := datBeSendVec.reduce(_ | _)
   txDat.bits         := DontCare
-  txDat.bits.Opcode  := entrys(datSelId).chiMes.opcode
-  txDat.bits.TgtID   := getFullNodeID(entrys(datSelId).chiIndex.nodeID)
+  txDat.bits.Opcode  := entrys(entryRecDataFDBID).chiMes.opcode
+  txDat.bits.TgtID   := getFullNodeID(entrys(entryRecDataFDBID).chiIndex.nodeID)
   txDat.bits.SrcID   := io.hnfID
-  txDat.bits.TxnID   := entrys(datSelId).chiIndex.txnID
+  txDat.bits.TxnID   := entrys(entryRecDataFDBID).chiIndex.txnID
   txDat.bits.HomeNID := io.hnfID
-  txDat.bits.DBID    := datSelId
-  txDat.bits.Resp    := entrys(datSelId).chiMes.resp
-  txDat.bits.DataID  := io.dbSigs.dataFDB.bits.dataID
-  txDat.bits.Data    := io.dbSigs.dataFDB.bits.data
-  txDat.bits.BE      := Fill(txDat.bits.BE.getWidth, 1.U(1.W))
+  txDat.bits.DBID    := entryRecDataFDBID
+  txDat.bits.Resp    := entrys(entryRecDataFDBID).chiMes.resp
 
   io.dbSigs.dataFDB.ready := txDat.ready & datBeSendVec.reduce(_ | _)
 

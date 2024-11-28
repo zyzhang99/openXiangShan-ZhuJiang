@@ -125,10 +125,9 @@ class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[
   localRnSlave.io.chi.rx.data.get.valid   := io.toLocal.rx.data.get.valid & fromCcNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)
   localSnMaster.io.chi.rx.data.get.bits   := io.toLocal.rx.data.get.bits
   localRnSlave.io.chi.rx.data.get.bits    := io.toLocal.rx.data.get.bits
-  io.toLocal.rx.data.get.ready            := true.B // Set true forever for timing considerations
   // assert
-  assert(Mux(io.toLocal.rx.data.get.valid, (localSnMaster.io.chi.rx.data.get.ready & fromSnNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)) |
-                                           (localRnSlave.io.chi.rx.data.get.ready & fromCcNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)), true.B))
+  assert(Mux(io.toLocal.rx.data.get.fire, (localSnMaster.io.chi.rx.data.get.ready & fromSnNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)) |
+                                          (localRnSlave.io.chi.rx.data.get.ready & fromCcNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)), true.B))
 
   // tx req
   io.toLocal.tx.req.get                   <> Queue(localSnMaster.io.chi.tx.req.get, 2) // Adding queues for timing considerations
@@ -232,4 +231,12 @@ class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[
    */
   databuffer.io <> xbar.io.dbSigs.out(0)
 
+  // Directly connect to DataBuffer
+  // rx
+  io.toLocal.rx.data.get.ready      := databuffer.io.dataTDB.ready
+  databuffer.io.dataTDB.bits.data   := io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).Data
+  // tx
+  txDataQ.io.enq.bits.Data          := databuffer.io.dataFDB.bits.data
+  txDataQ.io.enq.bits.DataID        := databuffer.io.dataFDB.bits.dataID
+  txDataQ.io.enq.bits.BE            := databuffer.io.dataFDB.bits.mask
 }

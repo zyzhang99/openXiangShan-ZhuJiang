@@ -48,7 +48,7 @@ case class DJParam(
                   dcuLatency:         Int = 3,
                   dcuExtraHold:       Boolean = false,
                   // --------------------------- Data Buffer Base Mes ------------------- //
-                  nrDatBuf:           Int = 24, // The number of Data Buffer entries Per PCU
+                  nrDatBuf:           Int = 32, // The number of Data Buffer entries Per PCU
                   nrAPU:              Int = 8, // The number of Atomic Process entries Per PCU
                   // ------------------------ EXU Base Mes Per Bank ------------------ //
                   nrPipeTaskQueue:    Int = 4,

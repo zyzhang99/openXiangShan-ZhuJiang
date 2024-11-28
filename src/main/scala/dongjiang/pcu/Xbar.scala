@@ -85,7 +85,7 @@ class Xbar()(implicit p: Parameters) extends DJModule {
 
   interConnect(in = io.dbSigs.out.map(_.dbidResp),  q0 = 0, q1 = 0, q2 = 0, out = io.dbSigs.in1.map(_.dbidResp))
 
-  interConnect(in = io.dbSigs.out.map(_.dataFDB),   q0 = 0, q1 = 0, q2 = 0, out = io.dbSigs.in1.map(_.dataFDB))
+  interConnect(in = io.dbSigs.out.map(_.dataFDB),   q0 = 0, q1 = 0, q2 = 0, out = io.dbSigs.in1.map(_.dataFDB)) // !!!!!! Node: Delay cannot be set !!!!!!
 
   io.dbSigs.out(0).dataTDB              <> fastArbDec(io.dbSigs.in1.map(_.dataTDB))
 

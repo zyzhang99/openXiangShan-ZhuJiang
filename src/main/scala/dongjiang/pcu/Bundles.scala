@@ -161,7 +161,7 @@ trait HasMask extends DJBundle { this: Bundle =>
   val mask          = UInt(maskBits.W)
 }
 // DataBuffer Read/Clean Req
-class DBRCReq     (implicit p: Parameters)   extends DJBundle with HasDBRCOp with HasDBID with HasToIncoID                       { val rBeatOH = UInt(2.W); val exuAtomic = Bool() }
+class DBRCReq     (implicit p: Parameters)   extends DJBundle with HasDBRCOp with HasDBID with HasToIncoID                       { val rBeatOH = UInt(2.W); val exAtomic = Bool() }
 class GetDBID     (implicit p: Parameters)   extends DJBundle                             with HasFromIncoID with HasIntfEntryID { val atomicVal = Bool();  val atomicOp = UInt(AtomicOp.width.W); val swapFst = Bool(); }
 class DBIDResp    (implicit p: Parameters)   extends DJBundle                with HasDBID with HasToIncoID   with HasIntfEntryID { val retry = Bool();      def receive = !retry }
 class NodeFDBData (implicit p: Parameters)   extends DJBundle with HasDBData with HasDBID with HasToIncoID   with HasMask

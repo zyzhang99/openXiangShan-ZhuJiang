@@ -453,13 +453,13 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   io.dbSigs.dbRCReq.bits.dbID       := entrys(entryRCDBID).pcuIndex.dbID
   io.dbSigs.dbRCReq.bits.to         := param.intfID.U
   io.dbSigs.dbRCReq.bits.rBeatOH    := entrys(entryRCDBID).chiIndex.beatOH
-  io.dbSigs.dbRCReq.bits.exuAtomic  := false.B
+  io.dbSigs.dbRCReq.bits.exAtomic   := false.B
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //
 // ------------------------------- Receive Data From DataBuffer And Send Data To Node ----------------------------------- //
 // ---------------------------------------------------------------------------------------------------------------------- //
-  val entrySendDatVec           = entrys.map { case p => p.state === SMState.WriteData2Node & p.pcuIndex.dbID === io.dbSigs.dataFDB.bits.dbID }
+  val entrySendDatVec           = entrys.map { case p => p.state === SMState.WriteData2Node & io.dbSigs.dataFDB.valid & p.pcuIndex.dbID === io.dbSigs.dataFDB.bits.dbID }
   val entrySendDatID            = PriorityEncoder(entrySendDatVec)
   assert(Mux(txDat.valid, PopCount(entrySendDatVec) === 1.U, true.B))
 
@@ -469,9 +469,6 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   txDat.bits.TgtID        := entrys(entrySendDatID).fullTgtID(io.fIDVec)
   txDat.bits.SrcID        := io.hnfID
   txDat.bits.TxnID        := entrys(entrySendDatID).chiIndex.txnID
-  txDat.bits.DataID       := io.dbSigs.dataFDB.bits.dataID
-  txDat.bits.Data         := io.dbSigs.dataFDB.bits.data
-  txDat.bits.BE           := io.dbSigs.dataFDB.bits.mask
 
   io.dbSigs.dataFDB.ready := txDat.ready
 

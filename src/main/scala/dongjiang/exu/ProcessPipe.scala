@@ -83,12 +83,12 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   val taskRepl_s3         = WireInit(0.U.asTypeOf(new Req2IntfBundle()))
   val taskSnpEvict_s3     = WireInit(0.U.asTypeOf(new Req2IntfBundle()))
   // s3 execute signals: task to do list
-  val todo_s3             = WireInit(0.U.asTypeOf(new OperationsBundle()))
-  val todo_s3_retry       = Wire(Bool())
-  val todo_s3_updateMSHR  = Wire(Bool())
-  val todo_s3_replace     = Wire(Bool()) // replace self Directory
-  val todo_s3_sfEvict     = Wire(Bool()) // replace snoop filter
-  val todo_s3_cleanMSHR   = Wire(Bool())
+  val todo_s3             = WireInit(0.U.asTypeOf(new OperationsBundle())); dontTouch(todo_s3)
+  val todo_s3_retry       = Wire(Bool()); dontTouch(todo_s3_retry)
+  val todo_s3_updateMSHR  = Wire(Bool()); dontTouch(todo_s3_updateMSHR)
+  val todo_s3_replace     = Wire(Bool()); dontTouch(todo_s3_replace) // replace self Directory
+  val todo_s3_sfEvict     = Wire(Bool()); dontTouch(todo_s3_sfEvict) // replace snoop filter
+  val todo_s3_cleanMSHR   = Wire(Bool()); dontTouch(todo_s3_cleanMSHR)
   // s3 execute signals: Execute specific tasks
   val done_s3_g           = RegInit(0.U.asTypeOf(new OperationsBundle()))
   val done_s3_g_updMSHR   = RegInit(false.B)
@@ -334,7 +334,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   rcDBReq_s3.isClean    := decode_s3.cleanDB
   rcDBReq_s3.dbID       := dbid_s3.bits; assert(dbid_s3.valid | !decode_s3.rDB2Src)
   rcDBReq_s3.rBeatOH    := task_s3_g.bits.chiIndex.beatOH
-  rcDBReq_s3.exuAtomic  := taskIsAtomic
+  rcDBReq_s3.exAtomic   := taskIsAtomic
 
 
   /*
