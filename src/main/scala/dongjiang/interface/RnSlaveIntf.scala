@@ -283,7 +283,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
         chiMes.resp     := Mux(hitRespDat, rxDat.bits.Resp, Mux(hitRespRsp & !chiMes.retToSrc & rxRsp.bits.Opcode =/= CompAck, rxRsp.bits.Resp, chiMes.resp))
         chiMes.fwdState := Mux(fwdState > ChiResp.I, fwdState, chiMes.fwdState)
         when(hitRespDat) {
-          assert(rxDat.bits.Opcode === SnpRespData | rxDat.bits.Opcode === CopyBackWriteData, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          assert(rxDat.bits.Opcode === SnpRespData | rxDat.bits.Opcode === CopyBackWriteData | rxDat.bits.Opcode === NonCopyBackWriteData, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
           assert(Mux(chiMes.isSnp & chiMes.retToSrc, entrys(i).state === RSState.Snp2NodeIng | entrys(i).state === RSState.WaitSnpResp, entrys(i).state === RSState.WaitData), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
         }.elsewhen(hitRespRsp) {
           when(rxRsp.bits.Opcode === CompAck) { assert(entrys(i).state === RSState.WaitCompAck | entrys(i).entryMes.snpFwdWaitAck, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state) }

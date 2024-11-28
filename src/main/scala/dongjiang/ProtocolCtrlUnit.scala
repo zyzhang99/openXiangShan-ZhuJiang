@@ -122,12 +122,12 @@ class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[
   // rx data
   // TODO: can be optimize by data directly send to data buffer
   localSnMaster.io.chi.rx.data.get.valid  := io.toLocal.rx.data.get.valid & fromSnNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)
-  localRnSlave.io.chi.rx.data.get.valid   := io.toLocal.rx.data.get.valid & fromCcNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)
+  localRnSlave.io.chi.rx.data.get.valid   := io.toLocal.rx.data.get.valid & fromRnNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)
   localSnMaster.io.chi.rx.data.get.bits   := io.toLocal.rx.data.get.bits
   localRnSlave.io.chi.rx.data.get.bits    := io.toLocal.rx.data.get.bits
   // assert
   assert(Mux(io.toLocal.rx.data.get.fire, (localSnMaster.io.chi.rx.data.get.ready & fromSnNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)) |
-                                          (localRnSlave.io.chi.rx.data.get.ready & fromCcNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)), true.B))
+                                          (localRnSlave.io.chi.rx.data.get.ready & fromRnNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)), true.B))
 
   // tx req
   io.toLocal.tx.req.get                   <> Queue(localSnMaster.io.chi.tx.req.get, 2) // Adding queues for timing considerations
