@@ -146,6 +146,7 @@ trait HasParseZJParam extends HasZJParams {
   }
   def fromCcNode  (x: UInt): Bool = fromXNode(x, ccNodeIdSeq)
   def fromRniNode (x: UInt): Bool = fromXNode(x, rniNodeIdSeq)
+  def fromRnNode  (x: UInt): Bool = fromCcNode(x) | fromRniNode(x)
   def fromDcuNode (x: UInt): Bool = fromXNode(x, dcuNodeIdSeq)
   def fromDDRCNode(x: UInt): Bool = fromXNode(x, Seq(ddrcNodeId))
   def fromSnNode  (x: UInt): Bool = fromDcuNode(x) | fromDDRCNode(x)

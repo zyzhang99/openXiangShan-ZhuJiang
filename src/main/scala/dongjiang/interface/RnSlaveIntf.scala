@@ -283,7 +283,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
         chiMes.resp     := Mux(hitRespDat, rxDat.bits.Resp, Mux(hitRespRsp & !chiMes.retToSrc & rxRsp.bits.Opcode =/= CompAck, rxRsp.bits.Resp, chiMes.resp))
         chiMes.fwdState := Mux(fwdState > ChiResp.I, fwdState, chiMes.fwdState)
         when(hitRespDat) {
-          assert(rxDat.bits.Opcode === SnpRespData | rxDat.bits.Opcode === CopyBackWriteData, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          assert(rxDat.bits.Opcode === SnpRespData | rxDat.bits.Opcode === CopyBackWriteData | rxDat.bits.Opcode === NonCopyBackWriteData, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
           assert(Mux(chiMes.isSnp & chiMes.retToSrc, entrys(i).state === RSState.Snp2NodeIng | entrys(i).state === RSState.WaitSnpResp, entrys(i).state === RSState.WaitData), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
         }.elsewhen(hitRespRsp) {
           when(rxRsp.bits.Opcode === CompAck) { assert(entrys(i).state === RSState.WaitCompAck | entrys(i).entryMes.snpFwdWaitAck, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state) }
@@ -789,11 +789,13 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
     assert(Mux(isWriUniX(rxReq.bits.Opcode),    rxReq.bits.Order === Order.OWO & rxReq.bits.ExpCompAck,
            Mux(rxReq.bits.Opcode === ReadOnce,  rxReq.bits.Order === Order.EndpointOrder, rxReq.bits.Order === Order.None)))
     // Size
-    assert(Mux(isWriXFull(rxReq.bits.Opcode),   rxReq.bits.Size === chiFullSize.U, true.B))
+    assert(Mux(isWriXFull(rxReq.bits.Opcode),   Mux(rxReq.bits.Opcode === WriteBackFull, rxReq.bits.Size === chiFullSize.U, true.B), true.B))
     assert(Mux(isAtomicX(rxReq.bits.Opcode),    rxReq.bits.Size <= chiHalfSize.U, // Atomic
-           Mux(isWriXPtl(rxReq.bits.Opcode),    rxReq.bits.Size < chiFullSize.U, // WriteXPtl
+           Mux(rxReq.bits.Opcode === WriteBackPtl,    rxReq.bits.Size < chiFullSize.U, // WriteXPtl
            Mux(rxReq.bits.Opcode === ReadOnce,  rxReq.bits.Size <= chiFullSize.U, // ReadOnce
-                                                rxReq.bits.Size === chiFullSize.U)))) // Other
+           Mux(rxReq.bits.Opcode === WriteUniquePtl, rxReq.bits.Size <= chiFullSize.U,
+           Mux(rxReq.bits.Opcode === WriteUniqueFull, rxReq.bits.Size <= chiFullSize.U,
+                                                rxReq.bits.Size === chiFullSize.U)))))) // Other
     // Endian
     assert(rxReq.bits.Endian.asUInt === 0.U) // Must be Little Endian
   }
