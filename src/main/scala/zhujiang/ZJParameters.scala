@@ -15,11 +15,12 @@ import scala.math.abs
 case object ZJParametersKey extends Field[ZJParameters]
 
 object ZhujiangGlobal {
-  var nodeNidBits: Int = 0
-  var nodeAidBits: Int = 0
-  var localNodeParams: Seq[NodeParam] = Seq()
-  var csnNodeParams: Seq[NodeParam] = Seq()
-  var raw: Long = 0
+  private var nodeNidBits: Int = 0
+  private var nodeAidBits: Int = 0
+  private var localNodeParams: Seq[NodeParam] = Seq()
+  private var csnNodeParams: Seq[NodeParam] = Seq()
+  private var raw: Long = 0
+  private var cpuSpaceBits: Int = 0
   private var initialized = false
 
   private var ccid = 0
@@ -34,7 +35,7 @@ object ZhujiangGlobal {
   lazy val localRing: Seq[Node] = if(localNodeParams.nonEmpty) getRing(localNodeParams, false) else Seq()
   lazy val csnRing: Seq[Node] = if(csnNodeParams.nonEmpty) getRing(csnNodeParams, true) else Seq()
 
-  def initialize(nidBits: Int, aidBits: Int, lns: Seq[NodeParam], cns: Seq[NodeParam], paddrBits: Long): Unit = {
+  def initialize(nidBits: Int, aidBits: Int, lns: Seq[NodeParam], cns: Seq[NodeParam], paddrBits: Long, csb:Int): Unit = {
     if(!initialized) {
       nodeNidBits = nidBits
       nodeAidBits = aidBits
@@ -42,6 +43,7 @@ object ZhujiangGlobal {
       csnNodeParams = cns
       initialized = true
       raw = paddrBits
+      cpuSpaceBits = csb
     }
   }
 
@@ -88,7 +90,7 @@ object ZhujiangGlobal {
     }
 
     val nodes = for((np, idx) <- nodeParams.zipWithIndex) yield {
-      val ccAddr = ((ccId << 16) + mmioBase, ((ccId + np.cpuNum) << 16) + mmioBase)
+      val ccAddr = ((ccId << cpuSpaceBits) + mmioBase, ((ccId + np.cpuNum) << cpuSpaceBits) + mmioBase)
       val hiAddr = (np.addressRange._1 + mmioBase, np.addressRange._2 + mmioBase)
       val n = Node(
         attr = np.attr,
@@ -243,7 +245,7 @@ case class ZJParameters(
   lazy val maxFlitBits = Seq(reqFlitBits, respFlitBits, snoopFlitBits, dataFlitBits).max
   require(nodeIdBits >= 7 && nodeIdBits <= 11)
 
-  ZhujiangGlobal.initialize(nodeNidBits, nodeAidBits, localNodeParams, csnNodeParams, requestAddrBits)
+  ZhujiangGlobal.initialize(nodeNidBits, nodeAidBits, localNodeParams, csnNodeParams, requestAddrBits, cpuSpaceBits)
   val localRing = ZhujiangGlobal.localRing
   val csnRing = ZhujiangGlobal.csnRing
   private lazy val bank = localNodeParams.filter(_.nodeType == NodeType.S).map(_.bankId).max + 1
