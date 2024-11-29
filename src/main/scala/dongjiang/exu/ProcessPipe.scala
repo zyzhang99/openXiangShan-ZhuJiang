@@ -289,6 +289,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   taskSnp_s3.pcuMes.selfWay       := DontCare
   taskSnp_s3.pcuMes.toDCU         := DontCare
   taskSnp_s3.pcuMes.hasPcuDBID    := dbid_s3.valid; assert(Mux(decode_s3.snoop & dbid_s3.valid, taskIsWriPtl | taskIsAtomic, true.B))
+  taskSnp_s3.pcuMes.needGetDB     := decode_s3.needGetDB
 
 
   /*

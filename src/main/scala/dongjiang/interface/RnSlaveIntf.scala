@@ -325,7 +325,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
         entryMes.hasData        := true.B
         assert(!(hitRespDat & hitFDB))
         when(hitRespDat) {
-          assert(isWriteX(entrys(i).chiMes.opcode) | (entrys(i).chiMes.opcode === CompDBIDResp & entrys(i).chiMes.isRsp) | (entrys(i).chiMes.isSnp & entrys(i).chiMes.retToSrc))
+        assert(isWriteX(entrys(i).chiMes.opcode) | (entrys(i).chiMes.opcode === CompDBIDResp & entrys(i).chiMes.isRsp) | (entrys(i).chiMes.isSnp & entrys(i).chiMes.retToSrc))
         }.elsewhen(hitFDB) {
           assert(entrys(i).isDatBeSend)
         }
@@ -375,7 +375,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
           val isOthResp   = io.resp2Intf.fire & !(io.resp2Intf.bits.chiMes.opcode === CompDBIDResp & io.resp2Intf.bits.chiMes.isRsp) // Expect of CompDBIDResp
           val isDBIDResp  = io.resp2Intf.fire &   io.resp2Intf.bits.chiMes.opcode === CompDBIDResp & io.resp2Intf.bits.chiMes.isRsp; assert(Mux(io.resp2Intf.fire & io.resp2Intf.bits.chiMes.isRsp, io.resp2Intf.bits.chiMes.opcode =/= DBIDResp, true.B))
           val isSnp       = io.req2Intf.fire
-          val snpGetDBID  = !io.req2Intf.bits.pcuMes.hasPcuDBID & io.req2Intf.bits.chiMes.retToSrc
+          val snpGetDBID  = !io.req2Intf.bits.pcuMes.hasPcuDBID & (io.req2Intf.bits.chiMes.retToSrc | io.req2Intf.bits.pcuMes.needGetDB)
           val isRead      = rxReq.fire & isReadX(rxReq.bits.Opcode)
           val isDataLess  = rxReq.fire & isDatalessX(rxReq.bits.Opcode)
           val isCB        = rxReq.fire & isCBX(rxReq.bits.Opcode)

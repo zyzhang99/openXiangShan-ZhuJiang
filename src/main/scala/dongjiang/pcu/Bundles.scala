@@ -121,6 +121,7 @@ class Req2IntfBundle(implicit p: Parameters) extends DJBundle with HasIncoID {
     val toDCU       = Bool()
     // only use in local rn slave interface
     val hasPcuDBID  = Bool() // already get DBID in Write
+    val needGetDB   = Bool() // snp, rts set 0 but may get snpRespData
   }
 
   def addrWithDcuID = Cat(pcuMes.useAddr, from)
@@ -161,7 +162,7 @@ trait HasMask extends DJBundle { this: Bundle =>
   val mask          = UInt(maskBits.W)
 }
 // DataBuffer Read/Clean Req
-class DBRCReq     (implicit p: Parameters)   extends DJBundle with HasDBRCOp with HasDBID with HasToIncoID                       { val rBeatOH = UInt(2.W); val exAtomic = Bool() }
+class DBRCReq     (implicit p: Parameters)   extends DJBundle with HasDBRCOp with HasDBID with HasToIncoID                       { val rBeatOH = UInt(2.W); val exuAtomic = Bool() }
 class GetDBID     (implicit p: Parameters)   extends DJBundle                             with HasFromIncoID with HasIntfEntryID { val atomicVal = Bool();  val atomicOp = UInt(AtomicOp.width.W); val swapFst = Bool(); }
 class DBIDResp    (implicit p: Parameters)   extends DJBundle                with HasDBID with HasToIncoID   with HasIntfEntryID { val retry = Bool();      def receive = !retry }
 class NodeFDBData (implicit p: Parameters)   extends DJBundle with HasDBData with HasDBID with HasToIncoID   with HasMask

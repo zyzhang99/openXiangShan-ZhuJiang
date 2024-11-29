@@ -104,6 +104,7 @@ class DecodeBundle extends Bundle with HasOperationsBundle {
   val retToSrc    = Bool() // only one snp will be set reqToSec when it need to snp more than 1 node
 //  val doNotGoToSD = Bool() // The default is true
   val snpTgt      = UInt(SnpTgt.width.W)
+  val needGetDB   = Bool()
 
   // Send Read or Write to Master Node
   val rdOp        = UInt(ReqOpcode.width.W)
@@ -179,6 +180,7 @@ object Code {
   def FwdState(x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.fwdState := x;          temp.asUInt }
   def SnpOp   (x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.snpOp := x;             temp.asUInt }
   def RetToSrc         : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.retToSrc := true.B;     temp.asUInt }
+  def NeedGetDB        : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.needGetDB:= true.B;     temp.asUInt }
   def ReadOp  (x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.rdOp := x;              temp.asUInt }
   def WriOp   (x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.wdOp := x;              temp.asUInt }
   def HnState (x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.hnState := x;           temp.asUInt }
