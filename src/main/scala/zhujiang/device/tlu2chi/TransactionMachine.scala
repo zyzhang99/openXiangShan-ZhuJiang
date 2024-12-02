@@ -200,13 +200,13 @@ class TransactionMachine(node: Node, tlParams: TilelinkParams, outstanding: Int)
   maskVec.zipWithIndex.foreach({ case (a, b) => a := Mux(b.U === segIdx, task.mask, 0.U) })
   txdat.valid := state === MachineState.SEND_DAT && !datIsSend
   txdat.bits := DontCare
-  txdat.bits.DBID := rspDBID
+  txdat.bits.DBID := DontCare
   txdat.bits.TgtID := rspSrcID
   txdat.bits.BE := maskVec.asUInt
   txdat.bits.Data := Fill(segNum, task.data)
   txdat.bits.Opcode := DatOpcode.NCBWrDataCompAck
   txdat.bits.Resp := 0.U
-  txdat.bits.TxnID := io.id
+  txdat.bits.TxnID := rspDBID
 
   io.tld.valid := state === MachineState.RETURN_DATA || state === MachineState.RETURN_ACK
   io.tld.bits := DontCare
