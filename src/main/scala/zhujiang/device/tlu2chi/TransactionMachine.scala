@@ -191,7 +191,7 @@ class TransactionMachine(node: Node, tlParams: TilelinkParams, outstanding: Int)
   txreq.bits.ExpCompAck := false.B
   txreq.bits.MemAttr := MemAttr(allocate = false.B, cacheable = false.B, device = true.B, ewa = false.B /* EAW can take any value for ReadNoSnp/WriteNoSnp* */).asUInt
   txreq.bits.Size := task.size
-  txreq.bits.Order := Mux(task.opcode === AOpcode.Get, Order.RequestOrder, Order.EndpointOrder)
+  txreq.bits.Order := Order.EndpointOrder
 
   private val chiDataBytes = p(ZJParametersKey).dataBits / 8
   private val tlDataBytes = tlParams.dataBits / 8
