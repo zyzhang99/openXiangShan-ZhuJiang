@@ -130,20 +130,21 @@ class TransactionMachine(node: Node, tlParams: TilelinkParams, outstanding: Int)
       val rspIsComp = rxrsp.bits.Opcode === RspOpcode.Comp
       val rspIsDBID = rxrsp.bits.Opcode === RspOpcode.DBIDResp
       val rspIsCompDBID = rxrsp.bits.Opcode === RspOpcode.CompDBIDResp
+      val rspIsDBIDOrd  = rxrsp.bits.Opcode === RspOpcode.DBIDRespOrd
 
-      // Transaction combination: Comp + DBIDResp, DBIDResp + Comp, CompDBIDResp
-      when(rxrsp.fire && (rspIsComp || rspIsDBID || rspIsCompDBID)) {
+      // Transaction combination: Comp + DBIDResp, DBIDResp + Comp, CompDBIDResp, DBIDRespOrd
+      when(rxrsp.fire && (rspIsComp || rspIsDBID || rspIsCompDBID || rspIsDBIDOrd)) {
         assert(rxrsp.bits.RespErr === RespErr.NormalOkay, "TODO: handle error")
 
         rspGetComp := rspGetComp || rspIsComp || rspIsCompDBID
-        rspGetDBID := rspGetDBID || rspIsDBID
+        rspGetDBID := rspGetDBID || rspIsDBID || rspIsDBIDOrd
 
-        when(rspIsDBID || rspIsCompDBID) {
+        when(rspIsDBID || rspIsCompDBID || rspIsDBIDOrd) {
           rspDBID := rxrsp.bits.DBID
           rspSrcID := rxrsp.bits.SrcID
         }
 
-        when(rspIsCompDBID || (rspIsComp && rspGetDBID) || (rspIsDBID && rspGetComp)) {
+        when(rspIsCompDBID || (rspIsComp && rspGetDBID) || (rspIsDBID && rspGetComp) || rspIsDBIDOrd) {
           nextState := MachineState.SEND_DAT
         }
       }
@@ -190,7 +191,7 @@ class TransactionMachine(node: Node, tlParams: TilelinkParams, outstanding: Int)
   txreq.bits.ExpCompAck := false.B
   txreq.bits.MemAttr := MemAttr(allocate = false.B, cacheable = false.B, device = true.B, ewa = false.B /* EAW can take any value for ReadNoSnp/WriteNoSnp* */).asUInt
   txreq.bits.Size := task.size
-  txreq.bits.Order := Mux(task.opcode === AOpcode.Get, Order.RequestOrder, Order.EndpointOrder)
+  txreq.bits.Order := Order.EndpointOrder
 
   private val chiDataBytes = p(ZJParametersKey).dataBits / 8
   private val tlDataBytes = tlParams.dataBits / 8
@@ -203,8 +204,10 @@ class TransactionMachine(node: Node, tlParams: TilelinkParams, outstanding: Int)
   txdat.bits.DBID := DontCare
   txdat.bits.TgtID := rspSrcID
   txdat.bits.BE := maskVec.asUInt
-  txdat.bits.Data := Fill(segNum, task.data)
-  txdat.bits.Opcode := DatOpcode.NCBWrDataCompAck
+  txdat.bits.Data := Fill(segNum, task.data) & FillInterleaved(8, txdat.bits.BE)
+  txdat.bits.Opcode := DatOpcode.NonCopyBackWriteData
+  txdat.bits.CCID := task.address(log2Ceil(chiDataBytes), log2Ceil(chiDataBytes) - 2 + 1)
+  txdat.bits.DataID := Cat(task.address(log2Ceil(chiDataBytes)), 0.U(1.W))
   txdat.bits.Resp := 0.U
   txdat.bits.TxnID := rspDBID
 
