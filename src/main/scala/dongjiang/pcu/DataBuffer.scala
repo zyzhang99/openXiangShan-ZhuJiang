@@ -197,7 +197,9 @@ class DataBuffer()(implicit p: Parameters) extends DJModule with HasPerfLogging 
   /*
    * Send Data To Node
    */
-  io.dataFDB                    <> beatOutQ.io.deq
+  io.dataFDB.valid              := beatOutQ.io.deq.valid
+  io.dataFDB.bits               := Mux(beatOutQ.io.deq.valid, beatOutQ.io.deq.bits, 0.U.asTypeOf(io.dataFDB.bits))
+  beatOutQ.io.deq.ready         := io.dataFDB.ready
 
 // ---------------------------------------------------------------------------------------------------------------------- //
 // --------------------------------------------------- READ DATA TO APU ------------------------------------------------- //
