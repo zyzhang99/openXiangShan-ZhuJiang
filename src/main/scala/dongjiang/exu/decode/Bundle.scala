@@ -27,7 +27,8 @@ object RespType {
   def Snp_RD        = Snp | Read
   def SnpFwd_RD     = SnpFwd | Read
 
-  def isSnpX(x: UInt) = x === Snp | x === SnpFwd
+  def isSnpX(x: UInt) = x(0) | x(1)
+  def isCB  (x: UInt) = x(3)
 }
 
 class InstBundle extends Bundle {
