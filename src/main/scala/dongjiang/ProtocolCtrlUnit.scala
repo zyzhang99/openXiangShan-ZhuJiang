@@ -121,13 +121,15 @@ class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[
 
   // rx data
   // TODO: can be optimize by data directly send to data buffer
-  localSnMaster.io.chi.rx.data.get.valid  := io.toLocal.rx.data.get.valid & fromSnNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)
-  localRnSlave.io.chi.rx.data.get.valid   := io.toLocal.rx.data.get.valid & fromRnNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)
-  localSnMaster.io.chi.rx.data.get.bits   := io.toLocal.rx.data.get.bits
-  localRnSlave.io.chi.rx.data.get.bits    := io.toLocal.rx.data.get.bits
+  val rxDataQ                             = Module(new Queue(new DataFlit(), 2)) // Adding queues for timing considerations
+  rxDataQ.io.enq                          <> io.toLocal.rx.data.get
+  localSnMaster.io.chi.rx.data.get.valid  := rxDataQ.io.deq.valid & fromSnNode(rxDataQ.io.deq.bits.asTypeOf(new DataFlit()).SrcID)
+  localRnSlave.io.chi.rx.data.get.valid   := rxDataQ.io.deq.valid & fromRnNode(rxDataQ.io.deq.bits.asTypeOf(new DataFlit()).SrcID)
+  localSnMaster.io.chi.rx.data.get.bits   := rxDataQ.io.deq.bits
+  localRnSlave.io.chi.rx.data.get.bits    := rxDataQ.io.deq.bits
   // assert
-  assert(Mux(io.toLocal.rx.data.get.fire, (localSnMaster.io.chi.rx.data.get.ready & fromSnNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)) |
-                                          (localRnSlave.io.chi.rx.data.get.ready & fromRnNode(io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).SrcID)), true.B))
+  assert(Mux(rxDataQ.io.deq.fire, (localSnMaster.io.chi.rx.data.get.ready & fromSnNode(rxDataQ.io.deq.bits.asTypeOf(new DataFlit()).SrcID)) |
+                                  (localRnSlave.io.chi.rx.data.get.ready & fromRnNode(rxDataQ.io.deq.bits.asTypeOf(new DataFlit()).SrcID)), true.B))
 
   // tx req
   io.toLocal.tx.req.get                   <> Queue(localSnMaster.io.chi.tx.req.get, 2) // Adding queues for timing considerations
@@ -231,12 +233,12 @@ class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[
    */
   databuffer.io <> xbar.io.dbSigs.out(0)
 
-  // Directly connect to DataBuffer
+  // Directly connect to DataBuffer, reduction of Mux using
   // rx
-  io.toLocal.rx.data.get.ready      := databuffer.io.dataTDB.ready
-  databuffer.io.dataTDB.bits.data   := io.toLocal.rx.data.get.bits.asTypeOf(new DataFlit()).Data
+  rxDataQ.io.deq.ready              := databuffer.io.dataTDB.ready
+  databuffer.io.dataTDB.bits.data   := rxDataQ.io.deq.bits.Data
   // tx
-  txDataQ.io.enq.bits.Data          := databuffer.io.dataFDB.bits.data
-  txDataQ.io.enq.bits.DataID        := databuffer.io.dataFDB.bits.dataID
-  txDataQ.io.enq.bits.BE            := databuffer.io.dataFDB.bits.mask
+  txDataQ.io.enq.bits.Data          := RegEnable(databuffer.io.dataFDB.bits.data,   databuffer.io.dataFDB.fire)
+  txDataQ.io.enq.bits.DataID        := RegEnable(databuffer.io.dataFDB.bits.dataID, databuffer.io.dataFDB.fire)
+  txDataQ.io.enq.bits.BE            := RegEnable(databuffer.io.dataFDB.bits.mask,   databuffer.io.dataFDB.fire)
 }

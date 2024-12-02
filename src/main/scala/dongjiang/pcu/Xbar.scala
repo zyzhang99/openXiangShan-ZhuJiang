@@ -61,32 +61,32 @@ class Xbar()(implicit p: Parameters) extends DJModule {
   }
 
 
-  // in --->  [redirects] ---> [queue0] ---> [arbiter] ---> [queue1] ---> out
-  def interConnect[T <: Bundle with HasToIncoID](in: Seq[DecoupledIO[T]], q0: Int, q1: Int, q2: Int, out: Seq[DecoupledIO[T]]): Unit = {
+  // in ---> [queue0] --->  [redirects] ---> [queue1] ---> [arbiter] ---> [queue2] ---> out
+  def interConnect[T <: Bundle with HasToIncoID](in: Seq[DecoupledIO[T]], out: Seq[DecoupledIO[T]], q0: Int = 0, q0_pipe: Boolean = true, q1: Int = 0, q1_pipe: Boolean = true, q2: Int = 0, q2_pipe: Boolean = true): Unit = {
     val redirects = Seq.fill(in.size) { Seq.fill(out.size) { WireInit(0.U.asTypeOf(in(0))) } }
-    in.zipWithIndex.foreach { case (m, i) => idSelDec2DecVec(Queue(m, entries = q0, pipe = true), redirects(i)) }
-    out.zipWithIndex.foreach { case (m, i) => m <> Queue(fastArbDec(redirects.map { case a => Queue(a(i), entries = q1, pipe = true) }), q2, pipe = true) }
+    in.zipWithIndex.foreach { case (m, i) => idSelDec2DecVec(Queue(m, entries = q0, pipe = q0_pipe), redirects(i)) }
+    out.zipWithIndex.foreach { case (m, i) => m <> Queue(fastArbDec(redirects.map { case a => Queue(a(i), entries = q1, pipe = q1_pipe) }), q2, pipe = q2_pipe) }
   }
 
   // There is a lot of room for optimization of the connection
-  interConnect(in = io.req2Exu.in,      q0 = 1, q1 = 0, q2 = 0, out = io.req2Exu.out) // Adding queues for timing considerations
+  interConnect(in = io.req2Exu.in,                  out = io.req2Exu.out, q0 = 1) // Adding queues for timing considerations
 
-  interConnect(in = io.reqAck2Intf.in,  q0 = 0, q1 = 0, q2 = 0, out = io.reqAck2Intf.out)
+  interConnect(in = io.reqAck2Intf.in,              out = io.reqAck2Intf.out)
 
-  interConnect(in = io.resp2Intf.in,    q0 = 1, q1 = 0, q2 = 0, out = io.resp2Intf.out) // Adding queues for timing considerations
+  interConnect(in = io.resp2Intf.in,                out = io.resp2Intf.out, q0 = 1) // Adding queues for timing considerations
 
-  interConnect(in = io.req2Intf.in,     q0 = 0, q1 = 0, q2 = 0, out = io.req2Intf.out)
+  interConnect(in = io.req2Intf.in,                 out = io.req2Intf.out)
 
-  interConnect(in = io.resp2Exu.in,     q0 = 0, q1 = 0, q2 = 0, out = io.resp2Exu.out)
+  interConnect(in = io.resp2Exu.in,                 out = io.resp2Exu.out)
 
-  io.dbSigs.out(0).dbRCReq              <> fastArbDec(io.dbSigs.in0)
+  io.dbSigs.out(0).dbRCReq                          <> Queue(fastArbDec(io.dbSigs.in0), entries = 2) // Adding queues for timing considerations
 
-  io.dbSigs.out(0).getDBID              <> fastArbDec(io.dbSigs.in1.map(_.getDBID))
+  io.dbSigs.out(0).getDBID                          <> fastArbDec(io.dbSigs.in1.map(_.getDBID))
 
-  interConnect(in = io.dbSigs.out.map(_.dbidResp),  q0 = 0, q1 = 0, q2 = 0, out = io.dbSigs.in1.map(_.dbidResp))
+  interConnect(in = io.dbSigs.out.map(_.dbidResp),  out = io.dbSigs.in1.map(_.dbidResp))
 
-  interConnect(in = io.dbSigs.out.map(_.dataFDB),   q0 = 0, q1 = 0, q2 = 0, out = io.dbSigs.in1.map(_.dataFDB)) // !!!!!! Node: Delay cannot be set !!!!!!
+  interConnect(in = io.dbSigs.out.map(_.dataFDB),   out = io.dbSigs.in1.map(_.dataFDB), q0 = 1) // Adding queues for timing considerations
 
-  io.dbSigs.out(0).dataTDB              <> fastArbDec(io.dbSigs.in1.map(_.dataTDB))
+  io.dbSigs.out(0).dataTDB                          <> fastArbDec(io.dbSigs.in1.map(_.dataTDB))
 
 }

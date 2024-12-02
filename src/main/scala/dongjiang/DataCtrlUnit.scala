@@ -324,6 +324,8 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
             w.beats(beatNum).valid     := true.B
             w.beats(beatNum).bits.data := rxDat.bits.Data
             w.beats(beatNum).bits.mask := rxDat.bits.BE
+
+            assert(!w.beats(beatNum).valid)
           }
         }
         is(DCUWState.WriteSram) {
