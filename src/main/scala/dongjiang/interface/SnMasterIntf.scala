@@ -243,7 +243,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
       }.elsewhen(rxRsp.fire & rxRsp.bits.TxnID === i.U) {
         when(rxRsp.bits.Opcode === DBIDResp | rxRsp.bits.Opcode === CompDBIDResp) {
           entry.chiIndex.txnID          := rxRsp.bits.DBID
-          entry.entryMes.toDCU          := Mux(entry.isReplReq, true.B, entry.entryMes.toDCU) // true.b // for send replace
+          entry.entryMes.toDCU          := Mux(entry.isReplReq, true.B, entry.entryMes.toDCU) 
           entry.entryMes.alrGetCompNum  := entry.entryMes.alrGetCompNum + (rxRsp.bits.Opcode === CompDBIDResp).asUInt
           assert(entry.state === SMState.WaitReplDBID | entry.state === SMState.WaitNodeDBID, "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
           assert(Mux(entry.isReplReq, Mux(entry.state === SMState.WaitReplDBID, entry.entryMes.toDCU, !entry.entryMes.toDCU), true.B), "SNMAS Intf[0x%x] STATE[0x%x] OP[0x%x] ADDR[0x%x]", i.U, entry.state, entry.chiMes.opcode, entry.fullAddr(io.pcuID))
