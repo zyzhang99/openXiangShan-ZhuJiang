@@ -161,8 +161,8 @@ object LocalReadDecode {
     // ----------------------------------------------------------- LOCAL RESP ---------------------------------------------------------------//
     // TODO: Consider a variation of the SC/SD mapping as UC/SD In Local
     //  I  I  I
-    LocalRespInst(REQ, ReadOnce,  I,  I,  I, Read,   HasData, sn = ChiResp.I)     -> (Commit | RDB2Src | CleanDB | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
-    LocalRespInst(REQ, ReadOnce,  I,  I,  I, Read,            sn = ChiResp.I)     -> NothingTODO,
+    LocalRespInst(REQ, ReadOnce,  I,  I,  I, Read,   HasData, sn = ChiResp.UC)     -> (Commit | RDB2Src | CleanDB | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
+    LocalRespInst(REQ, ReadOnce,  I,  I,  I, Read,            sn = ChiResp.UC)     -> NothingTODO,
     //  I UC  I
     LocalRespInst(REQ, ReadOnce,  I, UC,  I, Snp,    HasData, rn = ChiResp.UC)    -> (Commit | RDB2Src | CleanDB | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
     //  I UD  I
