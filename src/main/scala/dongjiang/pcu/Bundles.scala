@@ -120,7 +120,8 @@ class Req2IntfBundle(implicit p: Parameters) extends DJBundle with HasIncoID {
     val selfWay     = UInt(sWayBits.W)
     val toDCU       = Bool()
     // only use in local rn slave interface
-    val hasPcuDBID  = Bool() // already get DBID in Write
+    val hasPcuDBID  = Bool() // Already get DBID in Write
+    val snpNeedDB   = Bool()
   }
 
   def addrWithDcuID = Cat(pcuMes.useAddr, from)

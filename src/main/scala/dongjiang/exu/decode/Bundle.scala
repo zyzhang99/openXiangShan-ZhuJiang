@@ -103,8 +103,9 @@ class DecodeBundle extends Bundle with HasOperationsBundle {
   // Send Snoop to Slave Node
   val snpOp       = UInt(SnpOpcode.width.W)
   val retToSrc    = Bool() // only one snp will be set reqToSec when it need to snp more than 1 node
-//  val doNotGoToSD = Bool() // The default is true
+  // val doNotGoToSD = Bool() // The default is true
   val snpTgt      = UInt(SnpTgt.width.W)
+  val snpNeedDB   = Bool() // Must be set to True if the SnpResp is likely to contain data.
 
   // Send Read or Write to Master Node
   val rdOp        = UInt(ReqOpcode.width.W)
@@ -160,9 +161,9 @@ object Inst {
 object Code {
   // Operations
   def Commit           : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.commit := true.B;       temp.asUInt }
-  def SnpAll           : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.snoop := true.B; temp.snpTgt := SnpTgt.ALL; temp.asUInt }
-  def SnpOne           : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.snoop := true.B; temp.snpTgt := SnpTgt.ONE; temp.asUInt }
-  def SnpOth           : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.snoop := true.B; temp.snpTgt := SnpTgt.OTH; temp.asUInt }
+  def SnpAll           : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.snoop := true.B;        temp.snpTgt := SnpTgt.ALL;  temp.asUInt }
+  def SnpOne           : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.snoop := true.B;        temp.snpTgt := SnpTgt.ONE;  temp.asUInt }
+  def SnpOth           : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.snoop := true.B;        temp.snpTgt := SnpTgt.OTH;  temp.asUInt }
   def ReadDown         : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.readDown := true.B;     temp.asUInt }
   def WriteDown        : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.writeDown := true.B;    temp.asUInt }
   def Flush            : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.flush := true.B;        temp.asUInt }
@@ -180,6 +181,7 @@ object Code {
   def FwdState(x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.fwdState := x;          temp.asUInt }
   def SnpOp   (x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.snpOp := x;             temp.asUInt }
   def RetToSrc         : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.retToSrc := true.B;     temp.asUInt }
+  def SnpNeedDB        : UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.snpNeedDB := true.B;    temp.asUInt }
   def ReadOp  (x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.rdOp := x;              temp.asUInt }
   def WriOp   (x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.wdOp := x;              temp.asUInt }
   def HnState (x: UInt): UInt = { val temp = WireInit(0.U.asTypeOf(new DecodeBundle())); temp.hnState := x;           temp.asUInt }

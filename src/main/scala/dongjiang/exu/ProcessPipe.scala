@@ -387,6 +387,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   taskSnp_s4.pcuMes.selfWay       := DontCare
   taskSnp_s4.pcuMes.toDCU         := DontCare
   taskSnp_s4.pcuMes.hasPcuDBID    := dbid_s4.valid; assert(Mux(decode_s4_g.snoop & dbid_s4.valid & valid_s4_g, taskIsWriPtl_s4 | taskIsAtomic_s4, true.B))
+  taskSnp_s4.pcuMes.snpNeedDB     := decode_s4_g.snpNeedDB
 
 
   /*
@@ -540,6 +541,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   taskSnpEvict_s4.to                    := IncoID.LOCALSLV.U
   taskSnpEvict_s4.pcuIndex.mshrWay      := task_s4_g.taskMes.mshrWay
   taskSnpEvict_s4.pcuMes.useAddr        := dirRes_s4_g.sf.useAddr
+  taskSnpEvict_s4.pcuMes.snpNeedDB      := true.B
 
 
   /*

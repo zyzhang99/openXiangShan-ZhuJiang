@@ -322,13 +322,16 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
         val hitRespDat = rxDat.fire & entryRecChiDatID === i.U
         val hitFDB     = io.dbSigs.dataFDB.fire & entryRecDataFDBID === i.U
         entryMes.getBeatNum     := entryMes.getBeatNum + hitRespDat.asUInt + hitFDB.asUInt
-        entryMes.hasData        := true.B
         assert(!(hitRespDat & hitFDB))
         when(hitRespDat) {
           assert(isWriteX(entrys(i).chiMes.opcode) | (entrys(i).chiMes.opcode === CompDBIDResp & entrys(i).chiMes.isRsp) | (entrys(i).chiMes.isSnp & entrys(i).chiMes.retToSrc))
         }.elsewhen(hitFDB) {
           assert(entrys(i).isDatBeSend)
         }
+      // Receive DBID From DataBuffer
+      }.elsewhen(io.dbSigs.dbidResp.fire & io.dbSigs.dbidResp.bits.receive & entryRecDBID === i.U) {
+        entryMes.hasData        := true.B
+        assert(!entryMes.hasData)
       // Get CompAck
       }.elsewhen(rxRsp.fire & entryRecChiRspID === i.U & !rspIsDMTComp & rxRsp.bits.Opcode === CompAck) {
         entryMes.snpFwdWaitAck  := false.B
@@ -375,7 +378,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
           val isOthResp   = io.resp2Intf.fire & !(io.resp2Intf.bits.chiMes.opcode === CompDBIDResp & io.resp2Intf.bits.chiMes.isRsp) // Expect of CompDBIDResp
           val isDBIDResp  = io.resp2Intf.fire &   io.resp2Intf.bits.chiMes.opcode === CompDBIDResp & io.resp2Intf.bits.chiMes.isRsp; assert(Mux(io.resp2Intf.fire & io.resp2Intf.bits.chiMes.isRsp, io.resp2Intf.bits.chiMes.opcode =/= DBIDResp, true.B))
           val isSnp       = io.req2Intf.fire
-          val snpGetDBID  = !io.req2Intf.bits.pcuMes.hasPcuDBID & io.req2Intf.bits.chiMes.retToSrc
+          val snpGetDBID  = io.req2Intf.bits.pcuMes.snpNeedDB; assert(Mux(isSnp, !(io.req2Intf.bits.pcuMes.snpNeedDB & io.req2Intf.bits.pcuMes.hasPcuDBID), true.B))
           val isRead      = rxReq.fire & isReadX(rxReq.bits.Opcode)
           val isDataLess  = rxReq.fire & isDatalessX(rxReq.bits.Opcode)
           val isCB        = rxReq.fire & isCBX(rxReq.bits.Opcode)
@@ -547,6 +550,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   entrySave.entryMes.snpFwdWaitAck:= Mux(respVal, false.B,                              Mux(snpVal, isSnpXFwd(io.req2Intf.bits.chiMes.opcode), false.B))
   entrySave.entryMes.needSendRRec := Mux(respVal, false.B,                              Mux(snpVal, false.B,                              rxReq.bits.Opcode === ReadOnce))
   entrySave.entryMes.swapFst      := Mux(respVal, false.B,                              Mux(snpVal, false.B,                              rxReq.bits.Addr(offsetBits -1 , 0)(rxReq.bits.Size).asBool))
+  entrySave.entryMes.hasData      := Mux(respVal, io.resp2Intf.bits.chiMes.isDat,       Mux(snpVal, io.req2Intf.bits.pcuMes.hasPcuDBID,   false.B))
   entrySave.pcuIndex.mshrWay      := Mux(respVal, io.resp2Intf.bits.pcuIndex.mshrWay,   Mux(snpVal, io.req2Intf.bits.pcuIndex.mshrWay,    DontCare))
   entrySave.pcuIndex.dbID         := Mux(respVal, io.resp2Intf.bits.pcuIndex.dbID,      Mux(snpVal, io.req2Intf.bits.pcuIndex.dbID,       0.U))
   entrySave.chiIndex.txnID        := Mux(respVal, io.resp2Intf.bits.chiIndex.txnID,     Mux(snpVal, io.req2Intf.bits.chiIndex.txnID,      rxReq.bits.TxnID))
