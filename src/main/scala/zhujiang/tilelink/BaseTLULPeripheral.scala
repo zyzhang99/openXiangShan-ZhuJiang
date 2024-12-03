@@ -13,18 +13,16 @@ abstract class BaseTLULPeripheral(tlParams: TilelinkParams) extends Module {
   private val wen = tls.a.fire && (tls.a.bits.opcode === AOpcode.PutFullData || tls.a.bits.opcode === AOpcode.PutPartialData)
   private val wdata = tls.a.bits.data
   private val wmask = Mux(tls.a.bits.opcode === AOpcode.PutFullData, Fill(tls.a.bits.mask.getWidth, true.B), tls.a.bits.mask)
-  private val ren = tls.a.fire && tls.a.bits.opcode === AOpcode.Get
   private val addr = tls.a.bits.address
-  private val respValid = wen || ren
   when(tls.a.valid) {
-    assert(respValid)
+    assert(tls.a.bits.opcode === AOpcode.PutFullData || tls.a.bits.opcode === AOpcode.PutPartialData || tls.a.bits.opcode === AOpcode.Get)
   }
 
   private val accessPipe = Module(new Queue(new DFlit(tlParams), entries = 1, pipe = true))
   tls.a.ready := accessPipe.io.enq.ready
-  accessPipe.io.enq.valid := respValid
+  accessPipe.io.enq.valid := tls.a.valid
   accessPipe.io.enq.bits := DontCare
-  accessPipe.io.enq.bits.opcode := Mux(ren, DOpcode.AccessAckData, DOpcode.AccessAck)
+  accessPipe.io.enq.bits.opcode := Mux(tls.a.bits.opcode === AOpcode.Get, DOpcode.AccessAckData, DOpcode.AccessAck)
   accessPipe.io.enq.bits.source := tls.a.bits.source
   tls.d <> accessPipe.io.deq
 
