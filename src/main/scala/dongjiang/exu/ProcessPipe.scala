@@ -362,7 +362,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   // get dbid
   dbid_s4.valid       := valid_s4_g & (task_s4_g.respMes.slvDBID.valid | task_s4_g.respMes.mstDBID.valid)
   dbid_s4.bits        := Mux(task_s4_g.respMes.slvDBID.valid, task_s4_g.respMes.slvDBID.bits, task_s4_g.respMes.mstDBID.bits)
-  assert(!(task_s4_g.respMes.slvDBID.valid & task_s4_g.respMes.mstDBID.valid))
+  assert(Mux(valid_s4_g, !(task_s4_g.respMes.slvDBID.valid & task_s4_g.respMes.mstDBID.valid), true.B))
 
 
   // taskSnp_s4
