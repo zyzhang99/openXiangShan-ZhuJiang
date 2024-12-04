@@ -134,19 +134,19 @@ case class Node(
       case CC => chn match {
         case "REQ" => Seq(CC, HF, HI)
         case "RSP" => Seq(CC, HF, HI)
-        case "DAT" => Seq(CC, RF, RI, HF, HI, S)
+        case "DAT" => Seq(CC, RF, RI, HF, HI) // if system has DMT, it should add S
         case _ => Seq[Int]()
       }
       case RF => chn match {
         case "REQ" => Seq(CC, HF, HI)
         case "RSP" => Seq(CC, HF, HI)
-        case "DAT" => Seq(CC, RF, RI, HF, HI, S)
+        case "DAT" => Seq(CC, RF, RI, HF, HI)
         case _ => Seq[Int]()
       }
       case RI => chn match {
         case "REQ" => Seq(CC, HF, HI)
         case "RSP" => Seq(CC, HF, HI)
-        case "DAT" => Seq(CC, HF, HI, S)
+        case "DAT" => Seq(CC, HF, HI) // if system has DMT, it should add S
         case _ => Seq[Int]()
       }
       case HF => chn match {
