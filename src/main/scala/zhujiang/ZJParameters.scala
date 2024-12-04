@@ -256,8 +256,6 @@ case class ZJParameters(
     sfDirWays = snoopFilterWays,
     sfDirSets = clusterTotalCacheSizeInKiB * 1024 * 2 / snoopFilterWays / bank / cachelineBytes,
     nrDirBank = 2,
-    openDCT = false,
-    openDMT = true
   )
 }
 
