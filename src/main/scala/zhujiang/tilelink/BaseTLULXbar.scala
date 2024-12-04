@@ -40,10 +40,11 @@ abstract class BaseTLULXbar(implicit p: Parameters) extends ZJModule {
       for(midx <- mstParams.indices) {
         val req = io.upstream(midx).a
         val ain = arb.io.in(midx)
-        ain.valid := req.valid && slvMatchersSeq(sidx)(req.bits.address)
+        val correctSlv = slvMatchersSeq(sidx)(req.bits.address)
+        ain.valid := req.valid && correctSlv
         ain.bits := req.bits
         if(mstSize > 1) ain.bits.source := Cat(midx.U(extraIdBits.W), req.bits.source.asTypeOf(UInt(mstMaxIdBits.W)))
-        aDnStrmRdyMat(midx)(sidx) := ain.ready
+        aDnStrmRdyMat(midx)(sidx) := ain.ready && correctSlv
       }
     }
     for(midx <- mstParams.indices) {
