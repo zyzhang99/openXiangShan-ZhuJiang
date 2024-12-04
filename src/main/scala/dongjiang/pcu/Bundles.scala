@@ -64,7 +64,6 @@ class ChiIndexBundle(implicit p: Parameters) extends DJBundle {
   val nodeID          = UInt(useNodeIdBits.W)
   val txnID           = UInt(chiTxnIdBits.W)
   val beatOH          = UInt(2.W)
-  def snpCcMetaVec    = nodeID(nrCcNode - 1 ,0)
   def fullSize        = beatOH === "b11".U
   def fstBeat         = beatOH === "b01".U
   def secBeat         = beatOH === "b10".U
@@ -120,6 +119,7 @@ class Req2IntfBundle(implicit p: Parameters) extends DJBundle with HasIncoID {
     val selfWay     = UInt(sWayBits.W)
     val toDCU       = Bool()
     // only use in local rn slave interface
+    val snpTgtVec   = Vec(nrCcNode, Bool())
     val hasPcuDBID  = Bool() // Already get DBID in Write
     val snpNeedDB   = Bool()
   }
