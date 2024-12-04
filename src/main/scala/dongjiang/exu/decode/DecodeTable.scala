@@ -199,9 +199,9 @@ object LocalReadWithDCTDecode {
   def readNotSharedDirty: Seq[(UInt, UInt)] = Seq(
     // ----------------------------------------------------------- LOCAL REQ --------------------------------------------------------------//
     LocalReqInst(ReadNotSharedDirty, I, I,   I) -> (ReadDown | ReadOp(ReadNoSnp)),
-    LocalReqInst(ReadNotSharedDirty, I, UC,  I) -> (SnpOth   | SnpOp(SnpNotSharedDirtyFwd) | RetToSrc | SnpNeedDB),
-    LocalReqInst(ReadNotSharedDirty, I, UD,  I) -> (SnpOth   | SnpOp(SnpNotSharedDirtyFwd) | RetToSrc | SnpNeedDB),
-    LocalReqInst(ReadNotSharedDirty, I, SC,  I) -> (SnpOth   | SnpOp(SnpNotSharedDirtyFwd)),
+    LocalReqInst(ReadNotSharedDirty, I, UC,  I) -> (SnpOne   | SnpOp(SnpNotSharedDirtyFwd) | RetToSrc | SnpNeedDB),
+    LocalReqInst(ReadNotSharedDirty, I, UD,  I) -> (SnpOne   | SnpOp(SnpNotSharedDirtyFwd) | RetToSrc | SnpNeedDB),
+    LocalReqInst(ReadNotSharedDirty, I, SC,  I) -> (SnpOne   | SnpOp(SnpNotSharedDirtyFwd)),
     LocalReqInst(ReadNotSharedDirty, I, I,  UC) -> (ReadDCU  | ReadOp(ReadNoSnp)        | Resp(ChiResp.UC)),
     LocalReqInst(ReadNotSharedDirty, I, I,  UD) -> (ReadDCU  | ReadOp(ReadNoSnp)        | Resp(ChiResp.UD_PD)),
     LocalReqInst(ReadNotSharedDirty, I, I,  SC) -> (ReadDCU  | ReadOp(ReadNoSnp)        | Resp(ChiResp.SC)),
@@ -222,8 +222,8 @@ object LocalReadWithDCTDecode {
     LocalRespInst(REQ, ReadNotSharedDirty,  I, UD,  I, SnpFwd,  HasData, rn = ChiResp.I_PD,  fwd = ChiResp.SC)  -> (                             WSFDir | WSDir |                                                          HnState(SD) | SrcState(SC) | OthState(I)  | WriteDCU | WriOp(WriteNoSnpFull)),
     LocalRespInst(REQ, ReadNotSharedDirty,  I, UD,  I, SnpFwd,  HasData, rn = ChiResp.SC_PD, fwd = ChiResp.SC)  -> (                             WSFDir | WSDir |                                                          HnState(SD) | SrcState(SC) | OthState(SC) | WriteDCU | WriOp(WriteNoSnpFull)),
     //  I SC  I
-    LocalRespInst(REQ, ReadNotSharedDirty,  I, SC,  I, SnpFwd,          rn = ChiResp.I,     fwd = ChiResp.SC)   -> (                             WSFDir |                                                                  HnState(I)  | SrcState(SC) | OthState(I)),
-    LocalRespInst(REQ, ReadNotSharedDirty,  I, SC,  I, SnpFwd,          rn = ChiResp.SC,    fwd = ChiResp.SC)   -> (                             WSFDir |                                                                  HnState(I)  | SrcState(SC) | OthState(SC)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I, SC,  I, SnpFwd,           rn = ChiResp.I,      fwd = ChiResp.SC)  -> (                             WSFDir |                                                                  HnState(I)  | SrcState(SC) | OthState(I)),
+    LocalRespInst(REQ, ReadNotSharedDirty,  I, SC,  I, SnpFwd,           rn = ChiResp.SC,     fwd = ChiResp.SC)  -> (                             WSFDir |                                                                  HnState(I)  | SrcState(SC) | OthState(SC)),
     //  I  I UC
     LocalRespInst(REQ, ReadNotSharedDirty,  I,  I, UC, Read,    HasData, sn = ChiResp.UC)                       -> (Commit | RDB2Src | CleanDB | WSFDir | WSDir | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.UC)    | HnState(I)  | SrcState(UC) | OthState(I)),
     //  I  I UD
@@ -299,7 +299,51 @@ object LocalReadWithDCTDecode {
   )
 
 
-  def table: Seq[(UInt, UInt)] = readNotSharedDirty ++ readUnique
+  def readOnce: Seq[(UInt, UInt)] = Seq(
+    // ----------------------------------------------------------- LOCAL REQ ----------------------------------------------------------------//
+    LocalReqInst(ReadOnce,  I, I,   I) -> (ReadDown | ReadOp(ReadNoSnp)),
+    LocalReqInst(ReadOnce,  I, UC,  I) -> (SnpOne   | SnpOp(SnpOnceFwd)),
+    LocalReqInst(ReadOnce,  I, UD,  I) -> (SnpOne   | SnpOp(SnpOnceFwd)),
+    LocalReqInst(ReadOnce,  I, SC,  I) -> (SnpOne   | SnpOp(SnpOnceFwd)),
+    LocalReqInst(ReadOnce,  I, I,  UC) -> (ReadDCU  | ReadOp(ReadNoSnp) | Resp(ChiResp.I)),
+    LocalReqInst(ReadOnce,  I, I,  UD) -> (ReadDCU  | ReadOp(ReadNoSnp) | Resp(ChiResp.I)),
+    LocalReqInst(ReadOnce,  I, I,  SC) -> (ReadDCU  | ReadOp(ReadNoSnp) | Resp(ChiResp.I)),
+    LocalReqInst(ReadOnce,  I, SC, SC) -> (ReadDCU  | ReadOp(ReadNoSnp) | Resp(ChiResp.I)),
+    LocalReqInst(ReadOnce,  I, I,  SD) -> (ReadDCU  | ReadOp(ReadNoSnp) | Resp(ChiResp.I)),
+    LocalReqInst(ReadOnce,  I, SC, SD) -> (ReadDCU  | ReadOp(ReadNoSnp) | Resp(ChiResp.I)),
+
+    // ----------------------------------------------------------- LOCAL RESP ---------------------------------------------------------------//
+    // TODO: Consider a variation of the SC/SD mapping as UC/SD In Local
+    //  I  I  I
+    LocalRespInst(REQ, ReadOnce,  I,  I,  I, Read,   HasData, sn = ChiResp.UC)      -> (Commit | RDB2Src | CleanDB | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
+    LocalRespInst(REQ, ReadOnce,  I,  I,  I, Read,            sn = ChiResp.UC)      -> NothingTODO,
+    //  I UC  I
+    LocalRespInst(REQ, ReadOnce,  I, UC,  I, Snp, rn = ChiResp.UC, fwd = ChiResp.I) -> NothingTODO,
+    //  I UD  I
+    LocalRespInst(REQ, ReadOnce,  I, UD,  I, Snp, rn = ChiResp.UD, fwd = ChiResp.I) -> NothingTODO,
+    //  I SC  I
+    LocalRespInst(REQ, ReadOnce,  I, SC,  I, Snp, rn = ChiResp.SC, fwd = ChiResp.I) -> NothingTODO,
+    //  I  I UC
+    LocalRespInst(REQ, ReadOnce,  I,  I, UC, Read,   HasData, sn = ChiResp.I)       -> (Commit | RDB2Src | CleanDB | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
+    LocalRespInst(REQ, ReadOnce,  I,  I, UC, Read,            sn = ChiResp.I)       -> NothingTODO,
+    //  I  I UD
+    LocalRespInst(REQ, ReadOnce,  I,  I, UD, Read,   HasData, sn = ChiResp.I)       -> (Commit | RDB2Src | CleanDB | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
+    LocalRespInst(REQ, ReadOnce,  I,  I, UD, Read,            sn = ChiResp.I)       -> NothingTODO,
+    //  I  I SC
+    LocalRespInst(REQ, ReadOnce,  I,  I, SC, Read,   HasData, sn = ChiResp.I)       -> (Commit | RDB2Src | CleanDB | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
+    LocalRespInst(REQ, ReadOnce,  I,  I, SC, Read,            sn = ChiResp.I)       -> NothingTODO,
+    //  I SC SC
+    LocalRespInst(REQ, ReadOnce,  I, SC, SC, Read,   HasData, sn = ChiResp.I)       -> (Commit | RDB2Src | CleanDB | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
+    LocalRespInst(REQ, ReadOnce,  I, SC, SC, Read,            sn = ChiResp.I)       -> NothingTODO,
+    //  I  I SD
+    LocalRespInst(REQ, ReadOnce,  I,  I, SD, Read,   HasData, sn = ChiResp.I)       -> (Commit | RDB2Src | CleanDB | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
+    LocalRespInst(REQ, ReadOnce,  I,  I, SD, Read,            sn = ChiResp.I)       -> NothingTODO,
+    //  I SC SD
+    LocalRespInst(REQ, ReadOnce,  I, SC, SD, Read,   HasData, sn = ChiResp.I)       -> (Commit | RDB2Src | CleanDB | RespOp(CompData) | RespChnl(DAT) | Resp(ChiResp.I)),
+    LocalRespInst(REQ, ReadOnce,  I, SC, SD, Read,            sn = ChiResp.I)       -> NothingTODO,
+  )
+
+  def table: Seq[(UInt, UInt)] = readNotSharedDirty ++ readUnique ++ readOnce
 }
 
 

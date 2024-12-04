@@ -37,7 +37,7 @@ case class DJParam(
                   localSnMasterIntf:  InterfaceParam = InterfaceParam( name = "SnMaster_LOCAL", intfID = IncoID.LOCALMST, isRn = false,  isSlave = false,  nrEntry = 16),
                   csnRnSlaveIntf:     Option[InterfaceParam] = None,
                   csnRnMasterIntf:    Option[InterfaceParam] = None,
-                  openDCT:            Boolean = false,
+                  openDCT:            Boolean = true,
                   openDMT:            Boolean = true,
                   // ------------------------ DCU Base Mes Per Bank ------------------ //
                   nrDSBank:           Int = 4,
