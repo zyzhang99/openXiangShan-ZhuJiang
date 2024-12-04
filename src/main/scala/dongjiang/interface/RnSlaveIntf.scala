@@ -279,9 +279,13 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
       }.elsewhen((rxDat.fire & entryRecChiDatID === i.U) | (rxRsp.fire & entryRecChiRspID === i.U & !rspIsDMTComp)) {
         val hitRespDat  = rxDat.fire & entryRecChiDatID === i.U
         val hitRespRsp  = rxRsp.fire & entryRecChiRspID === i.U & !rspIsDMTComp
-        val fwdState     = Mux(hitRespDat, rxDat.bits.FwdState, rxRsp.bits.FwdState)
+        // get resp
         chiMes.resp     := Mux(hitRespDat, rxDat.bits.Resp, Mux(hitRespRsp & !chiMes.retToSrc & rxRsp.bits.Opcode =/= CompAck, rxRsp.bits.Resp, chiMes.resp))
-        chiMes.fwdState := Mux(fwdState > ChiResp.I, fwdState, chiMes.fwdState)
+        // get fwd resp
+        val isFwdResp   = Mux(hitRespDat, rxDat.bits.Opcode === SnpRespDataFwded, rxRsp.bits.Opcode === SnpRespFwded)
+        val fwdState    = Mux(hitRespDat, rxDat.bits.FwdState, rxRsp.bits.FwdState)
+        chiMes.fwdState := Mux(isFwdResp, fwdState, chiMes.fwdState)
+        // assert
         when(hitRespDat) {
           assert(rxDat.bits.Opcode === SnpRespData | rxDat.bits.Opcode === CopyBackWriteData | rxDat.bits.Opcode === NonCopyBackWriteData, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
           assert(Mux(chiMes.isSnp & chiMes.retToSrc, entrys(i).state === RSState.Snp2NodeIng | entrys(i).state === RSState.WaitSnpResp, entrys(i).state === RSState.WaitData), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
