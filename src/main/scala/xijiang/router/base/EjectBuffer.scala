@@ -8,37 +8,42 @@ import zhujiang.ZJModule
 import zhujiang.chi.Flit
 
 class EjectBuffer[T <: Flit](gen: T, size: Int, chn: String)(implicit p: Parameters) extends ZJModule {
-  private val tagBits = 12 + 2 * niw // TgtId + SrcId + TxnId
+  private val tagBits = 12 + niw // SrcId + TxnId
+  require(size >= 3)
   val io = IO(new Bundle {
     val enq = Flipped(Decoupled(gen))
     val deq = Decoupled(gen)
   })
   override val desiredName = s"EjectBuffer$chn"
-  private val queue = Module(new Queue(gen, size, pipe = true))
+  private val oqueue = Module(new Queue(gen, size - 1))
+  private val ipipe = Module(new Queue(gen, 1, pipe = true) )
   private val rsvdTags = Reg(Vec(size, UInt(tagBits.W)))
   private val rsvdValids = RegInit(VecInit(Seq.fill(size)(false.B)))
   private val empties = RegInit(size.U(log2Ceil(size + 1).W))
   private val rsvdNumReg = RegInit(0.U(log2Ceil(size + 1).W))
 
-  when(queue.io.enq.fire && !queue.io.deq.fire) {
+  oqueue.io.enq <> ipipe.io.deq
+  io.deq <> oqueue.io.deq
+  private val enqFire = ipipe.io.enq.fire
+  private val deqFire = oqueue.io.deq.fire
+  when(enqFire && !deqFire) {
     assert(empties > 0.U)
     empties := empties - 1.U
-  }.elsewhen(!queue.io.enq.fire && queue.io.deq.fire) {
+  }.elsewhen(!enqFire && deqFire) {
     assert(empties < size.U)
     empties := empties + 1.U
   }
   when(empties.orR) {
-    assert(queue.io.enq.ready)
+    assert(ipipe.io.enq.ready)
   }
 
-  private def getTag(flit: Flit): UInt = Cat(flit.txn, flit.src, flit.tgt)
+  private def getTag(flit: Flit): UInt = Cat(flit.src, flit.txn)
 
-  io.deq <> queue.io.deq
   private val rsvdSel = PickOneLow(rsvdValids)
   private val rsvdHit = Cat(rsvdTags.zip(rsvdValids).map(e => e._1 === getTag(io.enq.bits) && e._2)).orR
   private val doReserve = io.enq.valid && !io.enq.ready && !rsvdHit && rsvdSel.valid
 
-  when(rsvdHit && queue.io.enq.fire) {
+  when(rsvdHit && ipipe.io.enq.fire) {
     rsvdNumReg := rsvdNumReg - 1.U
   }.elsewhen(doReserve) {
     rsvdNumReg := rsvdNumReg + 1.U
@@ -49,7 +54,7 @@ class EjectBuffer[T <: Flit](gen: T, size: Int, chn: String)(implicit p: Paramet
     val v = rsvdValids(idx)
     val tag = rsvdTags(idx)
     val doRsv = rsvdSel.bits(idx) && doReserve
-    when(v && queue.io.enq.fire && getTag(io.enq.bits) === tag) {
+    when(v && ipipe.io.enq.fire && getTag(io.enq.bits) === tag) {
       v := false.B
     }.elsewhen(doRsv) {
       v := true.B
@@ -60,7 +65,7 @@ class EjectBuffer[T <: Flit](gen: T, size: Int, chn: String)(implicit p: Paramet
   }
 
   private val allowEnq = Mux(rsvdHit, true.B, rsvdNumReg < empties)
-  queue.io.enq.valid := io.enq.valid & allowEnq
-  queue.io.enq.bits := io.enq.bits
-  io.enq.ready := queue.io.enq.ready & allowEnq
+  ipipe.io.enq.valid := io.enq.valid & allowEnq
+  ipipe.io.enq.bits := io.enq.bits
+  io.enq.ready := ipipe.io.enq.ready & allowEnq
 }
