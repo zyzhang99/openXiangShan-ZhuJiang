@@ -8,8 +8,10 @@ import zhujiang.device.bridge.axi.AxiBridge
 import zhujiang.device.bridge.axilite.AxiLiteBridge
 import zhujiang.device.bridge.chi.ChiSnBridge
 import zhujiang.device.bridge.tlul.TLULBridge
+import zhujiang.device.tlu2chi.TLUL2ChiBridge
 import zhujiang.device.dma.Axi2Chi
 import zhujiang.device.ddr.MemoryComplex
+import zhujiang.tilelink.TilelinkParams
 
 object UnitTop {
   val firtoolOpts = Seq(
@@ -43,6 +45,13 @@ object TLULBridgeTop extends App {
   val (config, firrtlOpts) = ZhujiangTopParser(args)
   (new ChiselStage).execute(firrtlOpts, firtoolOpts ++ Seq(
     ChiselGeneratorAnnotation(() => new TLULBridge(Node(nodeType = NodeType.HI, splitFlit = true, outstanding = 8), 64, 3)(config))
+  ))
+}
+
+object TLUL2ChiBridgeTop extends App {
+  val (config, firrtlOpts) = ZhujiangTopParser(args)
+  (new ChiselStage).execute(firrtlOpts, firtoolOpts ++ Seq(
+    ChiselGeneratorAnnotation(() => new TLUL2ChiBridge(Node(nodeType = NodeType.RI, splitFlit = true, outstanding = 16), TilelinkParams(addrBits = 48))(config))
   ))
 }
 

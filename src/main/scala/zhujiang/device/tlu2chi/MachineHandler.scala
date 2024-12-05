@@ -23,14 +23,23 @@ class MachineHandler(node: Node, tlParams: TilelinkParams, outstanding: Int)(imp
 
   private val machines = (0 until outstanding).map(i => Module(new TransactionMachine(node, tlParams, outstanding)))
 
-  private val freeVec = VecInit(machines.map(_.io.status.state === MachineState.IDLE)).asUInt
-  private val freeOH = PriorityEncoderOH(freeVec)
+  private val freeVec     = VecInit(machines.map(_.io.status.state === MachineState.IDLE)).asUInt
+  private val enqPtr      = RegInit(0.U(log2Ceil(outstanding).W))
+  private val issueReqPtr = RegInit(0.U(log2Ceil(outstanding).W))
+  private val issueAckPtr = RegInit(0.U(log2Ceil(outstanding).W))
+  private val enqOH       = UIntToOH(enqPtr)
+  private val issueReqOH  = UIntToOH(issueReqPtr)
+  private val issueAckOH  = UIntToOH(issueAckPtr)
 
   machines.zipWithIndex.foreach { case (machine, i) =>
     machine.io <> DontCare
-    machine.io.alloc.valid := io.alloc_s1.valid && freeOH(i)
-    machine.io.alloc.bits := io.alloc_s1.bits
-    machine.io.id := i.U
+    
+    machine.io.alloc.valid := io.alloc_s1.valid && enqOH(i)
+    machine.io.alloc.bits  := io.alloc_s1.bits
+    machine.io.issueReqEn  := issueReqOH(i)
+    machine.io.issueAckEn  := !issueAckOH(i)
+    machine.io.id          := i.U
+
     io.status(i) := machine.io.status
 
     val rxRespFlit = io.icn.rx.resp.get.bits
@@ -46,14 +55,30 @@ class MachineHandler(node: Node, tlParams: TilelinkParams, outstanding: Int)(imp
     when(machine.io.icn.rx.data.get.valid) {
       assert(machine.io.icn.rx.data.get.ready)
     }
+
+    val state = machine.io.status.state
+    val nextState = machine.io.status.nextState
+    import MachineState._
+    when(issueReqOH(i) && (state === RECV_RECEIPT && nextState === RECV_DAT || state === RECV_RSP && nextState === SEND_DAT)) {
+      issueReqPtr := issueReqPtr + 1.U
+    }
+    when(issueAckOH(i) && state === RECV_CMP && nextState === SEND_ACK) {
+      issueAckPtr := issueAckPtr + 1.U
+    }
+  }
+  
+  io.alloc_s1.ready := (enqOH & freeVec).orR
+  io.allocOH        := enqOH
+  
+  when(io.alloc_s1.fire) {
+    enqPtr := enqPtr + 1.U
   }
 
-  io.alloc_s1.ready := freeVec.orR
-  io.allocOH := freeVec
   io.icn.rx.resp.get.ready := true.B
   io.icn.rx.data.get.ready := true.B
 
   FastArbiter(machines.map(_.io.tld), io.tld)
   FastArbiter(machines.map(_.io.icn.tx.req.get), io.icn.tx.req.get)
+  FastArbiter(machines.map(_.io.icn.tx.resp.get), io.icn.tx.resp.get)
   FastArbiter(machines.map(_.io.icn.tx.data.get), io.icn.tx.data.get)
 }

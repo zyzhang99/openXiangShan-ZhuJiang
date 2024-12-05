@@ -19,10 +19,7 @@ class RequestArbiter(tlParams: TilelinkParams, outstanding: Int)(implicit p: Par
     assert(io.a.bits.size <= 3.U, cf"Invalid size ${io.a.bits.size} for request")
   }
 
-  private val addrMatchVec = VecInit(io.machineStatus.map(s => s.address === io.a.bits.address && s.state =/= MachineState.IDLE)).asUInt
-  private val blockVec = VecInit(io.machineStatus.map(s => s.state =/= MachineState.IDLE && s.state <= MachineState.RETURN_ACK)).asUInt
-  private val blockA = (addrMatchVec & blockVec).orR
-  io.a.ready := io.alloc_s1.ready && !blockA
+  io.a.ready := io.alloc_s1.ready
 
   io.alloc_s1.valid := io.a.fire
   io.alloc_s1.bits.address := io.a.bits.address
@@ -38,6 +35,7 @@ class TLUL2ChiBridge(node: Node, tlParams: TilelinkParams)(implicit p: Parameter
   require(node.nodeType == NodeType.RI)
   require(tlParams.dataBits == 64)
   require(tlParams.addrBits == raw)
+  require(isPow2(node.outstanding))
   val tlm = IO(Flipped(new TLULBundle(tlParams)))
   val icn = IO(new DeviceIcnBundle(node))
 

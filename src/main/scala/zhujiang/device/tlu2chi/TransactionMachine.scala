@@ -10,18 +10,21 @@ import zhujiang.ZJModule
 import zhujiang.chi._
 import zhujiang.tilelink.{AOpcode, DFlit, DOpcode, TilelinkParams}
 import zhujiang.ZJParametersKey
+import coursier.core.shaded.sourcecode.Enclosing.Machine
 
 object MachineState {
   val width = 4
 
-  val IDLE = 0.U(width.W)
-  val SEND_REQ = 1.U(width.W) // ReadNoSnp, WriteNoSnpPtl, WriteSnpFull
-  val RECV_RSP = 2.U(width.W) // CompDBIDResp
-  val SEND_DAT = 3.U(width.W) // NonCopyBackWrData
-  val RECV_RECEIPT = 4.U(width.W) // ReadReceipt
-  val RECV_DAT = 5.U(width.W) // CompData
-  val RETURN_DATA = 6.U(width.W) // Return data to TL(AccessAckData)
-  val RETURN_ACK = 7.U(width.W) // Return ack to TL(AccessAck)
+  val IDLE         = 0.U(width.W)
+  val SEND_REQ     = 1.U(width.W) // ReadNoSnp, WriteNoSnpPtl, WriteSnpFull
+  val RECV_RSP     = 2.U(width.W) // DBIDResp
+  val RECV_CMP     = 3.U(width.W) // Comp
+  val SEND_DAT     = 4.U(width.W) // NonCopyBackWrData
+  val SEND_ACK     = 5.U(width.W) // CompAck
+  val RECV_RECEIPT = 6.U(width.W) // ReadReceipt
+  val RECV_DAT     = 7.U(width.W) // CompData
+  val RETURN_DAT   = 8.U(width.W) // Return data to TL(AccessAckData)
+  val RETURN_ACK   = 9.U(width.W) // Return ack to TL(AccessAck)
 }
 
 class TaskBundle(tlParams: TilelinkParams)(implicit p: Parameters) extends Bundle {
@@ -36,9 +39,8 @@ class TaskBundle(tlParams: TilelinkParams)(implicit p: Parameters) extends Bundl
 
 class MachineStatus(tlParams: TilelinkParams)(implicit p: Parameters) extends Bundle {
   val state = Output(UInt(MachineState.width.W))
+  val nextState = Output(UInt(MachineState.width.W))
   val address = UInt(tlParams.addrBits.W)
-  // val blockRead  = Output(Bool())
-  // val blockWrite = Output(Bool())
 }
 
 class TransactionMachine(node: Node, tlParams: TilelinkParams, outstanding: Int)(implicit p: Parameters) extends ZJModule {
@@ -46,6 +48,8 @@ class TransactionMachine(node: Node, tlParams: TilelinkParams, outstanding: Int)
     val id = Input(UInt(log2Ceil(outstanding).W))
     val alloc = Flipped(ValidIO(new TaskBundle(tlParams)))
     val status = Output(new MachineStatus(tlParams))
+    val issueReqEn = Input(Bool())
+    val issueAckEn = Input(Bool())
 
     val icn = new DeviceIcnBundle(node)
     val tld = Decoupled(new DFlit(tlParams))
@@ -61,6 +65,10 @@ class TransactionMachine(node: Node, tlParams: TilelinkParams, outstanding: Int)
   io.icn.tx.data.get.valid := txdat.valid
   io.icn.tx.data.get.bits := txdat.bits.asTypeOf(io.icn.tx.data.get.bits)
   txdat.ready := io.icn.tx.data.get.ready
+  private val txrsp = Wire(Decoupled(new RespFlit))
+  io.icn.tx.resp.get.valid := txrsp.valid
+  io.icn.tx.resp.get.bits := txrsp.bits.asTypeOf(io.icn.tx.resp.get.bits)
+  txrsp.ready := io.icn.tx.resp.get.ready
   private val rxrsp = Wire(Decoupled(new RespFlit))
   rxrsp.valid := io.icn.rx.resp.get.valid
   rxrsp.bits := io.icn.rx.resp.get.bits.asTypeOf(rxrsp.bits)
@@ -75,17 +83,9 @@ class TransactionMachine(node: Node, tlParams: TilelinkParams, outstanding: Int)
   private val task = RegInit(0.U.asTypeOf(new TaskBundle(tlParams)))
   private val rspDBID = RegInit(0.U(rxrsp.bits.DBID.getWidth.W))
   private val rspSrcID = RegInit(0.U(niw.W))
-  private val datHomeNID = RegInit(0.U(niw.W)) // TODO: used when CompAck is required
-  private val datIsSend = RegInit(false.B)
-  private val rspGetComp = RegInit(false.B)
-  private val rspGetDBID = RegInit(false.B)
 
   when(io.alloc.fire) {
     task := io.alloc.bits
-
-    datIsSend := false.B
-    rspGetComp := false.B
-    rspGetDBID := false.B
   }
 
   nextState := state
@@ -103,7 +103,6 @@ class TransactionMachine(node: Node, tlParams: TilelinkParams, outstanding: Int)
     is(MachineState.SEND_REQ) {
       when(txreq.fire) {
         when(task.opcode === AOpcode.Get) {
-          // nextState := MachineState.RECV_DAT
           nextState := MachineState.RECV_RECEIPT
         }.otherwise {
           nextState := MachineState.RECV_RSP
@@ -113,62 +112,58 @@ class TransactionMachine(node: Node, tlParams: TilelinkParams, outstanding: Int)
     }
 
     is(MachineState.RECV_RECEIPT) {
-      when(rxrsp.fire && rxrsp.bits.Opcode === RspOpcode.ReadReceipt) {
+      when(rxrsp.fire) {
+        assert(rxrsp.bits.Opcode === RspOpcode.ReadReceipt)
+
         nextState := MachineState.RECV_DAT
       }
     }
 
     is(MachineState.RECV_DAT) {
       when(rxdat.fire) {
-        nextState := MachineState.RETURN_DATA
+        assert(rxdat.bits.Opcode === DatOpcode.CompData)
+
+        nextState := MachineState.RETURN_DAT
         task.data := rxdat.bits.Data
-        datHomeNID := rxdat.bits.HomeNID
       }
     }
 
     is(MachineState.RECV_RSP) {
-      val rspIsComp = rxrsp.bits.Opcode === RspOpcode.Comp
       val rspIsDBID = rxrsp.bits.Opcode === RspOpcode.DBIDResp
-      val rspIsCompDBID = rxrsp.bits.Opcode === RspOpcode.CompDBIDResp
       val rspIsDBIDOrd  = rxrsp.bits.Opcode === RspOpcode.DBIDRespOrd
 
-      // Transaction combination: Comp + DBIDResp, DBIDResp + Comp, CompDBIDResp, DBIDRespOrd
-      when(rxrsp.fire && (rspIsComp || rspIsDBID || rspIsCompDBID || rspIsDBIDOrd)) {
+      when(rxrsp.fire) {
+        assert(rspIsDBID || rspIsDBIDOrd)
         assert(rxrsp.bits.RespErr === RespErr.NormalOkay, "TODO: handle error")
 
-        rspGetComp := rspGetComp || rspIsComp || rspIsCompDBID
-        rspGetDBID := rspGetDBID || rspIsDBID || rspIsDBIDOrd
+        rspDBID := rxrsp.bits.DBID
+        rspSrcID := rxrsp.bits.SrcID
 
-        when(rspIsDBID || rspIsCompDBID || rspIsDBIDOrd) {
-          rspDBID := rxrsp.bits.DBID
-          rspSrcID := rxrsp.bits.SrcID
-        }
-
-        when(rspIsCompDBID || (rspIsComp && rspGetDBID) || (rspIsDBID && rspGetComp) || rspIsDBIDOrd) {
-          nextState := MachineState.SEND_DAT
-        }
+        nextState := MachineState.SEND_DAT
       }
     }
 
     is(MachineState.SEND_DAT) {
       when(txdat.fire) {
-        datIsSend := true.B
-        when(rspGetComp) {
-          nextState := MachineState.RETURN_ACK
-        }
+        nextState := MachineState.RECV_CMP
       }
+    }
 
+    is(MachineState.RECV_CMP) {
       when(rxrsp.fire) {
-        val rspIsComp = rxrsp.bits.Opcode === RspOpcode.Comp
-        rspGetComp := rspGetComp || rspIsComp
-        assert(!rspGetComp)
-        assert(rspIsComp)
+        assert(rxrsp.bits.Opcode === RspOpcode.Comp)
 
+        nextState := MachineState.SEND_ACK
+      }
+    }
+
+    is(MachineState.SEND_ACK) {
+      when(txrsp.fire) {
         nextState := MachineState.RETURN_ACK
       }
     }
 
-    is(MachineState.RETURN_DATA) {
+    is(MachineState.RETURN_DAT) {
       when(io.tld.fire) {
         nextState := MachineState.IDLE
       }
@@ -182,16 +177,16 @@ class TransactionMachine(node: Node, tlParams: TilelinkParams, outstanding: Int)
   }
   state := nextState
 
-  txreq.valid := state === MachineState.SEND_REQ
+  txreq.valid := state === MachineState.SEND_REQ && io.issueReqEn
   txreq.bits := DontCare
   txreq.bits.Addr := task.address
-  txreq.bits.Opcode := Mux(task.opcode === AOpcode.Get, ReqOpcode.ReadNoSnp, ReqOpcode.WriteNoSnpPtl /* TODO: WriteNoSnpFull ? */)
+  txreq.bits.Opcode := Mux(task.opcode === AOpcode.Get, ReqOpcode.ReadNoSnp, ReqOpcode.WriteNoSnpPtl)
   txreq.bits.TxnID := io.id
-  txreq.bits.AllowRetry := false.B // TODO: Retry
-  txreq.bits.ExpCompAck := false.B
+  txreq.bits.AllowRetry := false.B
+  txreq.bits.ExpCompAck := task.opcode =/= AOpcode.Get
   txreq.bits.MemAttr := MemAttr(allocate = false.B, cacheable = false.B, device = true.B, ewa = false.B /* EAW can take any value for ReadNoSnp/WriteNoSnp* */).asUInt
   txreq.bits.Size := task.size
-  txreq.bits.Order := Order.EndpointOrder
+  txreq.bits.Order := Order.OWO
 
   private val chiDataBytes = p(ZJParametersKey).dataBits / 8
   private val tlDataBytes = tlParams.dataBits / 8
@@ -199,7 +194,7 @@ class TransactionMachine(node: Node, tlParams: TilelinkParams, outstanding: Int)
   private val segIdx = if(segNum > 1) task.address(log2Ceil(chiDataBytes) - 1, log2Ceil(tlDataBytes)) else 0.U
   private val maskVec = Wire(Vec(segNum, UInt(tlDataBytes.W)))
   maskVec.zipWithIndex.foreach({ case (a, b) => a := Mux(b.U === segIdx, task.mask, 0.U) })
-  txdat.valid := state === MachineState.SEND_DAT && !datIsSend
+  txdat.valid := state === MachineState.SEND_DAT
   txdat.bits := DontCare
   txdat.bits.DBID := DontCare
   txdat.bits.TgtID := rspSrcID
@@ -211,20 +206,25 @@ class TransactionMachine(node: Node, tlParams: TilelinkParams, outstanding: Int)
   txdat.bits.Resp := 0.U
   txdat.bits.TxnID := rspDBID
 
-  io.tld.valid := state === MachineState.RETURN_DATA || state === MachineState.RETURN_ACK
+  txrsp.valid := state === MachineState.SEND_ACK && io.issueAckEn
+  txrsp.bits := DontCare
+  txrsp.bits.TgtID := rspSrcID
+  txrsp.bits.TxnID := rspDBID
+  txrsp.bits.Opcode := RspOpcode.CompAck
+
+  io.tld.valid := state === MachineState.RETURN_DAT || state === MachineState.RETURN_ACK
   io.tld.bits := DontCare
-  io.tld.bits.data := Mux(state === MachineState.RETURN_DATA, task.data, 0.U)
+  io.tld.bits.data := Mux(state === MachineState.RETURN_DAT, task.data, 0.U)
   io.tld.bits.corrupt := false.B
-  io.tld.bits.opcode := Mux(state === MachineState.RETURN_DATA, DOpcode.AccessAckData, DOpcode.AccessAck)
+  io.tld.bits.opcode := Mux(state === MachineState.RETURN_DAT, DOpcode.AccessAckData, DOpcode.AccessAck)
   io.tld.bits.param := DontCare
   io.tld.bits.sink := io.id
   io.tld.bits.source := task.source
   io.tld.bits.size := 3.U // 2^3 = 8 bytes
 
   io.status.state := state
+  io.status.nextState := nextState
   io.status.address := task.address
-  // io.status.blockRead  := state <= MachineState.RECV_RECEIPT
-  // io.status.blockWrite := state <= MachineState.RETURN_ACK
 
   rxrsp.ready := true.B
   rxdat.ready := true.B
