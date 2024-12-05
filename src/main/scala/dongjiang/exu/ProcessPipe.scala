@@ -205,7 +205,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   inst_s3.opcode      := Mux(taskIsAtomic_s3, AtomicLoadADD, task_s3.bits.chiMes.opcode) // When the task is an atomic operation, it is converted to AtomicLoadADD for decoding.
   inst_s3.srcState    := Mux(task_s3.bits.taskMes.readDir, srcState_s3, ChiState.I)
   inst_s3.othState    := Mux(task_s3.bits.taskMes.readDir, othState_s3, ChiState.I)
-  inst_s3.hnState     := Mux(task_s3.bits.taskMes.readDir, hnState_s3, ChiState.I)
+  inst_s3.hnState     := Mux(task_s3.bits.taskMes.readDir, hnState_s3,  ChiState.I)
   inst_s3.respType    := Cat(taskIsCB_s3 & task_s3.bits.respMes.slvResp.valid,   // Copy Back Resp
                              task_s3.bits.respMes.mstResp.valid,              // Read Down Resp
                              task_s3.bits.respMes.fwdState.valid,             // Snoop Fwd Resp

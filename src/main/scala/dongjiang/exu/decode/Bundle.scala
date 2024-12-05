@@ -20,7 +20,7 @@ object RespType {
   val width         = 4
   val NotResp       = "b0000".U
   val Snp           = "b0001".U
-  val SnpFwd        = "b0010".U
+  val SnpFwd        = "b0011".U
   val Read          = "b0100".U // Read
   val CB            = "b1000".U // Copy Back
 
