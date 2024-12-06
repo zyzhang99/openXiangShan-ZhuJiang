@@ -18,9 +18,7 @@ class TLULBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Param
   val icn = IO(new DeviceIcnBundle(node))
   val tl = IO(new TLULBundle(tlParams))
 
-  private def compareTag(addr0: UInt, addr1: UInt): Bool = {
-    addr0(compareTagBits + tagOffset - 1, tagOffset) === addr1(compareTagBits + tagOffset - 1, tagOffset)
-  }
+  private def compareTag(addr0: UInt, addr1: UInt): Bool = true.B
 
   icn.tx.req.get.valid := false.B
   icn.tx.req.get.bits := DontCare

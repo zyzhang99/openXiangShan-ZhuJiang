@@ -24,9 +24,7 @@ class ChiSnBridge(node: Node)(implicit p: Parameters) extends ZJModule {
   val icn = IO(new DeviceIcnBundle(node))
   val sn = IO(new IcnBundle(snNode))
 
-  private def compareTag(addr0: UInt, addr1: UInt): Bool = {
-    addr0(compareTagBits + tagOffset - 1, tagOffset) === addr1(compareTagBits + tagOffset - 1, tagOffset)
-  }
+  private def compareTag(addr0: UInt, addr1: UInt): Bool = true.B
 
   icn.tx.req.get.valid := false.B
   icn.tx.req.get.bits := DontCare
