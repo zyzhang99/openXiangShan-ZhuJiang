@@ -60,11 +60,6 @@ class AxiBridgeCtrlMachine(
     }
   }
 
-  wakeupOutCond := payload.state.d.completed && valid && payload.info.isSnooped
-  when(io.wakeupOut.valid) {
-    payloadMiscNext.info.isSnooped := false.B
-  }
-
   axi.b.ready := true.B
   private val plmnd = payloadMiscNext.state.d
   private val pld = payload.state.d

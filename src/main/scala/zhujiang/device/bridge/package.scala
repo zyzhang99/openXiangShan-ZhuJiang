@@ -65,6 +65,7 @@ package object bridge {
     def icnCompCmo:Bool = d.completed && !u.compCmo
 
     def needIssue:Bool
+    def wakeup: Bool
   }
 
   class IcnIoDevCtrlInfoCommon(ioDataBits:Int, val withData:Boolean, val mem:Boolean)(implicit p: Parameters) extends ZJBundle {
@@ -78,6 +79,7 @@ package object bridge {
     val returnTxnId = if(mem) Some(UInt(12.W)) else None
     val dwt = if(mem) Some(Bool()) else None
     val readCnt = UInt(8.W)
+    val isSnooped = Bool()
   }
 
   abstract class IcnIoDevRsEntryCommon[
@@ -86,6 +88,18 @@ package object bridge {
   ](implicit p: Parameters) extends ZJBundle {
     def state: T
     def info: K
-    def enq(req:ReqFlit, valid:Bool):Unit
+    def enq(req:ReqFlit, valid:Bool):Unit = {
+      info.addr := req.Addr
+      info.size := req.Size
+      info.txnId := req.TxnID
+      info.srcId := req.SrcID
+      info.returnNid.foreach(_ := req.ReturnNID)
+      info.returnTxnId.foreach(_ := req.ReturnTxnID)
+      info.dwt.foreach(_  := req.Opcode =/= ReqOpcode.ReadNoSnp && req.DoDWT)
+      info.readCnt := 0.U
+      info.isSnooped := true.B
+      state.u.decode(req, valid)
+      state.d.decode(req, valid)
+    }
   }
 }

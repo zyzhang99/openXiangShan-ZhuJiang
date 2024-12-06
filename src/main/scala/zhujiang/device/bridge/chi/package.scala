@@ -57,28 +57,21 @@ package object chi {
     def snNCBWrDataCompAck: Bool = d.wreq && d.dbidResp && u.wdata && !d.wdata
 
     def needIssue: Bool = icnReadReceipt || icnDBID || icnComp || snWriteNoSnpPtl || snReadNoSnp || snNCBWrDataCompAck
+    def wakeup: Bool = d.receiptResp && d.dbidResp && d.comp
   }
 
   class ChiSnBridgeCtrlInfo(ioDataBits: Int)(implicit p: Parameters)
     extends IcnIoDevCtrlInfoCommon(ioDataBits = ioDataBits, withData = true, mem = false ){
     val order = UInt(2.W)
     val dbid = UInt(12.W)
-    val isSnooped = Bool()
   }
 
   class ChiSnBridgeRsEntry(dataBits: Int)(implicit p: Parameters) extends IcnIoDevRsEntryCommon[ChiSnBridgeCtrlOpVec, ChiSnBridgeCtrlInfo] {
     val state = new ChiSnBridgeCtrlOpVec
     val info = new ChiSnBridgeCtrlInfo(dataBits)
-    def enq(req:ReqFlit, valid:Bool) = {
-      info.addr := req.Addr
-      info.size := req.Size
-      info.txnId := req.TxnID
-      info.srcId := req.SrcID
+    override def enq(req:ReqFlit, valid:Bool):Unit = {
+      super.enq(req, valid)
       info.order := req.Order
-      info.readCnt := 0.U
-      state.u.decode(req, valid)
-      state.d.decode(req, valid)
-      info.isSnooped := true.B
     }
   }
 }

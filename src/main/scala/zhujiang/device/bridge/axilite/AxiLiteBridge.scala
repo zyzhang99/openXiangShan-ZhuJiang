@@ -62,7 +62,7 @@ class AxiLiteBridge(node: Node, busDataBits: Int, tagOffset: Int)(implicit p: Pa
   axi.w.bits := Mux1H(awQueue.io.deq.bits, wSeq.map(_.bits))
   wSeq.zipWithIndex.foreach({ case (w, i) => w.ready := axi.w.ready && awQueue.io.deq.valid && awQueue.io.deq.bits(i) })
 
-  private val shouldBeWaited = cms.map(cm => cm.io.info.valid && !cm.io.wakeupOut.valid)
+  private val shouldBeWaited = cms.map(cm => cm.io.info.valid && !cm.io.wakeupOut.valid && cm.io.info.bits.isSnooped)
   private val cmAddrSeq = cms.map(cm => cm.io.info.bits.addr)
   private val req = icn.rx.req.get.bits.asTypeOf(new ReqFlit)
   private val reqTagMatchVec = VecInit(shouldBeWaited.zip(cmAddrSeq).map(elm => elm._1 && compareTag(elm._2, req.Addr)))

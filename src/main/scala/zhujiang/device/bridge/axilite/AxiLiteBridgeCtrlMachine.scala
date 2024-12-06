@@ -31,7 +31,6 @@ class AxiLiteBridgeCtrlMachine(
     val b = Flipped(Decoupled(new BFlit(axiParams)))
   })
   require(axiParams.dataBits >= bufDataBits)
-  wakeupOutCond := allDone && valid
 
   axi.b.ready := true.B
   private val plmnd = payloadMiscNext.state.d

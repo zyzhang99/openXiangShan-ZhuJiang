@@ -48,6 +48,7 @@ package object tlul {
     def tlaGet: Bool = !d.rreq
 
     def needIssue: Bool = icnReadReceipt || icnDBID || icnComp || tlaPut || tlaGet
+    def wakeup:Bool = d.wreq && d.rreq
   }
 
   class TLULCtrlInfo(ioDataBits: Int)(implicit p: Parameters) extends IcnIoDevCtrlInfoCommon(ioDataBits = ioDataBits, withData = true, mem = false)
@@ -55,14 +56,5 @@ package object tlul {
   class TLULRsEntry(dataBits: Int)(implicit p: Parameters) extends IcnIoDevRsEntryCommon[TLULBridgeCtrlOpVec, TLULCtrlInfo] {
     val state = new TLULBridgeCtrlOpVec
     val info = new TLULCtrlInfo(dataBits)
-    def enq(req:ReqFlit, valid:Bool):Unit = {
-      info.addr := req.Addr
-      info.size := req.Size
-      info.txnId := req.TxnID
-      info.srcId := req.SrcID
-      info.readCnt := 0.U
-      state.u.decode(req, valid)
-      state.d.decode(req, valid)
-    }
   }
 }

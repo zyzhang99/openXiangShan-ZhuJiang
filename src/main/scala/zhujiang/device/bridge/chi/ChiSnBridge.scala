@@ -55,7 +55,7 @@ class ChiSnBridge(node: Node)(implicit p: Parameters) extends ZJModule {
     cm
   }
 
-  private val shouldBeWaited = cms.map(cm => cm.io.info.bits.isSnooped && cm.io.info.valid && !cm.io.wakeupOut.valid)
+  private val shouldBeWaited = cms.map(cm => cm.io.info.valid && !cm.io.wakeupOut.valid && cm.io.info.bits.isSnooped)
   private val cmAddrSeq = cms.map(cm => cm.io.info.bits.addr)
   private val req = icn.rx.req.get.bits.asTypeOf(new ReqFlit)
   private val reqTagMatchVec = VecInit(shouldBeWaited.zip(cmAddrSeq).map(elm => elm._1 && compareTag(elm._2, req.Addr)))

@@ -53,6 +53,7 @@ package object axilite {
     def axiWdata: Bool = d.waddr && !d.wdata && u.wdata
 
     def needIssue: Bool = icnReadReceipt || icnDBID || icnComp || axiWaddr || axiRaddr || axiWdata
+    def wakeup: Bool = d.waddr && d.wdata && d.raddr
   }
 
   class AxiLiteCtrlInfo(ioDataBits: Int)(implicit p: Parameters) extends IcnIoDevCtrlInfoCommon(ioDataBits = ioDataBits, withData = true, mem = false)
@@ -60,14 +61,5 @@ package object axilite {
   class AxiLiteRsEntry(dataBits: Int)(implicit p: Parameters) extends IcnIoDevRsEntryCommon[AxiLiteBridgeCtrlOpVec, AxiLiteCtrlInfo] {
     val state = new AxiLiteBridgeCtrlOpVec
     val info = new AxiLiteCtrlInfo(dataBits)
-    def enq(req:ReqFlit, valid:Bool):Unit = {
-      info.addr := req.Addr
-      info.size := req.Size
-      info.txnId := req.TxnID
-      info.srcId := req.SrcID
-      info.readCnt := 0.U
-      state.u.decode(req, valid)
-      state.d.decode(req, valid)
-    }
   }
 }

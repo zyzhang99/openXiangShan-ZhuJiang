@@ -25,7 +25,6 @@ class TLULBridgeCtrlMachine(
 ) {
   val tla = IO(Decoupled(new AFlit(tlparams)))
 
-  wakeupOutCond := allDone && valid
   private val plmnd = payloadMiscNext.state.d
   private val pld = payload.state.d
 

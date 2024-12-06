@@ -32,10 +32,6 @@ class ChiSnBridgeCtrlMachine(
       val resp = Flipped(Decoupled(new RespFlit))
     }
   })
-  wakeupOutCond := (payload.state.d.dbidResp && payload.state.d.receiptResp && payload.info.order.orR || allDone) && valid && payload.info.isSnooped
-  when(io.wakeupOut.valid) {
-    payloadMiscNext.info.isSnooped := false.B
-  }
 
   when(icn.rx.resp.get.valid || icn.rx.data.valid || io.readDataFire || sn.rx.resp.valid) {
     assert(valid)

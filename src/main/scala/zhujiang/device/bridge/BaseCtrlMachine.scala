@@ -42,7 +42,6 @@ abstract class BaseCtrlMachine[
     val wakeupOut = Output(Valid(UInt(raw.W)))
   })
 
-  val wakeupOutCond = Wire(Bool())
   val payload = Reg(genRsEntry)
   val payloadMiscNext = WireInit(payload)
 
@@ -59,6 +58,8 @@ abstract class BaseCtrlMachine[
   when(payloadUpdate) {
     payload := Mux(valid, payloadMiscNext, payloadEnqNext)
   }
+
+
 
   icn.rx.req.ready := !valid
   icn.rx.resp.foreach(_.ready := true.B)
@@ -78,8 +79,11 @@ abstract class BaseCtrlMachine[
     waiting := waiting - 1.U
   }
 
-  io.wakeupOut.valid := wakeupOutCond
+  io.wakeupOut.valid := payload.state.wakeup && valid && payload.info.isSnooped
   io.wakeupOut.bits := payload.info.addr
+  when(io.wakeupOut.valid) {
+    payloadMiscNext.info.isSnooped := false.B
+  }
 
   private val req = icn.rx.req.bits.asTypeOf(new ReqFlit)
   payloadEnqNext.enq(req, icn.rx.req.valid)

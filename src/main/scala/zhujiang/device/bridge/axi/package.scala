@@ -54,28 +54,17 @@ package object axi {
     def axiWdata: Bool = d.waddr && !d.wdata && u.wdata
 
     def needIssue: Bool = icnReadReceipt || icnDBID || icnComp || axiWaddr || axiRaddr || axiWdata
+    def wakeup: Bool = d.waddr && d.wdata && d.raddr
   }
 
-  class AxiCtrlInfo(implicit p: Parameters) extends IcnIoDevCtrlInfoCommon(ioDataBits = 0, withData = false, mem = true) {
-    val isSnooped = Bool()
-  }
+  class AxiCtrlInfo(implicit p: Parameters) extends IcnIoDevCtrlInfoCommon(ioDataBits = 0, withData = false, mem = true)
 
   class AxiRsEntry(implicit p: Parameters) extends IcnIoDevRsEntryCommon[AxiBridgeCtrlOpVec, AxiCtrlInfo] {
     val state = new AxiBridgeCtrlOpVec
     val info = new AxiCtrlInfo
-    def enq(req:ReqFlit, valid:Bool):Unit = {
-      info.addr := req.Addr
-      info.size := req.Size
-      info.txnId := req.TxnID
-      info.srcId := req.SrcID
-      info.returnTxnId.get := req.ReturnTxnID
-      info.returnNid.get := req.ReturnNID
-      info.dwt.get := req.Opcode =/= ReqOpcode.ReadNoSnp && req.DoDWT
-      info.readCnt := 0.U
-      state.u.decode(req, valid)
-      state.d.decode(req, valid)
+    override def enq(req:ReqFlit, valid:Bool):Unit = {
+      super.enq(req, valid)
       state.bufferAllocated := req.Opcode === ReqOpcode.ReadNoSnp
-      info.isSnooped := true.B
     }
   }
 }
