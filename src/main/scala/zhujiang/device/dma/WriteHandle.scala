@@ -76,8 +76,8 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
   private val chiSendReqVec  = chiEntrys.map(c => c.sendReqOrder === 0.U && c.state === CHIWState.SendWrReq)
   private val chiSendAckVec  = chiEntrys.map(c => c.state === CHIWState.SendCompAck && c.haveRecComp && c.sendAckOrder === 0.U)
 
-  private val selSendReqChiEntry  = PriorityEncoder(chiSendReqVec)
-  private val selSendAckChiEntry  = PriorityEncoder(chiSendAckVec)
+  private val selSendReqChiEntry  = RREncoder(chiSendReqVec)
+  private val selSendAckChiEntry  = RREncoder(chiSendAckVec)
   private val selSendDataChiEntry = RREncoder(chiSendDataVec)
 
   /* 
@@ -380,6 +380,9 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
   assert(dmaParams.axiEntrySize.U - PopCount(axiFreeVec) >= PopCount(chiSendReqVec), "sendReqOrder is error")
   when(io.chi_rxrsp.fire && (io.chi_rxrsp.bits.Opcode === RspOpcode.Comp || io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp)){
     assert(!chiEntrys(rxRspTxnid).haveRecComp, "haveRecComp logic is error, chiEntry: %d", rxRspTxnid)
+  when(io.axi_aw.fire && io.axi_aw.bits.addr(raw - 1)){
+    assert(io.axi_aw.bits.size <= 3.U & io.axi_aw.bits.len === 0.U, "AXIMaster Error!")
+  }
   }
 
 }

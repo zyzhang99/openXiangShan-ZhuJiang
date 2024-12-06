@@ -8,6 +8,7 @@
   import zhujiang.chi._
   import zhujiang.axi._
   import xs.utils.sram._
+  import freechips.rocketchip.devices.tilelink.PLICConsts.priorityBase
 
   //---------------------------------------------------------------------------------------------------------------------------------//
   //---------------------------------------------------- Module Define --------------------------------------------------------------//
@@ -73,23 +74,34 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
   rIdQueue.io.deq.ready      := io.axi_r.ready
 
   /* 
-   * axiEntry -> chiEntry
+   * axiEntry -> chiEntry Increment
    */
 
-  private val sendHalfReq    = io.chi_txreq.ready && axiEntrys(selSendAxiEntry).state === AXIRState.Send && sramSelector.io.idleNum >= 1.U && (axiEntrys(selSendAxiEntry).addr(5) &&
+  private val sendHalfReq    = io.chi_txreq.ready && axiEntrys(selSendAxiEntry).state === AXIRState.Send && sramSelector.io.idleNum >= 1.U && axiEntrys(selSendAxiEntry).burst === BurstMode.Incr &&(axiEntrys(selSendAxiEntry).addr(5) && 
   axiEntrys(selSendAxiEntry).sendReqNum === 0.U || axiEntrys(selSendAxiEntry).len === axiEntrys(selSendAxiEntry).sendReqNum)
-  private val sendFullReq    = io.chi_txreq.ready && axiEntrys(selSendAxiEntry).state === AXIRState.Send && sramSelector.io.idleNum >= 2.U && axiEntrys(selSendAxiEntry).len + 1.U =/= axiEntrys(selSendAxiEntry).sendReqNum
+  private val sendFullReq    = io.chi_txreq.ready && axiEntrys(selSendAxiEntry).state === AXIRState.Send && sramSelector.io.idleNum >= 2.U &&
+  axiEntrys(selSendAxiEntry).len + 1.U =/= axiEntrys(selSendAxiEntry).sendReqNum && axiEntrys(selSendAxiEntry).burst === BurstMode.Incr
+  private val sendFixReq     = io.chi_txreq.ready && axiEntrys(selSendAxiEntry).state === AXIRState.Send && sramSelector.io.idleNum >= 1.U && 
+  axiEntrys(selSendAxiEntry).len + 1.U =/= axiEntrys(selSendAxiEntry).sendReqNum && axiEntrys(selSendAxiEntry).burst === BurstMode.Fix
+  private val sendWrapReq    = io.chi_txreq.ready && axiEntrys(selSendAxiEntry).state === AXIRState.Send && sramSelector.io.idleNum >= 1.U && 
+  axiEntrys(selSendAxiEntry).len + 1.U =/= axiEntrys(selSendAxiEntry).sendReqNum && axiEntrys(selSendAxiEntry).burst === BurstMode.Wrap
 
-  axiEntrys(selSendAxiEntry).sendReqNum := Mux(sendHalfReq, axiEntrys(selSendAxiEntry).sendReqNum + 1.U, 
+  /* 
+   * compute sendReqNum and Address
+   */
+  
+  axiEntrys(selSendAxiEntry).sendReqNum := Mux(sendHalfReq | sendWrapReq | sendFixReq, axiEntrys(selSendAxiEntry).sendReqNum + 1.U, 
                                             Mux(sendFullReq, axiEntrys(selSendAxiEntry).sendReqNum + 2.U, axiEntrys(selSendAxiEntry).sendReqNum))
-  when(sendHalfReq){
+  axiEntrys(selSendAxiEntry).addr       := Mux(sendHalfReq, axiEntrys(selSendAxiEntry).addr + 32.U, 
+                                            Mux(sendFullReq, axiEntrys(selSendAxiEntry).addr + 64.U, 
+                                              Mux(sendWrapReq, (axiEntrys(selSendAxiEntry).addr + 32.U) & axiEntrys(selSendAxiEntry).byteMask | ~(~axiEntrys(selSendAxiEntry).addr | axiEntrys(selSendAxiEntry).byteMask), 
+                                                axiEntrys(selSendAxiEntry).addr)))
+  when(sendHalfReq | sendFixReq | sendWrapReq){
     chiEntrys(sramSelector.io.out0).areid := selSendAxiEntry
     chiEntrys(sramSelector.io.out0).full  := false.B
-    chiEntrys(sramSelector.io.out0).last  := true.B
+    chiEntrys(sramSelector.io.out0).last  := Mux(axiEntrys(selSendAxiEntry).addr(5), true.B, false.B)
     chiEntrys(sramSelector.io.out0).num   := axiEntrys(selSendAxiEntry).sendReqNum - axiEntrys(selSendAxiEntry).sendDatNum - (readSram.io.r.req.fire && chiEntrys(selSendDatChiEntry).areid === selSendAxiEntry).asUInt
     chiEntrys(sramSelector.io.out0).state := CHIRState.Wait
-    
-    axiEntrys(selSendAxiEntry).addr       := axiEntrys(selSendAxiEntry).addr + 32.U
   }.elsewhen(sendFullReq){
     chiEntrys(sramSelector.io.out0).areid := selSendAxiEntry
     chiEntrys(sramSelector.io.out0).full  := true.B
@@ -103,8 +115,6 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
     chiEntrys(sramSelector.io.out1).last  := true.B
     chiEntrys(sramSelector.io.out1).num   := axiEntrys(selSendAxiEntry).sendReqNum + 1.U - axiEntrys(selSendAxiEntry).sendDatNum - (readSram.io.r.req.fire && chiEntrys(selSendDatChiEntry).areid === selSendAxiEntry).asUInt
     chiEntrys(sramSelector.io.out1).state := CHIRState.Wait
-
-    axiEntrys(selSendAxiEntry).addr       := axiEntrys(selSendAxiEntry).addr + 64.U
   }
   /* 
    * txReqFlit assignment
@@ -116,7 +126,7 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
   txReqFlit.Opcode := Mux(axiEntrys(selSendAxiEntry).addr(raw - 1), ReqOpcode.ReadNoSnp, ReqOpcode.ReadOnce)
   txReqFlit.Order  := "b11".U
   txReqFlit.TxnID  := sramSelector.io.out0
-  txReqFlit.Size   := Mux(sendHalfReq, "b101".U, "b110".U)
+  txReqFlit.Size   := Mux(axiEntrys(selSendAxiEntry).addr(raw - 1), axiEntrys(selSendAxiEntry).size, Mux(sendHalfReq | sendWrapReq | sendFixReq, "b101".U, "b110".U))
   txReqFlit.SrcID  := 1.U
 
   /* 
@@ -150,6 +160,13 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
   when(io.chi_rxdat.fire && io.chi_rxdat.bits.DataID === 2.U){
     chiEntrys(chiEntrys(dataTxnid).next).state := CHIRState.SendData
   }
+
+
+    def byteMask(len:UInt) = {
+    val maxShift = 1 << 3
+    val tail = ((BigInt(1) << maxShift) - 1).U
+    (Cat(len, tail) << 5.U) >> maxShift
+    }
 
   /* several scenarios for transmission
    *
@@ -185,18 +202,20 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
     case(a, i) =>
       switch(a.state){
         is(CHIRState.Free){
-          val hit = io.axi_ar.fire && selFreeAxiEntry === i.U
-          val nid = PopCount(nidVec) - (io.axi_r.fire && io.axi_r.bits.last && io.axi_r.bits.id === io.axi_ar.bits.id).asUInt
+          val hit    = io.axi_ar.fire && selFreeAxiEntry === i.U
+          val nid    = PopCount(nidVec) - (io.axi_r.fire && io.axi_r.bits.last && io.axi_r.bits.id === io.axi_ar.bits.id).asUInt
           when(hit){
             a.state  := AXIRState.Send
             a.addr   := io.axi_ar.bits.addr & (~31.U(raw.W))
             a.arid   := io.axi_ar.bits.id
             a.len    := io.axi_ar.bits.len
+            a.size   := io.axi_ar.bits.size
             a.burst  := io.axi_ar.bits.burst
             a.nid    := nid
             a.sendReqNum := 0.U
             a.sendDatNum := 0.U
-          }
+            a.byteMask   := byteMask(io.axi_ar.bits.len)
+           }
         }
         is(AXIRState.Send){
           val compHit = (a.sendReqNum === (a.len + 1.U)) && selSendAxiEntry === i.U
@@ -267,7 +286,7 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
   //----------------------------------------------------------- IO Interface --------------------------------------------------------//
   //---------------------------------------------------------------------------------------------------------------------------------//
   
-  io.chi_txreq.valid   := sendFullReq || sendHalfReq
+  io.chi_txreq.valid   := sendFullReq | sendHalfReq | sendFixReq | sendWrapReq
   io.chi_txreq.bits    := txReqFlit
   io.axi_r.valid       := rDataQueue.io.deq.valid
   io.axi_r.bits        := axiRFlit
@@ -287,4 +306,11 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
     assert(!chiEntrys(rspTxnid).haveRecReceipt, "CHIEntrys haveRecReceipt logic is error")
   }
   assert(dmaParams.axiEntrySize.U - PopCount(axiFreeVec) >= PopCount(chiSendDatVec), "Num of CHIEntrys is error")
+
+  when(io.axi_ar.fire && io.axi_ar.bits.addr(raw - 1)){
+    assert(io.axi_ar.bits.size <= 3.U & io.axi_ar.bits.len === 0.U, "AXIMaster Error!")
+  }
+  when(io.axi_ar.fire && io.axi_ar.bits.burst === BurstMode.Wrap){
+    assert(PopCount(io.axi_ar.bits.len + 1.U) === 1.U, "AXIMaster send req is error")
+  }
 }

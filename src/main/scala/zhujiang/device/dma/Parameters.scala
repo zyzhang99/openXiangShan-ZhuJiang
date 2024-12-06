@@ -41,10 +41,13 @@ class AXIREntry(implicit p: Parameters) extends ZJBundle {
     val addr            = UInt(raw.W)
     val burst           = UInt(BurstMode.width.W)
     val len             = UInt(8.W)
+    val size            = UInt(3.W)
     val arid            = UInt(8.W)
+    val byteMask        = UInt(9.W)
     val nid             = UInt(log2Ceil(zjParams.dmaParams.axiEntrySize).W)
     val sendReqNum      = UInt(6.W)
     val sendDatNum      = UInt(6.W)  
+
 }
 
 class CHIREntry(implicit p : Parameters) extends ZJBundle {
@@ -59,6 +62,7 @@ class CHIREntry(implicit p : Parameters) extends ZJBundle {
   val haveRecReceipt = Bool()
   val haveRecData    = Bool()
 }
+
 
 object CHIRState {
   val width        = 2
