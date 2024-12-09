@@ -335,16 +335,19 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
         // snpFwdWaitAck
         entryMes.snpFwdWaitAck  := Mux(hitRespRsp & rxRsp.bits.Opcode === CompAck, false.B, entryMes.snpFwdWaitAck)
         // assert
-        assert(!(hitRespDat & hitFDB))
+        assert(!(hitRespDat & hitFDB), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
         when(hitRespDat) {
-          assert(isWriteX(entrys(i).chiMes.opcode) | (entrys(i).chiMes.opcode === CompDBIDResp & entrys(i).chiMes.isRsp) | (entrys(i).chiMes.isSnp & entrys(i).chiMes.retToSrc))
+          assert(isWriteX(entrys(i).chiMes.opcode) | (entrys(i).chiMes.opcode === CompDBIDResp & entrys(i).chiMes.isRsp) | (entrys(i).chiMes.isSnp & entrys(i).chiMes.retToSrc), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
         }.elsewhen(hitFDB) {
-          assert(entrys(i).isDatBeSend)
+          assert(entrys(i).isDatBeSend, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+        }.elsewhen(entrys(i).chiMes.isSnp & hitRespRsp & rxRsp.bits.Opcode === CompAck) {
+          assert(entryMes.snpFwdWaitAck, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          assert(getUseNodeID(rxRsp.bits.SrcID) === entrys(i).chiIndex.nodeID, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
         }
       // Receive DBID From DataBuffer
       }.elsewhen(io.dbSigs.dbidResp.fire & io.dbSigs.dbidResp.bits.receive & entryRecDBID === i.U) {
         entryMes.hasData        := true.B
-        assert(!entryMes.hasData)
+        assert(!entryMes.hasData, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
       // Send ReadReceipt
       }.elsewhen(txRsp.fire & entrySendRspID === i.U & txRsp.bits.Opcode === ReadReceipt) {
         entryMes.needSendRRec   := false.B
@@ -356,8 +359,8 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
         when(entrys(i).state === RSState.Snp2NodeIng | entrys(i).state === RSState.WaitSnpResp) {
           val rspHit        = rxRsp.fire & (rxRsp.bits.Opcode === SnpResp     | rxRsp.bits.Opcode === SnpRespFwded)     & entryRecChiRspID === i.U & !rspIsDMTComp
           val datHit        = rxDat.fire & (rxDat.bits.Opcode === SnpRespData | rxDat.bits.Opcode === SnpRespDataFwded) & entryRecChiDatID === i.U & entrys(i).isLastBeat
-          val rspId         = getMetaIDByNodeID(rxRsp.bits.SrcID); assert(fromCcNode(rxRsp.bits.SrcID) | !rxRsp.valid)
-          val datId         = getMetaIDByNodeID(rxDat.bits.SrcID); assert(fromCcNode(rxDat.bits.SrcID) | !rxDat.valid)
+          val rspId         = getMetaIDByNodeID(rxRsp.bits.SrcID); assert(fromCcNode(rxRsp.bits.SrcID) | !rxRsp.valid, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          val datId         = getMetaIDByNodeID(rxDat.bits.SrcID); assert(fromCcNode(rxDat.bits.SrcID) | !rxDat.valid, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
           val rspIdOH       = Mux(rspHit, UIntToOH(rspId), 0.U)
           val datIdOH       = Mux(datHit, UIntToOH(datId), 0.U)
           // Record GetSnpRespOH
@@ -469,8 +472,8 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
         }
         // State: WaitSnpResp
         is(RSState.WaitSnpResp) {
-          val rspHit    = rxRsp.fire & entryRecChiRspID === i.U & !rspIsDMTComp
-          val datHit    = rxDat.fire & entryRecChiDatID === i.U
+          val rspHit    = rxRsp.fire & entryRecChiRspID === i.U & (rxRsp.bits.Opcode === SnpResp     | rxRsp.bits.Opcode === SnpRespFwded) & !rspIsDMTComp
+          val datHit    = rxDat.fire & entryRecChiDatID === i.U & (rxDat.bits.Opcode === SnpRespData | rxDat.bits.Opcode === SnpRespDataFwded)
           val shlGetNum = PopCount(entrys(i).entryMes.getSnpRespVec.asUInt ^ entrys(i).entryMes.snpTgtVec.asUInt)
           val nowGetNum = rspHit.asTypeOf(UInt(2.W)) + (datHit & entrys(i).isLastBeat).asTypeOf(UInt(2.W))
           state         := Mux(shlGetNum === nowGetNum, RSState.Resp2Exu, state)
