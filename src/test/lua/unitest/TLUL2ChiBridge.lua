@@ -7,6 +7,7 @@ local OpcodeSNP = chi.OpcodeSNP
 local OpcodeDAT = chi.OpcodeDAT
 local OpcodeRSP = chi.OpcodeRSP
 local CHIResp = chi.CHIResp
+local CHIOrder = chi.CHIOrder
 
 local TLMessageA = tl.TLMessageA
 local TLMessageD = tl.TLMessageD
@@ -184,7 +185,7 @@ local test_get = env.register_test_case "test_get" {
             env.negedge()
                 tl_a:get(0x1000, 0, 0xFF)
                 
-            env.expect_happen_until(10, function () return chi_txreq:fire() and chi_txreq.bits.Opcode:is(OpcodeREQ.ReadNoSnp) and chi_txreq.bits.Order:is_not(0) end)
+            env.expect_happen_until(10, function () return chi_txreq:fire() and chi_txreq.bits.Opcode:is(OpcodeREQ.ReadNoSnp) and chi_txreq.bits.Order:is(CHIOrder.EndpointOrder) end)
             
             local txn_id = chi_txreq.bits.TxnID:get()
             chi_rxrsp:readreceipt(chi_txreq.bits.TxnID:get())
@@ -309,7 +310,7 @@ local test_put = env.register_test_case "test_put" {
             env.negedge()
                 tl_a:putfull(0x1000, 0, "0xdead")
                 
-            env.expect_happen_until(10, function () return chi_txreq:fire() and chi_txreq.bits.Opcode:is(OpcodeREQ.WriteNoSnpPtl) and chi_txreq.bits.Order:is_not(0) end)
+            env.expect_happen_until(10, function () return chi_txreq:fire() and chi_txreq.bits.Opcode:is(OpcodeREQ.WriteNoSnpPtl) and chi_txreq.bits.Order:is(CHIOrder.OWO) end)
                         
             env.negedge(math.random(1, 10))
                 chi_rxrsp:dbidresp(0, 4) -- txn_id = 0, db_id = 4
