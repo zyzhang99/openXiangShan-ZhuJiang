@@ -413,7 +413,13 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
 
   assert(Mux(rxReq.valid, rxReq.bits.Opcode === ReadNoSnp | rxReq.bits.Opcode === WriteNoSnpFull | rxReq.bits.Opcode === WriteNoSnpPtl | rxReq.bits.Opcode === Replace |  rxReq.bits.Opcode === FlushDCU, true.B))
 
+  val rCntReg = RegInit(VecInit(Seq.fill(djparam.nrDCURBuf) { 0.U(64.W) }))
+  rCntReg.zip(rBufRegVec).foreach { case (c, r) => c := Mux(r.state === DCURState.Free, 0.U, c + 1.U) }
+  rCntReg.zipWithIndex.foreach { case (c, i) => assert(c < TIMEOUT_DCU_R.U, "DCU ReadBuffer[0x%x] STATE[0x%x] TIMEOUT", i.U, rBufRegVec(i).state) }
 
+  val wCntReg = RegInit(VecInit(Seq.fill(djparam.nrDCUWBuf) { 0.U(64.W) }))
+  wCntReg.zip(wBufRegVec).foreach { case (c, w) => c := Mux(w.state === DCUWState.Free, 0.U, c + 1.U) }
+  wCntReg.zipWithIndex.foreach { case (c, i) => assert(c < TIMEOUT_DCU_W.U, "DCU WriteBuffer[0x%x] STATE[0x%x] TIMEOUT", i.U, wBufRegVec(i).state) }
 
 // -------------------------------------------------- Perf Counter ------------------------------------------------------ //
   // DCURBuf

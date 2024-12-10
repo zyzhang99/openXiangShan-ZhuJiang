@@ -299,6 +299,8 @@ trait HasDJParam extends HasParseZJParam {
   lazy val TIMEOUT_RMINTF     =         10000 // Rn Master Intf
   lazy val TIMEOUT_MSLOCK     =  4000 + 10000 // MSHR Lock
   lazy val TIMEOUT_PIPEEXU    =  3000         // Pipe Execute
+  lazy val TIMEOUT_DCU_R      = 10000         // DCU Read Buffer
+  lazy val TIMEOUT_DCU_W      = 10000         // DCU Write Buffer
 
   def parseFullAddr(x: UInt): (UInt, UInt, UInt, UInt, UInt, UInt) = {
     require(x.getWidth == fullAddrBits)
