@@ -38,7 +38,9 @@ class APUEntry(implicit p: Parameters) extends DJBundle {
   val initOff     = Bool()
 }
 
-
+/*
+ * !!!!!!!!! This is a highly customizable module for CHI only !!!!!!!!!
+ */
 class AtomicProcessUnit()(implicit p: Parameters) extends DJModule with HasPerfLogging {
 // ------------------------------------------ IO declaration --------------------------------------------- //
   val io = IO(new DJBundle {
@@ -146,7 +148,7 @@ class AtomicProcessUnit()(implicit p: Parameters) extends DJModule with HasPerfL
   /*
    * Get the absolute value
    */
-  val sIntBit   = (bytesNum.asTypeOf(UInt(8.W)) << 3).asUInt - 1.U
+  val sIntBit   = ((bytesNum << 3.U).asUInt - 1.U).asTypeOf(UInt(6.W))
   def getAbs(in: UInt): UInt = {
     val outVec  = Wire(Vec(64, Bool()))
     when(in(sIntBit)){
