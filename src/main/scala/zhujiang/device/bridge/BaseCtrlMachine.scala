@@ -2,6 +2,7 @@ package zhujiang.device.bridge
 
 import chisel3.util._
 import chisel3._
+import freechips.rocketchip.util.MaskGen
 import org.chipsalliance.cde.config.Parameters
 import xijiang.{Node, NodeType}
 import xs.utils.perf.DebugOptionsKey
@@ -149,10 +150,7 @@ abstract class BaseCtrlMachine[
   private val busDataBytes = slvBusDataBits / 8
   private val bufDataBytes = ioDataBits / 8
   private val segNum = busDataBytes / bufDataBytes
-  private val segIdx = if(segNum > 1) payload.info.addr(log2Ceil(busDataBytes) - 1, log2Ceil(bufDataBytes)) else 0.U
-  private val maskVec = Wire(Vec(segNum, UInt(bufDataBytes.W)))
-  maskVec.zipWithIndex.foreach({ case (a, b) => a := Mux(b.U === segIdx, payload.info.mask.getOrElse(0.U), 0.U) })
-  val slvMask = maskVec.asUInt
+  val slvMask = MaskGen(payload.info.addr, payload.info.size, busDataBytes)
   val slvData = Fill(segNum, payload.info.data.getOrElse(0.U(ioDataBits.W)))
 
   if(!p(DebugOptionsKey).FPGAPlatform) {
