@@ -60,7 +60,8 @@ class CHIREntry(implicit p : Parameters) extends ZJBundle {
   val homeNid        = UInt(niw.W)
   val dbid           = UInt(12.W)
   val haveRecReceipt = Bool()
-  val haveRecData    = Bool()
+  val haveRecData1   = Bool()
+  val haveRecData2   = Bool()
 }
 
 

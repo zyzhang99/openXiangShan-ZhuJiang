@@ -8,12 +8,11 @@
   import zhujiang.chi._
   import zhujiang.axi._
   import xs.utils.sram._
-  import freechips.rocketchip.devices.tilelink.PLICConsts.priorityBase
-
+  import xijiang._
   //---------------------------------------------------------------------------------------------------------------------------------//
   //---------------------------------------------------- Module Define --------------------------------------------------------------//
   //---------------------------------------------------------------------------------------------------------------------------------//
-class ReadHandle(implicit p: Parameters) extends ZJModule{
+class ReadHandle(implicit p: Parameters) extends ZJModule {
   private val dmaParams = zjParams.dmaParams
   private val axiParams = AxiParams(dataBits = dw, addrBits = raw, idBits = dmaParams.idBits)
   val io = IO(new Bundle {
@@ -39,6 +38,7 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
 
   private val dataTxnid      = WireInit(io.chi_rxdat.bits.TxnID(log2Ceil(dmaParams.chiEntrySize) - 1, 0))
   private val rspTxnid       = WireInit(io.chi_rxrsp.bits.TxnID(log2Ceil(dmaParams.chiEntrySize) - 1, 0))  
+  private val dataid         = WireInit(io.chi_rxdat.bits.DataID)
 
   //---------------------------------------------------------------------------------------------------------------------------------//
   //----------------------------------------------------------- Logic ---------------------------------------------------------------//
@@ -132,10 +132,22 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
   /* 
    * write data to sram
    */
+  def fromCCNode(x: UInt): Bool = {
+  require(x.getWidth == niw)
+  val fromCC = WireInit(false.B)
+  if(zjParams.localRing.filter(_.nodeType == NodeType.CC).nonEmpty){
+    fromCC := zjParams.localRing.filter(_.nodeType == NodeType.CC).map(_.nodeId.asUInt >> nodeAidBits === x >> nodeAidBits).reduce(_ | _)
+  }
+  else {
+    fromCC := false.B
+  }
+  fromCC
+  }
 
-  private val sramWrDatValidReg = RegNext(io.chi_rxdat.fire, false.B)
+  private val sramWrDatValidReg = RegNext(io.chi_rxdat.fire && (chiEntrys(dataTxnid).full ||
+   !fromCCNode(io.chi_rxdat.bits.SrcID) || fromCCNode(io.chi_rxdat.bits.SrcID) && (chiEntrys(dataTxnid).last && dataid === 0.U || dataid === 2.U && !chiEntrys(dataTxnid).last)), false.B)
   private val sramWrDatReg      = RegEnable(io.chi_rxdat.bits.Data, io.chi_rxdat.fire)
-  private val sramWrSet         = Mux(io.chi_rxdat.bits.DataID === 2.U, chiEntrys(dataTxnid).next, dataTxnid)
+  private val sramWrSet         = Mux(dataid === 2.U && chiEntrys(dataTxnid).full, chiEntrys(dataTxnid).next, dataTxnid)
   private val sramWrSetReg      = RegNext(sramWrSet)
   private val readSramAreid     = WireInit(chiEntrys(selSendDatChiEntry).areid)
 
@@ -157,10 +169,12 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
   axiRFlit.id     := rIdQueue.io.deq.bits.rid
   axiRFlit.last   := rIdQueue.io.deq.bits.last
 
-  when(io.chi_rxdat.fire && io.chi_rxdat.bits.DataID === 2.U){
+  when(io.chi_rxdat.fire && dataid === 2.U && chiEntrys(dataTxnid).full){
     chiEntrys(chiEntrys(dataTxnid).next).state := CHIRState.SendData
+    chiEntrys(dataTxnid).haveRecData2          := true.B
+    chiEntrys(chiEntrys(dataTxnid).next).haveRecData1 := true.B
+    chiEntrys(chiEntrys(dataTxnid).next).haveRecData2 := true.B
   }
-
 
     def byteMask(len:UInt) = {
     val maxShift = 1 << 3
@@ -253,17 +267,18 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
     case(c, i) =>
       switch(c.state){
         is(CHIRState.Wait){
-          val ReceDatHit = io.chi_rxdat.fire && io.chi_rxdat.bits.DataID === 0.U && dataTxnid === i.U
+          val ReceDatHit = io.chi_rxdat.fire && dataTxnid === i.U && (io.chi_rxdat.bits.DataID === 0.U && (!fromCCNode(io.chi_rxdat.bits.SrcID) || c.full) ||
+           fromCCNode(io.chi_rxdat.bits.SrcID) && !c.full && (c.last && dataid === 2.U || !c.last && dataid === 0.U))
           val receHit    = io.chi_rxrsp.fire && rspTxnid  === i.U && io.chi_rxrsp.bits.Opcode === RspOpcode.ReadReceipt
           when(ReceDatHit){
-            c.haveRecData := true.B
+            c.haveRecData1   := true.B
             c.homeNid        := io.chi_rxdat.bits.HomeNID
             c.dbid           := io.chi_rxdat.bits.DBID
           }
           when(receHit){
             c.haveRecReceipt := true.B
           }
-          when(c.haveRecData && c.haveRecReceipt){
+          when(c.haveRecData1 && c.haveRecReceipt){
             c.state := CHIRState.SendData
           }
         }
@@ -274,7 +289,7 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
           }
         }
         is(CHIRState.Comp){
-          val hit = io.axi_r.fire 
+          val hit = io.axi_r.fire & (c.haveRecData2 & c.full | !c.full)
           when(hit){
             c := 0.U.asTypeOf(c)
           }
@@ -299,8 +314,8 @@ class ReadHandle(implicit p: Parameters) extends ZJModule{
 /* 
  * assert logic
  */
-  when(io.chi_rxdat.fire && io.chi_rxdat.bits.DataID === 0.U){
-    assert(!chiEntrys(dataTxnid).haveRecData, "CHIEntrys haveRecDataFir logic is error")
+  when(io.chi_rxdat.fire && dataid === 0.U){
+    assert(!chiEntrys(dataTxnid).haveRecData1, "CHIEntrys haveRecDataFir logic is error")
   }
   when(io.chi_rxrsp.fire && io.chi_rxrsp.bits.Opcode === RspOpcode.ReadReceipt){
     assert(!chiEntrys(rspTxnid).haveRecReceipt, "CHIEntrys haveRecReceipt logic is error")
