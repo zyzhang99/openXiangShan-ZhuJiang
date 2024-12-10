@@ -60,7 +60,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   val task_s3_needDir     = Wire(Bool())
   val task_s3             = WireInit(0.U.asTypeOf(Valid(new PipeTaskBundle()))); dontTouch(task_s3)
   val dirRes_s3           = WireInit(0.U.asTypeOf(Valid(new DirRespBundle()))); dontTouch(dirRes_s3)
-  val srcMetaID_s3        = Wire(UInt((ccNodeIdBits+1).W))
+  val srcMetaID_s3        = Wire(UInt((metaIdBits+1).W)) // An extra bit is used to distinguish the RNI
   // s3 decode base signals
   val inst_s3             = Wire(new InstBundle()); dontTouch(inst_s3)
   val inst_req_s3         = WireInit(0.U.asTypeOf(new InstBundle()))
@@ -87,7 +87,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   val dirRes_s4_g         = Reg(new DirRespBundle());     dontTouch(dirRes_s4_g)
   val needUnLockMSHR_s4_g = Reg(Bool());                  dontTouch(needUnLockMSHR_s4_g)
   val respType_s4_g       = Reg(UInt(RespType.width.W));  dontTouch(respType_s4_g)
-  val srcMetaID_s4_g      = Reg(UInt(metaIdBits.W));      dontTouch(srcMetaID_s4_g)
+  val srcMetaID_s4_g      = Reg(UInt((metaIdBits+1).W));  dontTouch(srcMetaID_s4_g)
   val todo_s4_g_replace   = Reg(Bool());                  dontTouch(todo_s4_g_replace) // replace self Directory
   val todo_s4_g_sfEvict   = Reg(Bool());                  dontTouch(todo_s4_g_sfEvict) // replace snoop filter
   // s4 execute signals: Set specific tasks value
@@ -174,18 +174,19 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   /*
    * Parse Dir Result
    */
-  srcMetaID_s3    := Mux(fromRniNode(task_s3.bits.chiIndex.nodeID), Fill(srcMetaID_s3.getWidth, 1.U(1.W)), getMetaIDByNodeID(task_s3.bits.chiIndex.nodeID))
+  val srcCCMetaID_s3  = getMetaIDByNodeID(task_s3.bits.chiIndex.nodeID)
+  srcMetaID_s3        := Mux(fromRniNode(task_s3.bits.chiIndex.nodeID), Fill(srcMetaID_s3.getWidth, 1.U(1.W)), srcCCMetaID_s3)
   assert(fromCcNode(task_s3.bits.chiIndex.nodeID) | fromRniNode(task_s3.bits.chiIndex.nodeID) | !task_s3.valid | (task_s3.bits.chiMes.opcode === SnpUniqueEvict & task_s3.bits.chiMes.isSnp))
 
-  val srcHit_s3   = dirRes_s3.bits.sf.hit & !dirRes_s3.bits.sf.metaVec(srcMetaID_s3).isInvalid & !fromRniNode(task_s3.bits.chiIndex.nodeID)
-  val srcState_s3 = Mux(srcHit_s3, dirRes_s3.bits.sf.metaVec(srcMetaID_s3).state, ChiState.I)
+  val srcHit_s3       = dirRes_s3.bits.sf.hit & !dirRes_s3.bits.sf.metaVec(srcCCMetaID_s3).isInvalid & !fromRniNode(task_s3.bits.chiIndex.nodeID)
+  val srcState_s3     = Mux(srcHit_s3, dirRes_s3.bits.sf.metaVec(srcCCMetaID_s3).state, ChiState.I)
 
-  val othHit_s3   = dirRes_s3.bits.sf.hit & (PopCount(dirRes_s3.bits.sf.metaVec.map(!_.isInvalid)) > srcHit_s3.asUInt)
-  val sfHitID_s3  = PriorityEncoder(dirRes_s3.bits.sf.metaVec.map(!_.isInvalid))
-  val othState_s3 = Mux(othHit_s3, dirRes_s3.bits.sf.metaVec(sfHitID_s3).state, ChiState.I)
+  val othHit_s3       = dirRes_s3.bits.sf.hit & (PopCount(dirRes_s3.bits.sf.metaVec.map(!_.isInvalid)) > srcHit_s3.asUInt)
+  val sfHitID_s3      = PriorityEncoder(dirRes_s3.bits.sf.metaVec.map(!_.isInvalid))
+  val othState_s3     = Mux(othHit_s3, dirRes_s3.bits.sf.metaVec(sfHitID_s3).state, ChiState.I)
 
-  val hnHit_s3    = dirRes_s3.bits.s.hit
-  val hnState_s3  = Mux(hnHit_s3, dirRes_s3.bits.s.metaVec(0).state, ChiState.I)
+  val hnHit_s3        = dirRes_s3.bits.s.hit
+  val hnState_s3      = Mux(hnHit_s3, dirRes_s3.bits.s.metaVec(0).state, ChiState.I)
 
   /*
    * Set Inst value
