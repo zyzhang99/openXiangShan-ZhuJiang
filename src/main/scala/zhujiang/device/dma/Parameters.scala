@@ -100,8 +100,8 @@ object CHIWState {
   val SendWrReq    = "b001".U
   val WaitDBID     = "b010".U
   val SendWrData   = "b011".U
-  val SendCompAck  = "b100".U
-  val Comp         = "b101".U
+  val WaitDataSend = "b100".U
+  val SendCompAck  = "b101".U
 }
 
 object AXIWState{
@@ -116,6 +116,7 @@ class AXIWEntry(implicit p: Parameters) extends ZJBundle {
     val unalign         = Bool()
     val burst           = UInt(BurstMode.width.W)
     val awid            = UInt(8.W)
+    val byteMask        = UInt(9.W)
     val state           = UInt(AXIWState.width.W)
     val nid             = UInt(log2Ceil(zjParams.dmaParams.axiEntrySize).W)
 }
