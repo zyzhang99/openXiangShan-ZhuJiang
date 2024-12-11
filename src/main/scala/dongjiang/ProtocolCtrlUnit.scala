@@ -67,14 +67,50 @@ class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[
     dontTouch(io)
   }
 
+  lazy val cacheable_hi = fullAddrBits - 1
+  lazy val cacheable_lo = fullAddrBits - cacheableBits
+
+  lazy val ccxChipID_hi = cacheable_lo - 1
+  lazy val ccxChipID_lo = cacheable_lo - ccxChipBits
+
+  lazy val useAddr_hi   = ccxChipID_lo - 1
+  lazy val useAddr_lo   = offsetBits
+
+  lazy val bankID_hi    = bankOff + fullBankBits - 1
+  lazy val bankID_lo    = bankOff
+
+  lazy val offset_hi    = offsetBits - 1
+  lazy val offset_lo    = 0
+
+  lazy val dirBank_hi   = useAddr_lo + dirBankBits - 1
+  lazy val dirBank_lo   = useAddr_lo
+
+  lazy val selfTag_hi   = useAddr_hi
+  lazy val selfTag_lo   = useAddr_hi - sTagBits + 1
+
+  lazy val selfSet_hi   = selfTag_lo - 1
+  lazy val selfSet_lo   = dirBank_hi + 1
+
+  lazy val sfTag_hi     = useAddr_hi
+  lazy val sfTag_lo     = useAddr_hi - sfTagBits + 1
+
+  lazy val sfSet_hi     = sfTag_lo - 1
+  lazy val sfSet_lo     = dirBank_hi + 1
+
+
   print(
     s"""
        |DongJiang PCU Message: {
        |  Support Protocol: CHI-G
-       |  selfSets: ${djparam.selfSets}
-       |  sfWays: ${djparam.sfDirWays}
-       |  sfSets: ${djparam.sfDirSets}
-       |  nrDirBank: ${djparam.nrDirBank}
+       |  fullAddr:   [${fullAddrBits-1}:0] = [cacheable] + [ccxChipID] + [useAddr1] + [bankID] + [useAddr0] + [offset] (Note: The useAddr = Cat(useAddr1, useAddr0))
+       |  fullAddr:   [${fullAddrBits-1}:0] = [${cacheable_hi}:${cacheable_lo}] + [${ccxChipID_hi}:${ccxChipID_lo}] + [[${useAddr_hi}:${bankID_hi+1}] + [${bankID_hi}:${bankID_lo}] + [${bankID_lo-1}:${useAddr_lo}]] + [${offset_hi}:${offset_lo}]
+       |  useAddr*:   [${useAddr_hi}:${useAddr_lo}] = [selfTag] + [selfSet] + [dirBank] / [sfTag] + [sfSet] + [dirBank] (Note: The bankID[${bankID_hi}:${bankID_lo}] need to be removed in useAddr*)
+       |  useAddr*:   [${useAddr_hi}:${useAddr_lo}] = [${selfTag_hi}:${selfTag_lo}] + [${selfSet_hi}:${selfSet_lo}] + [${dirBank_hi}:${dirBank_lo}] / [${sfTag_hi}:${sfTag_lo}] + [${sfSet_hi}:${sfSet_lo}] + [${dirBank_hi}:${dirBank_lo}]
+       |  selfWays:   ${djparam.selfWays}
+       |  selfSets:   ${djparam.selfSets}
+       |  sfWays:     ${djparam.sfDirWays}
+       |  sfSets:     ${djparam.sfDirSets}
+       |  nrDirBank:  ${djparam.nrDirBank}
        |  directory: setup = ${djparam.dirSetup} latency = ${djparam.dirLatency} extraHold = ${djparam.dirExtraHold}
        |  replacementPolicy: ${djparam.selfReplacementPolicy}
        |}
