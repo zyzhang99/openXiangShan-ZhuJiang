@@ -25,7 +25,7 @@ class DataStorage(sets: Int)(implicit p: Parameters) extends DJModule {
   })
 
 // --------------------- Modules declaration ------------------------//
-  val array       = Module(new SinglePortSramTemplate(UInt(beatBits.W), sets, way = maskBits, setup = djparam.dcuSetup, latency = djparam.dcuLatency, extraHold = djparam.dcuExtraHold))
+  val array       = Module(new SinglePortSramTemplate(UInt(8.W), sets, way = maskBits, setup = djparam.dcuSetup, latency = djparam.dcuLatency, extraHold = djparam.dcuExtraHold))
 
 //// ----------------------- Reg/Wire declaration --------------------------//
   // s2
