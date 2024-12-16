@@ -76,9 +76,9 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
   private val chiSendReqVec  = chiEntrys.map(c => c.sendReqOrder === 0.U && c.state === CHIWState.SendWrReq)
   private val chiSendAckVec  = chiEntrys.map(c => c.state === CHIWState.SendCompAck && c.haveRecComp && c.sendAckOrder === 0.U)
 
-  private val selSendReqChiEntry  = PriorityEncoder(chiSendReqVec)
-  private val selSendAckChiEntry  = PriorityEncoder(chiSendAckVec)
-  private val selSendDataChiEntry = RREncoder(chiSendDataVec)
+  private val selSendReqChiEntry  = RREncoder(chiSendReqVec)
+  private val selSendAckChiEntry  = RREncoder(chiSendAckVec)
+  private val selSendDataChiEntry = PriorityEncoder(chiSendDataVec)
 
   /* 
    * chi flit define
@@ -158,7 +158,7 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
     chiEntrys(endIndex).areid    := selWrDataAxiEntry
     chiEntrys(endIndex).sendFull := shouldSendFull
     chiEntrys(endIndex).state    := Mux(judgeSendReq, CHIWState.SendWrReq, CHIWState.WaitDBID)
-    chiEntrys(endIndex).full     := Mux(mergeLast && judgeSendReq || axiEntrys(selWrDataAxiEntry).unalign, false.B, true.B)
+    chiEntrys(endIndex).full     := Mux(mergeLast && judgeSendReq || axiEntrys(selWrDataAxiEntry).unalign || axiEntrys(selWrDataAxiEntry).burst =/= BurstMode.Incr, false.B, true.B)
     chiEntrys(endIndex).last     := Mux(axiEntrys(selWrDataAxiEntry).unalign || mergeLast || !judgeSendReq, true.B, false.B)
     chiEntrys(endIndex).mmioReq  := axiEntrys(selWrDataAxiEntry).addr(raw - 1)
     chiEntrys(endIndex).sendReqOrder := PopCount(sendReqNum) - (io.chi_rxrsp.fire && chiEntrys(rxRspTxnid).areid ===selWrDataAxiEntry && (io.chi_rxrsp.bits.Opcode === RspOpcode.DBIDResp ||
@@ -167,7 +167,7 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
 
     endIndex     := endIndex + 1.U
     maybeFull    := true.B
-    judgeSendReq := Mux(mergeLast || axiEntrys(selWrDataAxiEntry).unalign || !judgeSendReq, true.B, false.B)
+    judgeSendReq := Mux(mergeLast || axiEntrys(selWrDataAxiEntry).unalign || !judgeSendReq || axiEntrys(selWrDataAxiEntry).burst =/= BurstMode.Incr, true.B, false.B)
   }
 
   
@@ -249,6 +249,12 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
   txRspFlit.SrcID     := 1.U
   txRspFlit.TgtID     := chiEntrys(selSendAckChiEntry).tgtID
   txRspFlit.TxnID     := chiEntrys(selSendAckChiEntry).dbid
+
+  def byteMask(len:UInt) = {
+    val maxShift = 1 << 3
+    val tail = ((BigInt(1) << maxShift) - 1).U
+    (Cat(len, tail) << 5.U) >> maxShift
+  }
   //---------------------------------------------------------------------------------------------------------------------------------//
   //---------------------------------------------------------- FSM ------------------------------------------------------------------//
   //---------------------------------------------------------------------------------------------------------------------------------//
@@ -264,14 +270,16 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
             a.burst   := io.axi_aw.bits.burst
             a.nid     := PopCount(axiBusyVec) - (mergeLast && RegNext(io.axi_w.fire)).asUInt
             a.awid    := io.axi_aw.bits.id
+            a.byteMask := byteMask(io.axi_aw.bits.len)
           }
         }
         is(AXIWState.ReceiveData){
           val hit       = a.nid === 0.U && mergeLast && RegNext(io.axi_w.fire)
           val reduceNid = a.nid =/= 0.U && mergeLast && RegNext(io.axi_w.fire)
-          val addrIncr  = chiEntrys(txReqTxnid).areid === i.U && io.chi_txreq.fire
+          val addrIncr  = chiEntrys(txReqTxnid).areid === i.U && io.chi_txreq.fire && a.burst === BurstMode.Incr
+          val addrWrap  = chiEntrys(txReqTxnid).areid === i.U && io.chi_txreq.fire && a.burst === BurstMode.Wrap
           val alignHit  = a.nid === 0.U && RegNext(io.axi_w.fire)
-          a.addr       := Mux(addrIncr && io.chi_txreq.bits.Size === 5.U, a.addr + 32.U, Mux(addrIncr && io.chi_txreq.bits.Size === 6.U, a.addr + 64.U, a.addr))
+          a.addr       := Mux(addrIncr, Mux(txReqFlit.Size === 5.U, a.addr + 32.U, a.addr + 64.U), Mux(addrWrap, a.addr + 32.U & a.byteMask | ~(~a.addr | a.byteMask), a.addr))
           when(alignHit){
             a.unalign := false.B
           }
@@ -284,8 +292,9 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
         }
         is(AXIWState.Comp){
           val hit       = a.nid === 0.U && io.axi_b.bits.id === a.awid && io.axi_b.fire 
-          val addrIncr  = chiEntrys(txReqTxnid).areid === i.U && io.chi_txreq.fire
-          a.addr       := Mux(addrIncr && io.chi_txreq.bits.Size === 5.U, a.addr + 32.U, Mux(addrIncr && io.chi_txreq.bits.Size === 6.U, a.addr + 64.U, a.addr))
+          val addrIncr  = chiEntrys(txReqTxnid).areid === i.U && io.chi_txreq.fire && a.burst === BurstMode.Incr
+          val addrWrap  = chiEntrys(txReqTxnid).areid === i.U && io.chi_txreq.fire && a.burst === BurstMode.Wrap
+          a.addr       := Mux(addrIncr, Mux(txReqFlit.Size === 5.U, a.addr + 32.U, a.addr + 64.U), Mux(addrWrap, a.addr + 32.U & a.byteMask | ~(~a.addr | a.byteMask), a.addr))
           when(hit){
             a := 0.U.asTypeOf(a)
           }
@@ -329,19 +338,20 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
         is(CHIWState.SendWrData){
           val hit = dataSram.io.r.req.fire && dataSram.io.r.req.bits.setIdx === i.U
           when(hit){
-            c.state := Mux(c.full && c.last, CHIWState.Comp, CHIWState.SendCompAck)
+            c.state := CHIWState.WaitDataSend
+          }
+        }
+        is(CHIWState.WaitDataSend){
+          val hit = io.chi_txdat.fire && io.chi_txdat.bits.TxnID === c.dbid &&
+          (io.chi_txdat.bits.DataID === 0.U && !(c.full && c.last) || io.chi_txdat.bits.DataID === 2.U && c.last && c.full)
+          when(hit & c.last & c.full){
+            c := 0.U.asTypeOf(c)
+          }.elsewhen(hit){
+            c.state := CHIWState.SendCompAck
           }
         }
         is(CHIWState.SendCompAck){
           val hit = io.chi_txrsp.fire && io.chi_txrsp.bits.TxnID === c.dbid && c.sendAckOrder === 0.U && c.haveRecComp 
-          when(hit){
-            c := 0.U.asTypeOf(c)
-          }
-        }
-
-        is(CHIWState.Comp){
-          val hit = io.chi_txdat.fire && io.chi_txdat.bits.TxnID === c.dbid &&
-          (io.chi_txdat.bits.DataID === 0.U && !(c.full && c.last) || io.chi_txdat.bits.DataID === 2.U && c.last && c.full)
           when(hit){
             c := 0.U.asTypeOf(c)
           }
@@ -380,6 +390,9 @@ class WriteHandle(implicit p: Parameters) extends ZJModule{
   assert(dmaParams.axiEntrySize.U - PopCount(axiFreeVec) >= PopCount(chiSendReqVec), "sendReqOrder is error")
   when(io.chi_rxrsp.fire && (io.chi_rxrsp.bits.Opcode === RspOpcode.Comp || io.chi_rxrsp.bits.Opcode === RspOpcode.CompDBIDResp)){
     assert(!chiEntrys(rxRspTxnid).haveRecComp, "haveRecComp logic is error, chiEntry: %d", rxRspTxnid)
+  when(io.axi_aw.fire && io.axi_aw.bits.addr(raw - 1)){
+    assert(io.axi_aw.bits.size <= 3.U & io.axi_aw.bits.len === 0.U, "AXIMaster Error!")
+  }
   }
 
 }

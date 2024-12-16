@@ -41,10 +41,13 @@ class AXIREntry(implicit p: Parameters) extends ZJBundle {
     val addr            = UInt(raw.W)
     val burst           = UInt(BurstMode.width.W)
     val len             = UInt(8.W)
+    val size            = UInt(3.W)
     val arid            = UInt(8.W)
+    val byteMask        = UInt(9.W)
     val nid             = UInt(log2Ceil(zjParams.dmaParams.axiEntrySize).W)
     val sendReqNum      = UInt(6.W)
     val sendDatNum      = UInt(6.W)  
+
 }
 
 class CHIREntry(implicit p : Parameters) extends ZJBundle {
@@ -57,8 +60,10 @@ class CHIREntry(implicit p : Parameters) extends ZJBundle {
   val homeNid        = UInt(niw.W)
   val dbid           = UInt(12.W)
   val haveRecReceipt = Bool()
-  val haveRecData    = Bool()
+  val haveRecData1   = Bool()
+  val haveRecData2   = Bool()
 }
+
 
 object CHIRState {
   val width        = 2
@@ -95,8 +100,8 @@ object CHIWState {
   val SendWrReq    = "b001".U
   val WaitDBID     = "b010".U
   val SendWrData   = "b011".U
-  val SendCompAck  = "b100".U
-  val Comp         = "b101".U
+  val WaitDataSend = "b100".U
+  val SendCompAck  = "b101".U
 }
 
 object AXIWState{
@@ -111,6 +116,7 @@ class AXIWEntry(implicit p: Parameters) extends ZJBundle {
     val unalign         = Bool()
     val burst           = UInt(BurstMode.width.W)
     val awid            = UInt(8.W)
+    val byteMask        = UInt(9.W)
     val state           = UInt(AXIWState.width.W)
     val nid             = UInt(log2Ceil(zjParams.dmaParams.axiEntrySize).W)
 }
