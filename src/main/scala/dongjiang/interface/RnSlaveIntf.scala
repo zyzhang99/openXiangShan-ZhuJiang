@@ -220,13 +220,17 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   val rspIsDMTComp      = Wire(Bool())
   val dmtCompVal        = Wire(Bool())
   // HitVec
-  val snp2IntfHitVec    = Wire(Vec(param.nrEntry, Bool())); dontTouch(snp2IntfHitVec)
-  val snpResp2ExuHitVec = Wire(Vec(param.nrEntry, Bool())); dontTouch(snpResp2ExuHitVec)
-  val reqAckHitVec      = Wire(Vec(param.nrEntry, Bool())); dontTouch(reqAckHitVec)
-  val compAckHitVec     = Wire(Vec(param.nrEntry, Bool())); dontTouch(compAckHitVec)
+  val snp2IntfHitVec_g    = Reg(Vec(param.nrEntry, Bool())); dontTouch(snp2IntfHitVec_g)
+  val snpResp2ExuHitVec_g = Reg(Vec(param.nrEntry, Bool())); dontTouch(snpResp2ExuHitVec_g)
+  val reqAckHitVec_g      = Reg(Vec(param.nrEntry, Bool())); dontTouch(reqAckHitVec_g)
+  val compAckHitVec_g     = Reg(Vec(param.nrEntry, Bool())); dontTouch(compAckHitVec_g)
   // MatchVec
-  val reqMatchVec       = Wire(Vec(param.nrEntry, Bool())); dontTouch(reqMatchVec)
-  val snpMatchVec       = Wire(Vec(param.nrEntry, Bool())); dontTouch(snpMatchVec)
+  val reqMatchVec         = Wire(Vec(param.nrEntry, Bool())); dontTouch(reqMatchVec)
+  val snpMatchVec         = Wire(Vec(param.nrEntry, Bool())); dontTouch(snpMatchVec)
+
+  val entrysValVec_g      = Reg(Vec(param.nrEntry, Bool()));
+  val entrysIsSnpVec_g    = Reg(Vec(param.nrEntry, Bool()));
+  val entrysIsReqVec_g    = Reg(Vec(param.nrEntry, Bool()));
 
   // CHI
   val rxReq             = Wire(new DecoupledIO(new ReqFlit()))
@@ -488,29 +492,41 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //
-// ----------------------------------------------------- Get Task NID --------------------------------------------------- //
+// ----------------------------------------------------- Get Entry NID -------------------------------------------------- //
 // ---------------------------------------------------------------------------------------------------------------------- //
-  /*
-   * Get Req NID
-   */
-  val snp2IntfAWD     = io.req2Intf.bits.addrWithDcuID
-  val resp2ExuAWD     = entrys(entryResp2ExuID).addrWithDcuID
-  val reqAckAWD       = entrys(io.reqAck2Intf.bits.entryID).addrWithDcuID
-  val compAckAWD      = entrys(entryRecChiRspID).addrWithDcuID
+  // Get Addr With DcuID
+  val snp2IntfAWD         = io.req2Intf.bits.addrWithDcuID
+  val resp2ExuAWD         = entrys(entryResp2ExuID).addrWithDcuID
+  val reqAckAWD           = entrys(io.reqAck2Intf.bits.entryID).addrWithDcuID
+  val compAckAWD          = entrys(entryRecChiRspID).addrWithDcuID
 
-  snpMatchVec         := entrys.zipWithIndex.map { case(e, i) => !e.isFree & e.addrWithDcuID === entrySave.addrWithDcuID & (e.chiMes.isRsp | e.chiMes.isDat) & e.chiMes.expCompAck }
-  reqMatchVec         := entrys.zipWithIndex.map { case(e, i) => !e.isFree & e.addrWithDcuID === entrySave.addrWithDcuID & (e.chiMes.isReq | e.chiMes.isSnp) }
-  val reqAckMatchReq  = reqAckAWD   === entrySave.addrWithDcuID & io.reqAck2Intf.fire & !io.reqAck2Intf.bits.retry
-  val compAckMatchReq = compAckAWD  === entrySave.addrWithDcuID & rxRsp.fire          & rxRsp.bits.Opcode === CompAck & !dmtCompVal
-  val snpRespMatchReq = resp2ExuAWD === entrySave.addrWithDcuID & io.resp2Exu.fire    & !dmtCompVal & io.resp2Exu.bits.pcuMes.isSnpResp
+  // [Set New NID] Match Vec
+  snpMatchVec             := entrys.zipWithIndex.map { case(e, i) => !e.isFree & e.addrWithDcuID === entrySave.addrWithDcuID & (e.chiMes.isRsp | e.chiMes.isDat) & e.chiMes.expCompAck }
+  reqMatchVec             := entrys.zipWithIndex.map { case(e, i) => !e.isFree & e.addrWithDcuID === entrySave.addrWithDcuID & (e.chiMes.isReq | e.chiMes.isSnp) }
+  val reqMatchNum_g       = RegNext(PopCount(reqMatchVec))
+  val snpMatchNum_g       = RegNext(PopCount(snpMatchVec))
 
-  val reqMatchNum     = PopCount(reqMatchVec)
-  val snpMatchNum     = PopCount(snpMatchVec)
+  // [Set New NID] Match Req        | Addr With DcuID                                  | Fire                         | other
+  val reqAckMatchReq_g    = RegNext(reqAckAWD   === entrySave.addrWithDcuID) & RegNext(io.reqAck2Intf.fire) & RegNext(!io.reqAck2Intf.bits.retry)
+  val compAckMatchReq_g   = RegNext(compAckAWD  === entrySave.addrWithDcuID) & RegNext(rxRsp.fire)          & RegNext(rxRsp.bits.Opcode === CompAck & !dmtCompVal)
+  val snpRespMatchReq_g   = RegNext(resp2ExuAWD === entrySave.addrWithDcuID) & RegNext(io.resp2Exu.fire)    & RegNext(!dmtCompVal & io.resp2Exu.bits.pcuMes.isSnpResp)
 
-  snp2IntfHitVec      := entrys.zipWithIndex.map { case(e, i) => !e.isFree & e.addrWithDcuID === snp2IntfAWD             & io.req2Intf.fire }
-  snpResp2ExuHitVec   := entrys.zipWithIndex.map { case(e, i) => !e.isFree & e.addrWithDcuID === resp2ExuAWD             & io.resp2Exu.fire    & !dmtCompVal & io.resp2Exu.bits.pcuMes.isSnpResp }
-  reqAckHitVec        := entrys.zipWithIndex.map { case(e, i) => !e.isFree & e.addrWithDcuID === reqAckAWD               & io.reqAck2Intf.fire & !io.reqAck2Intf.bits.retry & io.reqAck2Intf.bits.entryID =/= i.U }
-  compAckHitVec       := entrys.zipWithIndex.map { case(e, i) => !e.isFree & e.addrWithDcuID === compAckAWD              & rxRsp.fire          & rxRsp.bits.Opcode === CompAck & !dmtCompVal & entryRecChiRspID =/= i.U }
+  // [Set New NID] Judgement
+  val entryFreeID_g       = RegNext(entryFreeID)
+  val setRespNID_g        = RegNext(io.resp2Intf.fire)
+  val setSnpNID_g         = RegNext(io.req2Intf.fire)
+  val setReqNID_g         = RegNext(rxReq.fire)
+
+  // [Modify NID] Modify Vec
+  snp2IntfHitVec_g        := entrys.zipWithIndex.map { case(e, i) => !e.isFree & e.addrWithDcuID === snp2IntfAWD  & io.req2Intf.fire }
+  snpResp2ExuHitVec_g     := entrys.zipWithIndex.map { case(e, i) => !e.isFree & e.addrWithDcuID === resp2ExuAWD  & io.resp2Exu.fire    & !dmtCompVal                   & io.resp2Exu.bits.pcuMes.isSnpResp }
+  reqAckHitVec_g          := entrys.zipWithIndex.map { case(e, i) => !e.isFree & e.addrWithDcuID === reqAckAWD    & io.reqAck2Intf.fire & !io.reqAck2Intf.bits.retry    & io.reqAck2Intf.bits.entryID =/= i.U }
+  compAckHitVec_g         := entrys.zipWithIndex.map { case(e, i) => !e.isFree & e.addrWithDcuID === compAckAWD   & rxRsp.fire          & rxRsp.bits.Opcode === CompAck & !dmtCompVal & entryRecChiRspID =/= i.U }
+
+  // [Modify NID] Judgement
+  entrysValVec_g          := entrys.map(!_.isFree)
+  entrysIsSnpVec_g        := entrys.map(_.chiMes.isSnp)
+  entrysIsReqVec_g        := entrys.map(_.chiMes.isReq)
 
 
   entrys.map(_.entryMes.nID).zipWithIndex.foreach {
@@ -518,22 +534,22 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
       /*
        * Set New NID
        */
-      when(entryFreeID === i.U) {
+      when(entryFreeID_g === i.U) {
         // Resp always takes priority
-        when(io.resp2Intf.fire)           { nID := 0.U }
+        when(setRespNID_g)      { nID := 0.U }
         // Snp
-        .elsewhen(io.req2Intf.fire)       { nID := snpMatchNum - compAckMatchReq ;                                    assert(snpMatchNum >= compAckMatchReq.asUInt, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x] NID[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) }
+        .elsewhen(setSnpNID_g)  { nID := snpMatchNum_g - compAckMatchReq_g ;                                              assert(snpMatchNum_g >= compAckMatchReq_g.asUInt, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x] NID[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) }
         // Req
-        .elsewhen(rxReq.fire)             { nID := reqMatchNum - snpRespMatchReq - reqAckMatchReq;                    assert(reqMatchNum >= snpRespMatchReq.asTypeOf(UInt(2.W)) + reqAckMatchReq, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x] NID[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) }
+        .elsewhen(setReqNID_g)  { nID := reqMatchNum_g - snpRespMatchReq_g - reqAckMatchReq_g;                            assert(reqMatchNum_g >= snpRespMatchReq_g.asTypeOf(UInt(2.W)) + reqAckMatchReq_g, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x] NID[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) }
       }
       /*
        * Modify NID
        */
-      .elsewhen(!entrys(i).isFree) {
+      .elsewhen(entrysValVec_g(i)) {
         // Snp
-        when(entrys(i).chiMes.isSnp)      { nID := nID - compAckHitVec(i);                                            assert(nID >= compAckHitVec(i), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x] NID[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) }
+        when(entrysIsSnpVec_g(i))       { nID := nID - compAckHitVec_g(i);                                                assert(nID >= compAckHitVec_g(i), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x] NID[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) }
         // Req
-        .elsewhen(entrys(i).chiMes.isReq) { nID := nID + snp2IntfHitVec(i) - snpResp2ExuHitVec(i) - reqAckHitVec(i);  assert(nID + snp2IntfHitVec(i) >= snpResp2ExuHitVec(i).asTypeOf(UInt(2.W))  + reqAckHitVec(i), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x] NID[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) }
+        .elsewhen(entrysIsReqVec_g(i))  { nID := nID + snp2IntfHitVec_g(i) - snpResp2ExuHitVec_g(i) - reqAckHitVec_g(i);  assert(nID + snp2IntfHitVec_g(i) >= snpResp2ExuHitVec_g(i).asTypeOf(UInt(2.W))  + reqAckHitVec_g(i), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x] NID[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state, nID) }
       }
   }
 
