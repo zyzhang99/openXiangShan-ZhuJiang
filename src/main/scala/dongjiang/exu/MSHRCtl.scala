@@ -168,9 +168,10 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule with HasPerfLogging {
    * Set ready value
    */
   io.updMSHR.ready  := true.B
-  io.resp2Exu.ready := mshrTableReg(io.resp2Exu.bits.pcuIndex.mshrSet)(io.resp2Exu.bits.pcuIndex.mshrWay).isWaitResp
+  io.resp2Exu.ready := true.B
   io.req2Exu.ready  := reqAck_s0_q.io.enq.ready
 
+  assert(Mux(io.resp2Exu.valid, mshrTableReg(io.resp2Exu.bits.pcuIndex.mshrSet)(io.resp2Exu.bits.pcuIndex.mshrWay).isWaitResp, true.B))
 
   // ---------------------------------------------------------------------------------------------------------------------- //
   // ---------------------------------------------- S0: Update MSHR Table Value  ------------------------------------------ //
