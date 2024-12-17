@@ -45,8 +45,8 @@ class DataStorage(sets: Int)(implicit p: Parameters) extends DJModule {
   array.io.req.valid          := io.read.valid | io.write.valid
   array.io.req.bits.write     := io.write.valid
   array.io.req.bits.addr      := Mux(io.write.valid, io.write.bits.index, io.read.bits)
-  array.io.req.bits.data.foreach(_ := io.write.bits.beat)
   array.io.req.bits.mask.get  := io.write.bits.mask
+  array.io.req.bits.data.zip(io.write.bits.beat.asTypeOf(Vec(maskBits, UInt(8.W)))).foreach { case(a, b) => a := b }
 
   io.write.ready  := array.io.req.ready
   io.read.ready   := array.io.req.ready & !io.write.valid
@@ -59,7 +59,7 @@ class DataStorage(sets: Int)(implicit p: Parameters) extends DJModule {
    * Receive Meta SRAM resp
    */
   valid_s2      := array.io.resp.valid
-  resp_s2       := array.io.resp.bits.data(0)
+  resp_s2       := Cat(array.io.resp.bits.data.reverse)
 
 // ---------------------------------------------------------------------------------------------------------------------- //
 // ---------------------------------------------------- S3: Output Resp  ------------------------------------------------ //
