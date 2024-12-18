@@ -166,6 +166,7 @@ class RSEntry(param: InterfaceParam)(implicit p: Parameters) extends DJBundle  {
     val swapFst       = Bool() // Only use in atomic
     val snpFwdSVal    = Bool() // Snoop get SnpRespXFwded
     val snpTgtVec     = Vec(nrCcNode, Bool())
+    val reqIsAtomic   = Bool() // Adding Reg for timing considerations
   }
 
   def state         = entryMes.state
@@ -578,6 +579,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   entrySave.entryMes.swapFst      := Mux(respVal, false.B,                              Mux(snpVal, false.B,                                    rxReq.bits.Addr(offsetBits -1 , 0)(rxReq.bits.Size).asBool))
   entrySave.entryMes.hasData      := Mux(respVal, io.resp2Intf.bits.chiMes.isDat,       Mux(snpVal, io.req2Intf.bits.pcuMes.hasPcuDBID,         false.B))
   entrySave.entryMes.snpTgtVec    := Mux(respVal, DontCare,                             Mux(snpVal, io.req2Intf.bits.pcuMes.snpTgtVec,          DontCare))
+  entrySave.entryMes.reqIsAtomic  := Mux(respVal, false.B,                              Mux(snpVal, false.B,                                    isAtomicX(rxReq.bits.Opcode)))
   entrySave.pcuIndex.mshrWay      := Mux(respVal, io.resp2Intf.bits.pcuIndex.mshrWay,   Mux(snpVal, io.req2Intf.bits.pcuIndex.mshrWay,          DontCare))
   entrySave.pcuIndex.dbID         := Mux(respVal, io.resp2Intf.bits.pcuIndex.dbID,      Mux(snpVal, io.req2Intf.bits.pcuIndex.dbID,             0.U))
   entrySave.chiIndex.txnID        := Mux(respVal, io.resp2Intf.bits.chiIndex.txnID,     Mux(snpVal, io.req2Intf.bits.chiIndex.txnID,            rxReq.bits.TxnID))
@@ -691,7 +693,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   io.dbSigs.dataTDB.bits.data     := rxDat.bits.Data
   io.dbSigs.dataTDB.bits.dataID   := Mux(entrys(entryRecChiDatID).chiIndex.secBeat, "b10".U, rxDat.bits.DataID)
   io.dbSigs.dataTDB.bits.mask     := rxDat.bits.BE
-  io.dbSigs.dataTDB.bits.atomicVal:= isAtomicX(entrys(entryRecChiDatID).chiMes.opcode)
+  io.dbSigs.dataTDB.bits.atomicVal:= entrys(entryRecChiDatID).entryMes.reqIsAtomic
 
   /*
    * Set ready value
@@ -717,7 +719,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   io.dbSigs.getDBID.valid           := entryGetDBIDVec.reduce(_ | _)
   io.dbSigs.getDBID.bits.from       := param.intfID.U
   io.dbSigs.getDBID.bits.entryID    := entryGetDBID
-  io.dbSigs.getDBID.bits.atomicVal  := isAtomicX(entrys(entryGetDBID).chiMes.opcode)
+  io.dbSigs.getDBID.bits.atomicVal  := entrys(entryGetDBID).entryMes.reqIsAtomic
   io.dbSigs.getDBID.bits.atomicOp   := getAtomicOp(entrys(entryGetDBID).chiMes.opcode)
   io.dbSigs.getDBID.bits.swapFst    := entrys(entryGetDBID).entryMes.swapFst
 
@@ -743,7 +745,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
    * Get Tgt ID
    */
   val snpShouldSendOH     = entrys(entrySendSnpID).entryMes.snpTgtVec.asUInt
-  val snpBeSendOH        = snpShouldSendOH ^ snpAlrSendOHReg
+  val snpBeSendOH         = snpShouldSendOH ^ snpAlrSendOHReg
   val snpTgtID            = getNodeIDByMetaID(PriorityEncoder(snpBeSendOH)); assert(PriorityEncoder(snpBeSendOH) < nrCcNode.U | !txSnp.valid)
   snpIsLast               := PopCount(snpBeSendOH) === 1.U; dontTouch(snpIsLast)
   snpAlrSendOHReg         := Mux(txSnp.fire, Mux(snpIsLast, 0.U, snpAlrSendOHReg | UIntToOH(getMetaIDByNodeID(snpTgtID))), snpAlrSendOHReg); assert(fromCcNode(snpTgtID) | !txSnp.valid)
