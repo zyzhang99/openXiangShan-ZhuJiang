@@ -60,211 +60,217 @@ class AtomicProcessUnit()(implicit p: Parameters) extends DJModule with HasPerfL
 
 
 // ----------------------------------------- Reg and Wire declaration ------------------------------------ //
-  val op          = io.in.bits.op
-  // Use In Parse
-  val amoDataVec  = Wire(Vec(32, UInt(8.W)))
-  val inDataVec   = Wire(Vec(32, UInt(8.W)))
-  val loadDataVec = Wire(Vec(8,  UInt(8.W)))
-  val swapDataVec = Wire(Vec(16, UInt(8.W)))
-  val compDataVec = Wire(Vec(16, UInt(8.W)))
-  val initDataVec = Wire(Vec(16, UInt(8.W)))
-  val outDataVec  = Wire(Vec(32, UInt(8.W)))
-  // Use In Execute
-  val dealData    = WireInit(0.U(128.W))
-  // Use In Out
-  val firstIdx    = WireInit(31.U)
-  val lastIdx     = WireInit(31.U)
-  val outReg      = RegInit(0.U.asTypeOf(io.out))
+  // S1: Receive IO In
+  val valid_s1_g      = RegNext(io.in.valid)
+  val in_s1_g         = RegEnable(io.in.bits, io.in.valid)
+  // S1: Use In Parse
+  val op_s1           = in_s1_g.op
+  val amoDataVec_s1   = Wire(Vec(32, UInt(8.W)))
+  val inDataVec_s1    = Wire(Vec(32, UInt(8.W)))
+  val loadDataVec_s1  = Wire(Vec(8,  UInt(8.W)))
+  val swapDataVec_s1  = Wire(Vec(16, UInt(8.W)))
+  val compDataVec_s1  = Wire(Vec(16, UInt(8.W)))
+  val initDataVec_s1  = Wire(Vec(16, UInt(8.W)))
+  // S2: Use In Execute
+  val valid_s2_g      = RegNext(valid_s1_g)
+  val dealData_s2_g   = RegInit(0.U(128.W))
+  // S2: Use In Out
+  val firstIdx_s2_g   = RegInit(31.U)
+  val lastIdx_s2_g    = RegInit(31.U)
+  val inDataVec_s2_g  = RegEnable(inDataVec_s1, valid_s1_g)
+  val outDataVec_s2   = Wire(Vec(32, UInt(8.W)))
+  val dbID_s2_g       = RegEnable(in_s1_g.dbID, valid_s1_g)
 
 
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //
-// --------------------------------------------------- Parse Data Input ------------------------------------------------- //
+// ------------------------------------------------ S1: Parse Data Input ------------------------------------------------ //
 // ---------------------------------------------------------------------------------------------------------------------- //
   /*
    * Parse Data Input
    */
-  val firstByte     = PriorityEncoder(io.in.bits.atomic.mask)
-  val bytesNum      = PopCount(io.in.bits.atomic.mask).asUInt
-  val halfBytesNum  = (bytesNum >> 1).asUInt
-  amoDataVec        := io.in.bits.atomic.data.asTypeOf(amoDataVec)
-  inDataVec         := io.in.bits.data.asTypeOf(inDataVec)
-  assert(firstByte < 16.U | !io.in.valid)
+  val firstByte_s1    = PriorityEncoder(in_s1_g.atomic.mask)
+  val bytesNum_s1     = PopCount(in_s1_g.atomic.mask).asUInt
+  val halfBytesNum_s1 = (bytesNum_s1 >> 1).asUInt
+  amoDataVec_s1       := in_s1_g.atomic.data.asTypeOf(amoDataVec_s1)
+  inDataVec_s1        := in_s1_g.data.asTypeOf(inDataVec_s1)
+  assert(firstByte_s1 < 16.U | !valid_s1_g)
 
   /*
    * Parse loadData
    */
-  loadDataVec.zipWithIndex.foreach {
+  loadDataVec_s1.zipWithIndex.foreach {
     case(load, i) =>
-      load := Mux(i.U < bytesNum, amoDataVec(i.U + firstByte), 0.U)
+      load := Mux(i.U < bytesNum_s1, amoDataVec_s1(i.U + firstByte_s1), 0.U)
   }
 
   /*
    * Parse swapData
    */
-  swapDataVec.zipWithIndex.foreach {
+  swapDataVec_s1.zipWithIndex.foreach {
     case(swap, i) =>
-      when(op === SWAP) {
-        swap := Mux(i.U < bytesNum, amoDataVec(i.U + firstByte), 0.U)
-      }.elsewhen(io.in.bits.atomic.swapFst) {
-        swap := Mux(i.U < halfBytesNum, amoDataVec(i.U + firstByte), 0.U)
+      when(op_s1 === SWAP) {
+        swap := Mux(i.U < bytesNum_s1, amoDataVec_s1(i.U + firstByte_s1), 0.U)
+      }.elsewhen(in_s1_g.atomic.swapFst) {
+        swap := Mux(i.U < halfBytesNum_s1, amoDataVec_s1(i.U + firstByte_s1), 0.U)
       }.otherwise {
-        swap := Mux(i.U < halfBytesNum, amoDataVec(i.U + firstByte + halfBytesNum), 0.U)
+        swap := Mux(i.U < halfBytesNum_s1, amoDataVec_s1(i.U + firstByte_s1 + halfBytesNum_s1), 0.U)
       }
   }
 
   /*
    * Parse compData
    */
-  compDataVec.zipWithIndex.foreach {
+  compDataVec_s1.zipWithIndex.foreach {
     case (comp, i) =>
-     when(io.in.bits.atomic.swapFst) {
-        comp := Mux(i.U < halfBytesNum, amoDataVec(i.U + firstByte + halfBytesNum), 0.U)
+     when(in_s1_g.atomic.swapFst) {
+        comp := Mux(i.U < halfBytesNum_s1, amoDataVec_s1(i.U + firstByte_s1 + halfBytesNum_s1), 0.U)
       }.otherwise {
-        comp := Mux(i.U < halfBytesNum, amoDataVec(i.U + firstByte), 0.U)
+        comp := Mux(i.U < halfBytesNum_s1, amoDataVec_s1(i.U + firstByte_s1), 0.U)
       }
   }
 
   /*
    * Parse initData
    */
-  initDataVec.zipWithIndex.foreach {
+  initDataVec_s1.zipWithIndex.foreach {
     case (init, i) =>
-      when(op === COMPARE & io.in.bits.atomic.swapFst) {
-        init := Mux(i.U < halfBytesNum, inDataVec(i.U + firstByte + halfBytesNum), 0.U)
-      }.elsewhen(op === COMPARE) {
-        init := Mux(i.U < halfBytesNum, inDataVec(i.U + firstByte), 0.U)
+      when(op_s1 === COMPARE & in_s1_g.atomic.swapFst) {
+        init := Mux(i.U < halfBytesNum_s1, inDataVec_s1(i.U + firstByte_s1 + halfBytesNum_s1), 0.U)
+      }.elsewhen(op_s1 === COMPARE) {
+        init := Mux(i.U < halfBytesNum_s1, inDataVec_s1(i.U + firstByte_s1), 0.U)
       }.otherwise {
-        init := Mux(i.U < bytesNum,     inDataVec(i.U + firstByte), 0.U)
+        init := Mux(i.U < bytesNum_s1,     inDataVec_s1(i.U + firstByte_s1), 0.U)
       }
   }
 
 
-
 // ---------------------------------------------------------------------------------------------------------------------- //
-// --------------------------------------------------- Excute Atomic ---------------------------------------------------- //
+// ------------------------------------------------- S2 Excute Atomic --------------------------------------------------- //
 // ---------------------------------------------------------------------------------------------------------------------- //
   /*
    * Get the absolute value
    */
-  val sIntBit   = ((bytesNum << 3.U).asUInt - 1.U).asTypeOf(UInt(6.W))
-  def getAbs(in: UInt): UInt = {
-    val outVec  = Wire(Vec(64, Bool()))
-    when(in(sIntBit)){
-      val temp  = ~(in - 1.U)
-      temp.asBools.zipWithIndex.foreach { case(t, i) => outVec(i) := Mux(i.U < sIntBit, t, false.B) }
+  val sIntBit_s1  = ((bytesNum_s1 << 3.U).asUInt - 1.U).asTypeOf(UInt(6.W))
+  def getAbs_s1(in: UInt): UInt = {
+    val outVec    = Wire(Vec(64, Bool()))
+    when(in(sIntBit_s1)){
+      val temp    = ~(in - 1.U)
+      temp.asBools.zipWithIndex.foreach { case(t, i) => outVec(i) := Mux(i.U < sIntBit_s1, t, false.B) }
     }.otherwise {
-      outVec    := in.asBools
+      outVec      := in.asBools
     }
     outVec.asUInt
   }
 
-  /*
-   * AtomicLoad
-   */
-  when(op < SWAP) {
-    // Get txnData and initData
-    val txnData       = loadDataVec.asTypeOf(UInt(64.W))
-    val initData      = initDataVec.asTypeOf(txnData)
-    // Get
-    switch(op) {
-      // LDADD
-      is(LDADD) {
-        dealData      := txnData + initData
-      }
-      // LDCLR
-      is(LDCLR) {
-        dealData      := initData & (~txnData).asUInt
-      }
-      // LDEOR
-      is(LDEOR) {
-        dealData      := initData ^ txnData
-      }
-      // LDSET
-      is(LDSET) {
-        dealData      := initData | txnData
-      }
-      // LDSMAX
-      is(LDSMAX) {
-        val txnBigger = Wire(Bool())
-        when(txnData(sIntBit) === initData(sIntBit)) {
-          val txnAbs  = Mux(txnData(sIntBit), getAbs(txnData), txnData)
-          val initAbs = Mux(txnData(sIntBit), getAbs(initData), initData)
-          txnBigger   := txnAbs > initAbs
-        }.otherwise {
-          txnBigger   := !txnData(sIntBit)
+  when(valid_s1_g) {
+    /*
+     * AtomicLoad
+     */
+    when(op_s1 < SWAP) {
+      // Get txnData and initData
+      val txnData       = loadDataVec_s1.asTypeOf(UInt(64.W))
+      val initData      = initDataVec_s1.asTypeOf(txnData)
+      // Get
+      switch(op_s1) {
+        // LDADD
+        is(LDADD) {
+          dealData_s2_g := txnData + initData
         }
-        dealData      := Mux(txnBigger, txnData, initData)
-      }
-      // LDSMIN
-      is(LDSMIN) {
-        val iniBigger = Wire(Bool())
-        when(txnData(sIntBit) === initData(sIntBit)) {
-          val txnAbs  = Mux(txnData(sIntBit), getAbs(txnData), txnData)
-          val initAbs = Mux(txnData(sIntBit), getAbs(initData), initData)
-          iniBigger   := txnAbs < initAbs
-        }.otherwise {
-          iniBigger   := txnData(sIntBit)
+        // LDCLR
+        is(LDCLR) {
+          dealData_s2_g := initData & (~txnData).asUInt
         }
-        dealData      := Mux(iniBigger, txnData, initData)
+        // LDEOR
+        is(LDEOR) {
+          dealData_s2_g := initData ^ txnData
+        }
+        // LDSET
+        is(LDSET) {
+          dealData_s2_g := initData | txnData
+        }
+        // LDSMAX
+        is(LDSMAX) {
+          val txnBigger = Wire(Bool())
+          when(txnData(sIntBit_s1) === initData(sIntBit_s1)) {
+            val txnAbs  = Mux(txnData(sIntBit_s1), getAbs_s1(txnData), txnData)
+            val initAbs = Mux(txnData(sIntBit_s1), getAbs_s1(initData), initData)
+            txnBigger   := txnAbs > initAbs
+          }.otherwise {
+            txnBigger   := !txnData(sIntBit_s1)
+          }
+          dealData_s2_g := Mux(txnBigger, txnData, initData)
+        }
+        // LDSMIN
+        is(LDSMIN) {
+          val iniBigger = Wire(Bool())
+          when(txnData(sIntBit_s1) === initData(sIntBit_s1)) {
+            val txnAbs  = Mux(txnData(sIntBit_s1), getAbs_s1(txnData), txnData)
+            val initAbs = Mux(txnData(sIntBit_s1), getAbs_s1(initData), initData)
+            iniBigger   := txnAbs < initAbs
+          }.otherwise {
+            iniBigger   := txnData(sIntBit_s1)
+          }
+          dealData_s2_g := Mux(iniBigger, txnData, initData)
+        }
+        // LDUMAX
+        is(LDUMAX) {
+          dealData_s2_g := Mux(txnData > initData, txnData, initData)
+        }
+        // LDUMIN
+        is(LDUMIN) {
+          dealData_s2_g := Mux(txnData < initData, txnData, initData)
+        }
       }
-      // LDUMAX
-      is(LDUMAX) {
-        dealData      := Mux(txnData > initData, txnData, initData)
-      }
-      // LDUMIN
-      is(LDUMIN) {
-        dealData      := Mux(txnData < initData, txnData, initData)
-      }
+    /*
+     * AtomicSwap
+     */
+    }.elsewhen(op_s1 === SWAP) {
+      val swapData      = swapDataVec_s1.asTypeOf(UInt(64.W))
+      dealData_s2_g     := swapData
+    /*
+     * AtomicCompare
+     */
+    }.elsewhen(op_s1 === COMPARE) {
+      val swapData      = swapDataVec_s1.asTypeOf(UInt(128.W))
+      val compData      = compDataVec_s1.asTypeOf(UInt(128.W))
+      val initData      = initDataVec_s1.asTypeOf(compData)
+      dealData_s2_g     := Mux(compData === initData, swapData, compData)
+    /*
+     * Other
+     */
+    }.otherwise {
+      assert(false.B | !valid_s1_g)
     }
-  /*
-   * AtomicSwap
-   */
-  }.elsewhen(op === SWAP) {
-    val swapData      = swapDataVec.asTypeOf(UInt(64.W))
-    dealData          := swapData
-  /*
-   * AtomicCompare
-   */
-  }.elsewhen(op === COMPARE) {
-    val swapData      = swapDataVec.asTypeOf(UInt(128.W))
-    val compData      = compDataVec.asTypeOf(UInt(128.W))
-    val initData      = initDataVec.asTypeOf(compData)
-    dealData          := Mux(compData === initData, swapData, compData)
-  /*
-   * Other
-   */
-  }.otherwise {
-    assert(false.B | !io.in.valid)
   }
-
 
 // ---------------------------------------------------------------------------------------------------------------------- //
 // --------------------------------------------------- Output Result ---------------------------------------------------- //
 // ---------------------------------------------------------------------------------------------------------------------- //
-  val dealDataVec   = dealData.asTypeOf(Vec(16, UInt(8.W)))
-
-  outDataVec.zipWithIndex.foreach {
-    case(out, i) =>
-      when(op === COMPARE & io.in.bits.atomic.swapFst) {
-        firstIdx    := firstByte + halfBytesNum
-        lastIdx     := firstByte + bytesNum
-      }.elsewhen(op === COMPARE) {
-        firstIdx    := firstByte
-        lastIdx     := firstByte + halfBytesNum
-      }.otherwise {
-        firstIdx    := firstByte
-        lastIdx     := firstByte + bytesNum
-      }
-      out := Mux(firstIdx <= i.U & i.U < lastIdx, dealDataVec(i.U - firstIdx), inDataVec(i))
+  when(valid_s1_g) {
+    when(op_s1 === COMPARE & in_s1_g.atomic.swapFst) {
+      firstIdx_s2_g := firstByte_s1 + halfBytesNum_s1
+      lastIdx_s2_g  := firstByte_s1 + bytesNum_s1
+    }.elsewhen(op_s1 === COMPARE) {
+      firstIdx_s2_g := firstByte_s1
+      lastIdx_s2_g  := firstByte_s1 + halfBytesNum_s1
+    }.otherwise {
+      firstIdx_s2_g := firstByte_s1
+      lastIdx_s2_g  := firstByte_s1 + bytesNum_s1
+    }
   }
 
-  outReg.valid      := io.in.valid
-  outReg.bits.dbID  := io.in.bits.dbID
-  outReg.bits.data  := outDataVec.asUInt
 
-  io.out            := outReg
+  val dealDataVec_s2  = dealData_s2_g.asTypeOf(Vec(16, UInt(8.W)))
+  outDataVec_s2.zipWithIndex.foreach {
+    case(out, i) =>
+      out := Mux(firstIdx_s2_g <= i.U & i.U < lastIdx_s2_g, dealDataVec_s2(i.U - firstIdx_s2_g), inDataVec_s2_g(i))
+  }
+
+  io.out.valid      := valid_s2_g
+  io.out.bits.dbID  := dbID_s2_g
+  io.out.bits.data  := outDataVec_s2.asUInt
 }
 
 
