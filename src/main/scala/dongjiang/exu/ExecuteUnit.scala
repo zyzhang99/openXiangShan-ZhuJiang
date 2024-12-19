@@ -29,8 +29,6 @@ class ExecuteUnit(implicit p: Parameters) extends DJModule {
   val reqPipe       = Module(new ProcessPipe())
   val respPipe      = Module(new ProcessPipe())
   val mshrCtl       = Module(new MSHRCtl())
-  val mpReqQueue    = Module(new Queue(gen = new Req2IntfBundle(), entries = djparam.nrExuReqQueue, pipe = true, flow = true))
-  val mpRespQueue   = Module(new Queue(gen = new Resp2IntfBundle(),entries = djparam.nrExuRespQueue, pipe = true, flow = true))
 
 // --------------------------- Connection ---------------------------//
   directory.io.dirRReadyVec           <> mshrCtl.io.dirRReadyVec
@@ -52,6 +50,7 @@ class ExecuteUnit(implicit p: Parameters) extends DJModule {
   mshrCtl.io.updLockMSHR(PipeID.RESP) <> respPipe.io.updLockMSHR
   mshrCtl.io.updLockMSHR(PipeID.REQ)  <> reqPipe.io.updLockMSHR
 
+
   mshrCtl.io.pcuID          := io.pcuID
   mshrCtl.io.dcuID          := io.dcuID
   respPipe.io.pcuID         := io.pcuID
@@ -60,10 +59,8 @@ class ExecuteUnit(implicit p: Parameters) extends DJModule {
   reqPipe.io.dcuID          := io.dcuID
 
 
-  mpReqQueue.io.enq         <> fastPriorityArbDec(Seq(respPipe.io.req2Intf, reqPipe.io.req2Intf))
-  mpRespQueue.io.enq        <> fastPriorityArbDec(Seq(respPipe.io.resp2Intf, reqPipe.io.resp2Intf))
-  io.req2Intf               <> mpReqQueue.io.deq
-  io.resp2Intf              <> mpRespQueue.io.deq
+  io.req2Intf               <> fastPriorityArbDec(Seq(respPipe.io.req2Intf, reqPipe.io.req2Intf))
+  io.resp2Intf              <> fastPriorityArbDec(Seq(respPipe.io.resp2Intf, reqPipe.io.resp2Intf))
   io.dbRCReq                <> fastPriorityArbDec(Seq(respPipe.io.dbRCReq, reqPipe.io.dbRCReq))
 
 // --------------------------- Assertion ---------------------------//
