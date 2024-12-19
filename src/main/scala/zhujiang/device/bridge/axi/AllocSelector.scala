@@ -32,7 +32,7 @@ class DataBufferAllocReqSelector(outstanding: Int) extends Module {
   })
 
   private val selector = Module(new SelNto1(outstanding, outstanding))
-  private val selOhReg = RegNext(selector.io.out) // Do not gate this reg
+  private val selReg = RegNext(selector.io.out) // Do not gate this reg
   private val selArb = Module(new ResetRRArbiter(new AxiDataBufferAllocReq(outstanding), outstanding))
   private val selPipe = Module(new Queue(new AxiDataBufferAllocReq(outstanding), entries = 2))
 
@@ -41,9 +41,9 @@ class DataBufferAllocReqSelector(outstanding: Int) extends Module {
     selector.io.in(i).bits := io.in(i).bits
     io.in(i).ready := selArb.io.in(i).fire
 
-    selArb.io.in(i).valid := selOhReg(i)
+    selArb.io.in(i).valid := selReg(i)
     selArb.io.in(i).bits.idxOH := (1L << i).U
-    selArb.io.in(i).bits.size := Mux1H(selOhReg, io.in.map(_.bits.size))
+    selArb.io.in(i).bits.size := io.in(i).bits.size
   }
   selPipe.io.enq <> selArb.io.out
   io.out <> selPipe.io.deq
