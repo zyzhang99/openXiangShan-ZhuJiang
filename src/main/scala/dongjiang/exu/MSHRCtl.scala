@@ -344,8 +344,8 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule with HasPerfLogging {
   /*
    * Get task_s0(resp) from MSHRTable
    */
-  val respSendSet         = RREncoder(respWillSendVecVec.map(_.reduce(_ | _))); dontTouch(respSendSet)
-  val respSendWay         = RREncoder(respWillSendVecVec(respSendSet)); dontTouch(respSendWay)
+  val respSendSet         = StepRREncoder(respWillSendVecVec.map(_.reduce(_ | _))); dontTouch(respSendSet)
+  val respSendWay         = StepRREncoder(respWillSendVecVec(respSendSet)); dontTouch(respSendWay)
   val mshrResp            = mshrTableReg(respSendSet)(respSendWay)
   val taskRespValid       = respWillSendVecVec.map(_.reduce(_ | _)).reduce(_ | _)
 
@@ -353,8 +353,8 @@ class MSHRCtl()(implicit p: Parameters) extends DJModule with HasPerfLogging {
   /*
    * Get task_s0(req) from MSHRTable
    */
-  val reqSendSet          = RREncoder(reqWillSendVecVec.map(_.reduce(_ | _))); dontTouch(reqSendSet)
-  val reqSendWay          = RREncoder(reqWillSendVecVec(reqSendSet)); dontTouch(reqSendWay)
+  val reqSendSet          = StepRREncoder(reqWillSendVecVec.map(_.reduce(_ | _))); dontTouch(reqSendSet)
+  val reqSendWay          = StepRREncoder(reqWillSendVecVec(reqSendSet)); dontTouch(reqSendWay)
   val mshrReq             = mshrTableReg(reqSendSet)(reqSendWay)
   val taskReqValid        = reqWillSendVecVec.map(_.reduce(_ | _)).reduce(_ | _)
 

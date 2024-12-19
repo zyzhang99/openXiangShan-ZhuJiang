@@ -4,7 +4,7 @@ import dongjiang._
 import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config._
-import dongjiang.utils.Encoder.RREncoder
+import dongjiang.utils.Encoder.StepRREncoder
 import xs.utils.perf.HasPerfLogging
 import xs.utils.sram.DualPortSramTemplate
 
@@ -86,6 +86,7 @@ class DataBuffer()(implicit p: Parameters) extends DJModule with HasPerfLogging 
 // ---------------------------------------------------------------------------------------------------------------------- //
 // -------------------------------------------------- GetDBID & DBIDResp ------------------------------------------------ //
 // ---------------------------------------------------------------------------------------------------------------------- //
+  // TODO: optimize selet db entry logic
   val dbFreeVec                 = ctrlEntrys.map(_.isFree)
   val dbWithApuFreeVec          = dbFreeVec.reverse.slice(0, djparam.nrAPU)
   val reqIsAtomic               = io.getDBID.bits.atomicVal
@@ -161,7 +162,7 @@ class DataBuffer()(implicit p: Parameters) extends DJModule with HasPerfLogging 
   // TODO: Ensure that the order of dataFDB Out is equal to the order of dbRCReq In
   val readVec     = ctrlEntrys.map(_.isRead)
   val readingVec  = ctrlEntrys.map(_.isReading)
-  val readId      = RREncoder(readVec)
+  val readId      = StepRREncoder(readVec)
   val readingId   = PriorityEncoder(readingVec)
   val hasReading  = readingVec.reduce(_ | _)
   val selReadId   = Mux(hasReading, readingId, readId)

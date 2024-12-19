@@ -9,7 +9,7 @@ import dongjiang.pcu._
 import dongjiang.chi._
 import chisel3._
 import chisel3.util._
-import dongjiang.utils.Encoder.RREncoder
+import dongjiang.utils.Encoder.StepRREncoder
 import org.chipsalliance.cde.config._
 import dongjiang.utils.FastArb._
 import xijiang.Node
@@ -392,7 +392,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
    * Send Get DBID Req To From DataBuffer
    */
   val entryGetDBIDVec                 = entrys.map(_.isGetDBID)
-  entryGetDBID                        := RREncoder(entryGetDBIDVec)
+  entryGetDBID                        := StepRREncoder(entryGetDBIDVec)
 
   /*
    * Set DataBuffer Req Value

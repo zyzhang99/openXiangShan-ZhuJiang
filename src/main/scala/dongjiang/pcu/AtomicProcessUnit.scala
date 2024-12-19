@@ -5,7 +5,6 @@ import AtomicOp._
 import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config._
-import dongjiang.utils.Encoder.RREncoder
 import xs.utils.perf.HasPerfLogging
 
 
