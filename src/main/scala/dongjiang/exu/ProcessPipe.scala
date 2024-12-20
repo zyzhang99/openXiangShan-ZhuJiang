@@ -480,7 +480,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   readDCU_s4                        := DontCare
   readDCU_s4.chiIndex.txnID         := s4_g.task.chiIndex.txnID
   readDCU_s4.chiIndex.nodeID        := s4_g.task.chiIndex.nodeID
-  readDCU_s4.chiIndex.beatOH        := Mux(taskIsAtomic_s4 , "b11".U, s4_g.task.chiIndex.beatOH) 
+  readDCU_s4.chiIndex.beatOH        := s4_g.task.chiIndex.beatOH
   readDCU_s4.chiMes.channel         := CHIChannel.REQ
   readDCU_s4.chiMes.expCompAck      := false.B
   readDCU_s4.chiMes.opcode          := s4_g.decode.rdOp
