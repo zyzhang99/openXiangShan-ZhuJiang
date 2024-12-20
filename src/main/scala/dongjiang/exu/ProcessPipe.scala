@@ -197,13 +197,14 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
    * Set Inst value
    */
   val taskIsWriPtl_s3 = isWriXPtl(task_s3.bits.chiMes.opcode) & task_s3.bits.chiMes.isReq
+  val taskIsWriUni_s3 = isWriUniX(task_s3.bits.chiMes.opcode) & task_s3.bits.chiMes.isReq
   val taskIsCMO_s3    = isCMO(task_s3.bits.chiMes.opcode)     & task_s3.bits.chiMes.isReq
   val taskIsCB_s3     = isCBX(task_s3.bits.chiMes.opcode)     & task_s3.bits.chiMes.isReq
   val taskIsAtomic_s3 = isAtomicX(task_s3.bits.chiMes.opcode) & task_s3.bits.chiMes.isReq
 
   assert(Mux(taskIsWriPtl_s3 & task_s3.valid, !task_s3.bits.respMes.slvResp.valid, true.B))
   assert(Mux(taskIsWriPtl_s3 & task_s3.valid, task_s3.bits.respMes.slvDBID.valid, true.B))
-  assert(Mux(taskIsAtomic_s3 & task_s3.valid, task_s3.bits.respMes.slvDBID.valid, true.B))
+  assert(Mux(taskIsAtomic_s3 & task_s3.valid, (task_s3.bits.taskMes.pipeID === PipeID.REQ & task_s3.bits.respMes.slvDBID.valid) | (task_s3.bits.taskMes.pipeID === PipeID.RESP & inst_s3.respHasData), true.B))
   assert(Mux(taskIsAtomic_s3 & task_s3.valid, !isAtomicStoreX(task_s3.bits.chiMes.opcode), true.B))
 
 
@@ -264,12 +265,13 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   /*
    * Decode Req
    */
-  inst_req_s3.channel   := inst_s3.channel
-  inst_req_s3.opcode    := inst_s3.opcode
-  inst_req_s3.srcState  := inst_s3.srcState
-  inst_req_s3.othState  := inst_s3.othState
-  inst_req_s3.hnState   := inst_s3.hnState
-  inst_req_s3.respType  := RespType.NotResp
+  inst_req_s3.channel     := inst_s3.channel
+  inst_req_s3.opcode      := inst_s3.opcode
+  inst_req_s3.srcState    := inst_s3.srcState
+  inst_req_s3.othState    := inst_s3.othState
+  inst_req_s3.hnState     := inst_s3.hnState
+  inst_req_s3.respHasData := taskIsAtomic_s3 | taskIsWriUni_s3
+  inst_req_s3.respType    := RespType.NotResp
 
   /*
    * Set Snoop Target Value
