@@ -280,7 +280,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
           val reqHit    = io.req2Intf.fire & isReadX(io.req2Intf.bits.chiMes.opcode) & entryGetReqID === i.U; assert(!reqHit | io.req2Intf.bits.chiMes.opcode === ReadNoSnp)
           val writeHit  = io.req2Intf.fire & isWriteX(io.req2Intf.bits.chiMes.opcode) & entryGetReqID === i.U; assert(!writeHit | io.req2Intf.bits.chiMes.opcode === WriteNoSnpFull | io.req2Intf.bits.chiMes.opcode === WriteNoSnpPtl)
           val replHit   = io.req2Intf.fire & isReplace(io.req2Intf.bits.chiMes.opcode) & entryGetReqID === i.U; assert(!replHit | io.req2Intf.bits.chiMes.opcode === Replace)
-          entry.state     := Mux(reqHit, Mux(io.req2Intf.bits.pcuMes.doDMT, SMState.Req2Node, SMState.GetDBID),
+          entry.state     := Mux(reqHit, Mux((io.req2Intf.bits.pcuMes.doDMT | io.req2Intf.bits.pcuMes.hasPcuDBID), SMState.Req2Node, SMState.GetDBID),
                               Mux(writeHit, SMState.Req2Node,
                                 Mux(replHit, SMState.Req2Node, entry.state)))
         }
@@ -362,6 +362,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
   entrySave.entryMes.doDMT    := io.req2Intf.bits.pcuMes.doDMT
   entrySave.entryMes.toDCU    := io.req2Intf.bits.pcuMes.toDCU
   entrySave.entryMes.selfWay  := io.req2Intf.bits.pcuMes.selfWay
+  entrySave.entryMes.hasData  := io.req2Intf.bits.pcuMes.hasPcuDBID
   entrySave.pcuIndex.mshrWay  := io.req2Intf.bits.pcuIndex.mshrWay
   entrySave.pcuIndex.dbID     := io.req2Intf.bits.pcuIndex.dbID
   entrySave.chiMes.resp       := io.req2Intf.bits.chiMes.resp
