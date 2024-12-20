@@ -342,7 +342,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
         // assert
         assert(!(hitRespDat & hitFDB), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
         when(hitRespDat) {
-          assert(isWriteX(entrys(i).chiMes.opcode) | (entrys(i).chiMes.opcode === CompDBIDResp & entrys(i).chiMes.isRsp) | (entrys(i).chiMes.isSnp & entrys(i).chiMes.retToSrc), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
+          assert(isWriteX(entrys(i).chiMes.opcode) | (entrys(i).chiMes.opcode === CompDBIDResp & entrys(i).chiMes.isRsp) | (entrys(i).chiMes.isReq & isAtomicX(entrys(i).chiMes.opcode)) | (entrys(i).chiMes.isSnp & entrys(i).chiMes.retToSrc), "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
         }.elsewhen(hitFDB) {
           assert(entrys(i).isDatBeSend, "RNSLV ENTRY[0x%x] ADDR[0x%x] STATE[0x%x]", i.U, entrys(i).fullAddr(io.pcuID), entrys(i).state)
         }.elsewhen(entrys(i).chiMes.isSnp & hitRespRsp & rxRsp.bits.Opcode === CompAck) {
@@ -666,7 +666,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
   txRsp.bits         := DontCare
   txRsp.bits.Opcode  := Mux(entrys(entrySendRspID).chiMes.isRsp, entrys(entrySendRspID).chiMes.opcode,  // Resp from exu
                           Mux(isReadX(entrys(entrySendRspID).chiMes.opcode), ReadReceipt,               // ReadOnce
-                            Mux(entrys(entrySendRspID).state === RSState.DBIDResp2Node, Mux(isWriUniX(entrys(entrySendRspID).chiMes.opcode), DBIDResp, CompDBIDResp), // Write or CopyBack Send DBIDResp
+                            Mux(entrys(entrySendRspID).state === RSState.DBIDResp2Node, Mux(isWriUniX(entrys(entrySendRspID).chiMes.opcode) | isAtomicX(entrys(entrySendRspID).chiMes.opcode), DBIDResp, CompDBIDResp), // Write or CopyBack Send DBIDResp
                               Comp))) // Write Send Comp
   txRsp.bits.TgtID   := getFullNodeID(entrys(entrySendRspID).chiIndex.nodeID)
   txRsp.bits.SrcID   := io.hnfID
