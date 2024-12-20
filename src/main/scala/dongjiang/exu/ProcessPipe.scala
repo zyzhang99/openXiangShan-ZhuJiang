@@ -92,6 +92,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   })); dontTouch(s4_temp_g)
   // s4 signals get from s3
   val s3                  = WireInit(0.U.asTypeOf(s4_temp_g)); dontTouch(s3)
+  val rnHitVec_s3         = Wire(Vec(dirRes_s3.bits.sf.metaVec.size, Bool()))
   val valid_s4_g          = RegInit(false.B)
   val canGo_s4            = Wire(Bool())
   val s4_g                = RegInit(0.U.asTypeOf(s4_temp_g)); dontTouch(s4_g)
@@ -273,13 +274,12 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   inst_req_s3.srcState    := inst_s3.srcState
   inst_req_s3.othState    := inst_s3.othState
   inst_req_s3.hnState     := inst_s3.hnState
-  inst_req_s3.respHasData := taskIsAtomic_s3 | taskIsWriUni_s3
+  inst_req_s3.respHasData := taskIsAtomic_s3 | taskIsWriUni_s3 // TODO: respHasData maybe different from resppipe to reqpipe, therefore, resppipe may get error SNPTYPE(SnpTgt)
   inst_req_s3.respType    := RespType.NotResp
 
   /*
    * Set Snoop Target Value
    */
-  val rnHitVec_s3     = Wire(Vec(dirRes_s3.bits.sf.metaVec.size, Bool()))
   rnHitVec_s3         := dirRes_s3.bits.sf.metaVec.map(!_.isInvalid); dontTouch(rnHitVec_s3)
   val rnHitWithoutSrc = rnHitVec_s3.zipWithIndex.map { case(hit, i) => hit & i.U =/= srcMetaID_s3 }
   when(decode_req_s3.snpTgt === SnpTgt.ALL)       { snpNodeVec_s3 := rnHitVec_s3 }
@@ -442,7 +442,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   taskRD_s4.pcuMes.useAddr        := s4_g.task.taskMes.useAddr
   taskRD_s4.pcuMes.doDMT          := djparam.openDMT.asBool & !(taskIsAtomic_s4)
   taskRD_s4.pcuMes.toDCU          := false.B
-  taskRD_s4.pcuMes.hasPcuDBID     := dbid_s4.valid; assert(Mux((s4_g.decode.readDCU | s4_g.decode.readDown) & dbid_s4.valid & valid_s4_g, taskIsWriPtl_s4 | taskIsAtomic_s4, true.B))
+  taskRD_s4.pcuMes.hasPcuDBID     := dbid_s4.valid; assert(Mux((s4_g.decode.readDCU | s4_g.decode.readDown) & dbid_s4.valid & valid_s4_g, taskIsAtomic_s4, true.B))
 
 
   /*
@@ -493,7 +493,7 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   readDCU_s4.pcuMes.doDMT           := djparam.openDMT.asBool & !(taskIsAtomic_s4)
   readDCU_s4.pcuMes.selfWay         := OHToUInt(s4_g.dirRes.s.wayOH)
   readDCU_s4.pcuMes.toDCU           := true.B
-  readDCU_s4.pcuMes.hasPcuDBID      := dbid_s4.valid; assert(Mux((s4_g.decode.readDCU | s4_g.decode.readDown) & dbid_s4.valid & valid_s4_g, taskIsWriPtl_s4 | taskIsAtomic_s4, true.B))
+  readDCU_s4.pcuMes.hasPcuDBID      := dbid_s4.valid; assert(Mux((s4_g.decode.readDCU | s4_g.decode.readDown) & dbid_s4.valid & valid_s4_g, taskIsAtomic_s4, true.B))
 
 
   /*
