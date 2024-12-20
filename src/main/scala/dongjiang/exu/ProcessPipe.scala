@@ -63,9 +63,9 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   val srcMetaID_s3        = Wire(UInt((metaIdBits+1).W)) // An extra bit is used to distinguish the RNI
   // s3 decode base signals
   val inst_s3             = Wire(new InstBundle()); dontTouch(inst_s3)
-  val inst_req_s3         = WireInit(0.U.asTypeOf(new InstBundle()))
+  val inst_req_s3         = WireInit(0.U.asTypeOf(new InstBundle())); dontTouch(inst_s3)
   val decode_s3           = Wire(new DecodeBundle()); dontTouch(decode_s3)
-  val decode_req_s3       = Wire(new DecodeBundle())
+  val decode_req_s3       = Wire(new DecodeBundle()); dontTouch(decode_req_s3)
   val snpNodeVec_s3       = WireInit(VecInit(Seq.fill(nrCcNode) { false.B }))
   // s3 execute(update MSHR) signals: task to do list
   val todo_s3             = WireInit(0.U.asTypeOf(new OperationsBundle())); dontTouch(todo_s3)
@@ -274,7 +274,8 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   /*
    * Set Snoop Target Value
    */
-  val rnHitVec_s3     = dirRes_s3.bits.sf.metaVec.map(!_.isInvalid)
+  val rnHitVec_s3     = Wire(Vec(dirRes_s3.bits.sf.metaVec.size, Bool()))
+  rnHitVec_s3         := dirRes_s3.bits.sf.metaVec.map(!_.isInvalid); dontTouch(rnHitVec_s3)
   val rnHitWithoutSrc = rnHitVec_s3.zipWithIndex.map { case(hit, i) => hit & i.U =/= srcMetaID_s3 }
   when(decode_req_s3.snpTgt === SnpTgt.ALL)       { snpNodeVec_s3 := rnHitVec_s3 }
   .elsewhen(decode_req_s3.snpTgt === SnpTgt.OTH)  { snpNodeVec_s3 := rnHitWithoutSrc }
