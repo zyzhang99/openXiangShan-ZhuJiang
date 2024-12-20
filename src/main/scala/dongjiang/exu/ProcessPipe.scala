@@ -428,7 +428,9 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
    * Send Read to SN(DDRC) / HN-F(CSN)
    */
   taskRD_s4                       := DontCare
-  taskRD_s4.chiIndex              := s4_g.task.chiIndex
+  taskRD_s4.chiIndex.txnID        := s4_g.task.chiIndex.txnID
+  taskRD_s4.chiIndex.nodeID       := s4_g.task.chiIndex.nodeID
+  taskRD_s4.chiIndex.beatOH       := Mux(taskIsAtomic_s4 , "b11".U, s4_g.task.chiIndex.beatOH) 
   taskRD_s4.chiMes.channel        := CHIChannel.REQ
   taskRD_s4.chiMes.expCompAck     := false.B
   taskRD_s4.chiMes.opcode         := s4_g.decode.rdOp
@@ -436,9 +438,11 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   taskRD_s4.from                  := io.dcuID
   taskRD_s4.to                    := IncoID.LOCALMST.U
   taskRD_s4.pcuIndex.mshrWay      := s4_g.task.taskMes.mshrWay
+  taskRD_s4.pcuIndex.dbID         := dbid_s4.bits
   taskRD_s4.pcuMes.useAddr        := s4_g.task.taskMes.useAddr
-  taskRD_s4.pcuMes.doDMT          := djparam.openDMT.asBool
+  taskRD_s4.pcuMes.doDMT          := djparam.openDMT.asBool & !(taskIsAtomic_s4)
   taskRD_s4.pcuMes.toDCU          := false.B
+  taskRD_s4.pcuMes.hasPcuDBID     := dbid_s4.valid; assert(Mux((s4_g.decode.readDCU | s4_g.decode.readDown) & dbid_s4.valid & valid_s4_g, taskIsWriPtl_s4 | taskIsAtomic_s4, true.B))
 
 
   /*
@@ -474,7 +478,9 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
    * Send Read to SN(DCU)
    */
   readDCU_s4                        := DontCare
-  readDCU_s4.chiIndex               := s4_g.task.chiIndex
+  readDCU_s4.chiIndex.txnID         := s4_g.task.chiIndex.txnID
+  readDCU_s4.chiIndex.nodeID        := s4_g.task.chiIndex.nodeID
+  readDCU_s4.chiIndex.beatOH        := Mux(taskIsAtomic_s4 , "b11".U, s4_g.task.chiIndex.beatOH) 
   readDCU_s4.chiMes.channel         := CHIChannel.REQ
   readDCU_s4.chiMes.expCompAck      := false.B
   readDCU_s4.chiMes.opcode          := s4_g.decode.rdOp
@@ -482,10 +488,12 @@ class ProcessPipe(implicit p: Parameters) extends DJModule with HasPerfLogging {
   readDCU_s4.from                   := io.dcuID
   readDCU_s4.to                     := IncoID.LOCALMST.U
   readDCU_s4.pcuIndex.mshrWay       := s4_g.task.taskMes.mshrWay
+  readDCU_s4.pcuIndex.dbID          := dbid_s4.bits
   readDCU_s4.pcuMes.useAddr         := s4_g.task.taskMes.useAddr
-  readDCU_s4.pcuMes.doDMT           := djparam.openDMT.asBool
+  readDCU_s4.pcuMes.doDMT           := djparam.openDMT.asBool & !(taskIsAtomic_s4)
   readDCU_s4.pcuMes.selfWay         := OHToUInt(s4_g.dirRes.s.wayOH)
   readDCU_s4.pcuMes.toDCU           := true.B
+  readDCU_s4.pcuMes.hasPcuDBID      := dbid_s4.valid; assert(Mux((s4_g.decode.readDCU | s4_g.decode.readDown) & dbid_s4.valid & valid_s4_g, taskIsWriPtl_s4 | taskIsAtomic_s4, true.B))
 
 
   /*
