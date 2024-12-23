@@ -4,7 +4,7 @@ import dongjiang._
 import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config._
-import dongjiang.utils.Encoder.StepRREncoder
+import dongjiang.utils.StepRREncoder
 import xs.utils.perf.HasPerfLogging
 import xs.utils.sram.DualPortSramTemplate
 

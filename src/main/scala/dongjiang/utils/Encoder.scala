@@ -5,8 +5,39 @@ import chisel3.util._
 import chisel3.util.RRArbiter
 import xs.utils.ResetRRArbiter
 
-object Encoder {
-  def RREncoder(in: Seq[Bool]): UInt = {
+class StepRREncoder(size: Int) extends Module {
+  val io = IO(new Bundle {
+    val inVec   = Input(Vec(size, Bool()))
+    val enable  = Input(Bool())
+    val outIdx  = Output(UInt(log2Ceil(size).W))
+  })
+  require(isPow2(size))
+
+  val indexReg  = RegInit(0.U(log2Ceil(size).W))
+  val indexOut  = WireInit(0.U(log2Ceil(size).W))
+
+  when(io.inVec(indexReg)) {
+    indexReg    := Mux(io.enable, indexReg + 1.U, indexReg)
+    indexOut    := indexReg
+  }.otherwise {
+    indexReg    := Mux(io.inVec.reduce(_ | _) & io.enable, Mux(indexOut > indexReg, indexOut, indexReg + 1.U), indexReg)
+    indexOut    := PriorityEncoder(io.inVec)
+  }
+
+  io.outIdx     := indexOut
+}
+
+object StepRREncoder {
+  def apply(in: Seq[Bool], enable: Bool): UInt = {
+    val stepRREncoder = Module(new StepRREncoder(in.size))
+    stepRREncoder.io.inVec.zip(in).foreach { case(a, b) => a := b }
+    stepRREncoder.io.enable := enable
+    stepRREncoder.io.outIdx
+  }
+}
+
+object RREncoder {
+  def apply(in: Seq[Bool]): UInt = {
     val arb = Module(new ResetRRArbiter(UInt(log2Ceil(in.size).W), in.size))
     arb.io.in.zipWithIndex.foreach {
       case(a, i) =>
@@ -15,24 +46,5 @@ object Encoder {
     }
     arb.io.out.ready := true.B
     arb.io.out.bits
-  }
-
-  // TODO: It can be instantiated as a module
-  def StepRREncoder(in: Seq[Bool], enable: Bool): UInt = {
-    require(isPow2(in.size)) // TODO: condition !isPow2(in.size)
-
-    val indexReg  = RegInit(0.U(log2Ceil(in.size).W))
-    val indexOut  = WireInit(0.U(log2Ceil(in.size).W))
-    val inVec     = Wire(Vec(in.size, Bool()))
-    inVec.zip(in).foreach { case(a, b) => a := b }
-
-    when(inVec(indexReg)) {
-      indexReg    := Mux(enable, indexReg + 1.U, indexReg)
-      indexOut    := indexReg
-    }.otherwise {
-      indexReg    := Mux(in.reduce(_ | _) & enable, Mux(indexOut > indexReg, indexOut, indexReg + 1.U), indexReg)
-      indexOut    := PriorityEncoder(in)
-    }
-    indexOut
   }
 }

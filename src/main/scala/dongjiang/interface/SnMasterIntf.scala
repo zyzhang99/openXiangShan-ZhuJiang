@@ -9,7 +9,7 @@ import dongjiang.pcu._
 import dongjiang.chi._
 import chisel3._
 import chisel3.util._
-import dongjiang.utils.Encoder.StepRREncoder
+import dongjiang.utils.StepRREncoder
 import org.chipsalliance.cde.config._
 import dongjiang.utils.FastArb._
 import xijiang.Node
