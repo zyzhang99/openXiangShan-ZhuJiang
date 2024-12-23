@@ -17,19 +17,20 @@ object Encoder {
     arb.io.out.bits
   }
 
-  def StepRREncoder(in: Seq[Bool]): UInt = {
+  // TODO: It can be instantiated as a module
+  def StepRREncoder(in: Seq[Bool], enable: Bool): UInt = {
     require(isPow2(in.size)) // TODO: condition !isPow2(in.size)
 
     val indexReg  = RegInit(0.U(log2Ceil(in.size).W))
     val indexOut  = WireInit(0.U(log2Ceil(in.size).W))
     val inVec     = Wire(Vec(in.size, Bool()))
-    inVec.zip(in).foreach { case(a,b) => a := b }
+    inVec.zip(in).foreach { case(a, b) => a := b }
 
     when(inVec(indexReg)) {
-      indexReg    := indexReg + 1.U
+      indexReg    := Mux(enable, indexReg + 1.U, indexReg)
       indexOut    := indexReg
     }.otherwise {
-      indexReg    := Mux(in.reduce(_ | _), Mux(indexOut > indexReg, indexOut, indexReg + 1.U), indexReg)
+      indexReg    := Mux(in.reduce(_ | _) & enable, Mux(indexOut > indexReg, indexOut, indexReg + 1.U), indexReg)
       indexOut    := PriorityEncoder(in)
     }
     indexOut

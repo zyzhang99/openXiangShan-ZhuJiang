@@ -611,7 +611,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
    * Select one Entry
    */
   val reqBeSendVec  = entrys.map(_.isReqBeSend)
-  entrySendReqID    := StepRREncoder(reqBeSendVec)
+  entrySendReqID    := StepRREncoder(reqBeSendVec, io.req2Exu.ready)
 
   /*
    * Send Req To Node
@@ -711,7 +711,7 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
    * Send Get DBID Req To From DataBuffer
    */
   val entryGetDBIDVec         = entrys.map(_.isGetDBID)
-  entryGetDBID                := StepRREncoder(entryGetDBIDVec)
+  entryGetDBID                := StepRREncoder(entryGetDBIDVec, io.dbSigs.getDBID.ready)
 
   /*
    * Set DataBuffer Req Value

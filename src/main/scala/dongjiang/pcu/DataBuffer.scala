@@ -81,6 +81,8 @@ class DataBuffer()(implicit p: Parameters) extends DJModule with HasPerfLogging 
   val apuEntrys     = RegInit(VecInit(Seq.fill(djparam.nrAPU) { apuEntryInit }))
   // dbid resp queue
   val dbidRespQ     = Module(new Queue(new DBIDResp(), entries = 1, flow = false, pipe = true))
+  val rBeatCanGo    = WireInit(false.B); dontTouch(rBeatCanGo)
+  val readingReg    = RegInit(false.B)
 
 
 // ---------------------------------------------------------------------------------------------------------------------- //
@@ -160,11 +162,14 @@ class DataBuffer()(implicit p: Parameters) extends DJModule with HasPerfLogging 
 // ---------------------------------------------------- DATA TO NODE ---------------------------------------------------- //
 // ---------------------------------------------------------------------------------------------------------------------- //
   // TODO: Ensure that the order of dataFDB Out is equal to the order of dbRCReq In
-  val readVec     = ctrlEntrys.map(_.isRead)
+  // Reading
   val readingVec  = ctrlEntrys.map(_.isReading)
-  val readId      = StepRREncoder(readVec)
   val readingId   = PriorityEncoder(readingVec)
   val hasReading  = readingVec.reduce(_ | _)
+  // Read
+  val readVec     = ctrlEntrys.map(_.isRead)
+  val readId      = StepRREncoder(readVec, !hasReading & rBeatCanGo)
+  // Select
   val selReadId   = Mux(hasReading, readingId, readId)
   val readVal     = readVec.reduce(_ | _) | readingVec.reduce(_ | _)
   assert(PopCount(readingVec) <= 1.U)
@@ -173,22 +178,25 @@ class DataBuffer()(implicit p: Parameters) extends DJModule with HasPerfLogging 
   /*
    * Add RBeatNum
    */
-  val rBeatVal                    = beatEnrtys.io.rreq.fire
-  ctrlEntrys(selReadId).rBeatNum  := Mux(rBeatVal, ctrlEntrys(selReadId).rBeatNum + 1.U, ctrlEntrys(selReadId).rBeatNum)
+
+  val rBeatFire                   = beatEnrtys.io.rreq.fire
+  readingReg                      := rBeatFire
+  ctrlEntrys(selReadId).rBeatNum  := Mux(rBeatFire, ctrlEntrys(selReadId).rBeatNum + 1.U, ctrlEntrys(selReadId).rBeatNum)
 
   /*
    * Read Data From SRAM
-   * Consider replacing io.count with a register implementation if rreq.valid timing is tight
    */
   val rBeatNum                  = ctrlEntrys(selReadId).getRNum; require(rBeatNum.getWidth == log2Ceil(nrBeat))
-  val outQCountNext             = beatOutQ.io.count + readVal.asUInt - beatOutQ.io.deq.fire.asTypeOf(UInt((beatOutQ.io.count.getWidth+1).W)); dontTouch(outQCountNext)
-  beatEnrtys.io.rreq.valid      := readVal & (outQCountNext < 2.U)
+  val canRSram                  = (beatOutQ.io.count + readingReg.asUInt - beatOutQ.io.deq.fire.asUInt) < 2.U; dontTouch(canRSram)
+  rBeatCanGo                    := beatEnrtys.io.rreq.ready & canRSram
+  // sram rreq
+  beatEnrtys.io.rreq.valid      := readVal & canRSram
   beatEnrtys.io.rreq.bits       := Cat(rBeatNum, selReadId)
-
-  beatOutQ.io.enq.valid         := RegNext(rBeatVal);
-  beatOutQ.io.enq.bits.dbID     := RegEnable(selReadId,                       rBeatVal)
-  beatOutQ.io.enq.bits.dataID   := RegEnable(ctrlEntrys(selReadId).getDataID, rBeatVal)
-  beatOutQ.io.enq.bits.to       := RegEnable(ctrlEntrys(selReadId).to,        rBeatVal)
+  // beatOutQ
+  beatOutQ.io.enq.valid         := readingReg
+  beatOutQ.io.enq.bits.dbID     := RegEnable(selReadId,                       rBeatFire)
+  beatOutQ.io.enq.bits.dataID   := RegEnable(ctrlEntrys(selReadId).getDataID, rBeatFire)
+  beatOutQ.io.enq.bits.to       := RegEnable(ctrlEntrys(selReadId).to,        rBeatFire)
   beatOutQ.io.enq.bits.data     := beatEnrtys.io.rresp.bits(0).beat
   beatOutQ.io.enq.bits.mask     := beatEnrtys.io.rresp.bits(0).mask
 
@@ -248,13 +256,13 @@ class DataBuffer()(implicit p: Parameters) extends DJModule with HasPerfLogging 
         }
         // READ
         is(DBState.READ) {
-          val hit     = rBeatVal & readId === i.U & !hasReading
+          val hit     = rBeatFire & readId === i.U & !hasReading
           val clean   = ctrlEntrys(i).needClean
           e.state     := Mux(hit, Mux(e.isLast, Mux(clean, DBState.FREE, DBState.READ_DONE), DBState.READING), e.state)
         }
         // READING
         is(DBState.READING) {
-          val hit     = rBeatVal & readingId === i.U
+          val hit     = rBeatFire & readingId === i.U
           val clean   = ctrlEntrys(i).needClean
           e.state     := Mux(hit, Mux(clean, DBState.FREE, DBState.READ_DONE), e.state)
         }

@@ -274,7 +274,7 @@ class ProtocolCtrlUnit(localHf: Node, csnRf: Option[Node] = None, csnHf: Option[
   rxDataQ.io.deq.ready              := databuffer.io.dataTDB.ready
   databuffer.io.dataTDB.bits.data   := rxDataQ.io.deq.bits.Data
   // tx
-  txDataQ.io.enq.bits.Data          := RegEnable(databuffer.io.dataFDB.bits.data,   databuffer.io.dataFDB.fire)
-  txDataQ.io.enq.bits.DataID        := RegEnable(databuffer.io.dataFDB.bits.dataID, databuffer.io.dataFDB.fire)
-  txDataQ.io.enq.bits.BE            := RegEnable(databuffer.io.dataFDB.bits.mask,   databuffer.io.dataFDB.fire)
+  txDataQ.io.enq.bits.Data          := databuffer.io.dataFDB.bits.data
+  txDataQ.io.enq.bits.DataID        := databuffer.io.dataFDB.bits.dataID
+  txDataQ.io.enq.bits.BE            := databuffer.io.dataFDB.bits.mask
 }

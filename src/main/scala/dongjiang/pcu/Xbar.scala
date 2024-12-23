@@ -85,7 +85,7 @@ class Xbar()(implicit p: Parameters) extends DJModule {
 
   interConnect(in = io.dbSigs.out.map(_.dbidResp),  out = io.dbSigs.in1.map(_.dbidResp))
 
-  interConnect(in = io.dbSigs.out.map(_.dataFDB),   out = io.dbSigs.in1.map(_.dataFDB), q0 = 1) // Adding queues for timing considerations
+  interConnect(in = io.dbSigs.out.map(_.dataFDB),   out = io.dbSigs.in1.map(_.dataFDB)) // Dont add queues for timing considerations because it has been add queue in DataBuffer
 
   io.dbSigs.out(0).dataTDB                          <> fastArbDec(io.dbSigs.in1.map(_.dataTDB))
 

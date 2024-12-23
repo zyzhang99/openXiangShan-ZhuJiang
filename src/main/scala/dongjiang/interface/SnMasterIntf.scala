@@ -392,7 +392,7 @@ class SnMasterIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ex
    * Send Get DBID Req To From DataBuffer
    */
   val entryGetDBIDVec                 = entrys.map(_.isGetDBID)
-  entryGetDBID                        := StepRREncoder(entryGetDBIDVec)
+  entryGetDBID                        := StepRREncoder(entryGetDBIDVec, io.dbSigs.getDBID.ready)
 
   /*
    * Set DataBuffer Req Value
