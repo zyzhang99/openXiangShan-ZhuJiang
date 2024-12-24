@@ -25,10 +25,14 @@ class DataStorage(sets: Int)(implicit p: Parameters) extends DJModule {
   })
 
 // --------------------- Modules declaration ------------------------//
-  // TODO: Split to 64.W
-  val array       = Module(new SinglePortSramTemplate(UInt(8.W), sets, way = maskBits, setup = djparam.dcuSetup, latency = djparam.dcuLatency, extraHold = djparam.dcuExtraHold))
+  val split       = 4
+  val ways        = maskBits/split
+  val arrays      = Seq.fill(split) { Module(new SinglePortSramTemplate(UInt(8.W), sets, way = ways, setup = djparam.dcuSetup, latency = djparam.dcuLatency, extraHold = djparam.dcuExtraHold)) }
 
 //// ----------------------- Reg/Wire declaration --------------------------//
+  // s1
+  val wMaskVec    = Wire(Vec(split, Vec(ways, Bool())))
+  val wDataVec    = Wire(Vec(split, Vec(ways, UInt(8.W))))
   // s2
   val valid_s2    = WireInit(false.B)
   val resp_s2     = Wire(UInt(beatBits.W))
@@ -43,14 +47,20 @@ class DataStorage(sets: Int)(implicit p: Parameters) extends DJModule {
   /*
    * Read / Write Req SRAM
    */
-  array.io.req.valid          := io.read.valid | io.write.valid
-  array.io.req.bits.write     := io.write.valid
-  array.io.req.bits.addr      := Mux(io.write.valid, io.write.bits.index, io.read.bits)
-  array.io.req.bits.mask.get  := io.write.bits.mask
-  array.io.req.bits.data.zip(io.write.bits.beat.asTypeOf(Vec(maskBits, UInt(8.W)))).foreach { case(a, b) => a := b }
+  wMaskVec.zipWithIndex.foreach { case(m, i) => m.zipWithIndex.foreach { case(m, j) => m := io.write.bits.mask(i * ways + j) } }
+  wDataVec.zipWithIndex.foreach { case(d, i) => d.zipWithIndex.foreach { case(d, j) => d := io.write.bits.beat((i * ways + j + 1) * 8 - 1, (i * ways + j) * 8) } }
+  arrays.zipWithIndex.foreach {
+    case(a, i) =>
+      a.io.req.valid          := io.read.valid | (io.write.valid & wMaskVec(i).reduce(_ | _))
+      a.io.req.bits.write     := io.write.valid
+      a.io.req.bits.addr      := Mux(io.write.valid, io.write.bits.index, io.read.bits)
+      a.io.req.bits.mask.get  := wMaskVec(i).asUInt
+      a.io.req.bits.data.zip(wDataVec(i)).foreach { case (a, b) => a := b }
+  }
 
-  io.write.ready  := array.io.req.ready
-  io.read.ready   := array.io.req.ready & !io.write.valid
+
+  io.write.ready  := arrays.map(_.io.req.ready).reduce(_ & _)
+  io.read.ready   := arrays.map(_.io.req.ready).reduce(_ & _) & !io.write.valid
 
 // ---------------------------------------------------------------------------------------------------------------------- //
 // ------------------------------------------------- S2: Receive SRAM Resp ---------------------------------------------- //
@@ -59,8 +69,10 @@ class DataStorage(sets: Int)(implicit p: Parameters) extends DJModule {
   /*
    * Receive Meta SRAM resp
    */
-  valid_s2      := array.io.resp.valid
-  resp_s2       := Cat(array.io.resp.bits.data.reverse)
+  valid_s2      := arrays(0).io.resp.valid
+  resp_s2       := Cat(arrays.map { case a => Cat(a.io.resp.bits.data.reverse) }.reverse)
+
+  assert(Mux(arrays.map(_.io.resp.valid).reduce(_ | _), arrays.map(_.io.resp.valid).reduce(_ & _), true.B))
 
 // ---------------------------------------------------------------------------------------------------------------------- //
 // ---------------------------------------------------- S3: Output Resp  ------------------------------------------------ //
