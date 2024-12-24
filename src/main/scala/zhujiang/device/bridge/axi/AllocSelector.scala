@@ -15,14 +15,16 @@ class SelNto1(size:Int, outstanding: Int) extends Module {
     val out = Output(UInt(outstanding.W))
   })
 
-  private val onlyOne = PopCount(io.in.map(_.valid)) === 1.U
   private val oldestOHMatrix = io.in.zipWithIndex.map({ case (self, idx) =>
     io.in.zipWithIndex.filterNot(_._2 == idx).map(i => (i._1.valid && self.valid && (self.bits.waitNum <= i._1.bits.waitNum)) ^ i._1.valid)
   })
   private val oldestOHSeq = oldestOHMatrix.map(_.reduce(_ | _)).map(!_)
   private val oldestOH = Cat(oldestOHSeq.reverse)
-  private val defaultValue = Cat(io.in.map(_.valid).reverse)
-  io.out := Mux(onlyOne, defaultValue, oldestOH)
+  private val valids = Cat(io.in.map(_.valid).reverse)
+  io.out := oldestOH & valids
+  when(valids.orR) {
+    assert(io.out.orR)
+  }
 }
 
 class DataBufferAllocReqSelector(outstanding: Int) extends Module {
