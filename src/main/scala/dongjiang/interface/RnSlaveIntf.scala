@@ -836,6 +836,25 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
     assert(rxReq.bits.Endian.asUInt === 0.U) // Must be Little Endian
   }
 
+  when(rxDat.valid) {
+    assert(
+      Mux(
+        rxDat.bits.Opcode === NonCopyBackWriteData,
+        rxDat.bits.BE.asUInt > 0.U, // Atomic
+        Mux(
+          rxDat.bits.Opcode === CopyBackWriteData,
+          Mux(
+            rxDat.bits.Resp === ChiState.I,
+            rxDat.bits.BE.asUInt === 0.U,
+            PopCount(rxDat.bits.BE).asUInt === 32.U
+          ),
+          true.B // default
+        )
+      )
+    )
+  }
+
+
 // -------------------------------------------------- Perf Counter ------------------------------------------------------ //
   val reqFire = rxReq.fire | io.req2Intf.fire | io.resp2Intf.fire
   require(param.nrEntry >= 4 & param.nrEntry % 4 == 0)
