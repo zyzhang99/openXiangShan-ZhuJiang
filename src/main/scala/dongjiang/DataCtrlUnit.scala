@@ -386,7 +386,7 @@ class DataCtrlUnit(nodes: Seq[Node])(implicit p: Parameters) extends DJRawModule
   // assert
   assert(Mux(dsRespIdPipe.io.deq.valid, PopCount(dsRespVec.map(_.map(_.valid).reduce(_ | _))) === 1.U, PopCount(dsRespVec.map(_.map(_.valid).reduce(_ | _))) === 0.U))
   assert(Mux(dsRespIdPipe.io.deq.valid, OHToUInt(dsRespVec.map(_.map(_.valid).reduce(_ | _))) === dsRespID, true.B))
-  assert(Mux(dsRespIdPipe.io.deq.valid, Cat(dsRespVec(dsRespID).map(_.valid)) === dsRespOH, true.B))
+  assert(Mux(dsRespIdPipe.io.deq.valid, Cat(dsRespVec(dsRespID).reverse.map(_.valid)) === dsRespOH, true.B))
 
   /*
     * Send Resp To CHI RxDat
