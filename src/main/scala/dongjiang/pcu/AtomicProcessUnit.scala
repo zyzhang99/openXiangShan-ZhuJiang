@@ -94,7 +94,7 @@ class AtomicProcessUnit()(implicit p: Parameters) extends DJModule with HasPerfL
   val halfBytesNum_s1 = (bytesNum_s1 >> 1).asUInt
   amoDataVec_s1       := in_s1_g.atomic.data.asTypeOf(amoDataVec_s1)
   inDataVec_s1        := in_s1_g.data.asTypeOf(inDataVec_s1)
-  assert(firstByte_s1 < 16.U | !valid_s1_g)
+  assert(bytesNum_s1 > 0.U | !valid_s1_g)
 
   /*
    * Parse loadData

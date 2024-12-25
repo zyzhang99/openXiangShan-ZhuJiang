@@ -836,6 +836,10 @@ class RnSlaveIntf(param: InterfaceParam, node: Node)(implicit p: Parameters) ext
     assert(rxReq.bits.Endian.asUInt === 0.U) // Must be Little Endian
   }
 
+  when(rxDat.Valid) {
+    assert(rxDat.bits.BE.asUInt > 0.U)
+  }
+
 // -------------------------------------------------- Perf Counter ------------------------------------------------------ //
   val reqFire = rxReq.fire | io.req2Intf.fire | io.resp2Intf.fire
   require(param.nrEntry >= 4 & param.nrEntry % 4 == 0)
